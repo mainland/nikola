@@ -1,0 +1,335 @@
+name:           CUDA
+version:        0.1
+cabal-version:  >= 1.2
+license:        BSD3
+license-file:   LICENSE
+copyright:      (c) 2006-2010 Harvard University
+author:         Geoffrey Mainland <mainland@eecs.harvard.edu>
+maintainer:     mainland@eecs.harvard.edu
+stability:      alpha
+homepage:       http://www.eecs.harvard.edu/~mainland/
+category:       Language
+synopsis:       An embedded DSL for GPU array computation.
+
+build-type:     Simple
+
+flag tests
+  description: Build test programs.
+  default:     False
+
+flag examples
+  description: Build example programs.
+  default:     False
+
+library
+  build-depends:
+    array, base>=4 && <5,
+    bytestring,
+    containers,
+    filepath,
+    haskell98,
+    haskell-src-meta,
+    hmatrix,
+    mtl,
+    process,
+    syb,
+    template-haskell,    
+    vector
+
+  exposed-modules:
+    CUDA.Alloc
+    CUDA.Compile
+    CUDA.Context
+    CUDA.Event
+    CUDA.Internal
+    CUDA.Module
+    CUDA.Stream
+    CUDA.Storable
+    Control.Monad.ContextException
+    Control.Monad.Exception
+    Data.IString
+    Data.Loc
+    Language.C
+    Language.C.Parser
+    Language.C.Parser.Exceptions
+    Language.C.Parser.Lexer
+    Language.C.Parser.Monad
+    Language.C.Parser.Parser
+    Language.C.Parser.Tokens
+    Language.C.Pretty
+    Language.C.Quote.Base
+    Language.C.Quote.C
+    Language.C.Quote.CUDA
+    Language.C.Quote.GCC
+    Language.C.Smart
+    Language.C.Syntax
+    Nikola
+
+  other-modules:
+    Nikola.CGen
+    Nikola.Check
+    Nikola.Compile
+    Nikola.Embeddable
+    Nikola.Embeddable.Base
+    Nikola.Embeddable.Class
+    Nikola.Embeddable.Hmatrix
+    Nikola.Embeddable.Vector
+    Nikola.Exec
+    Nikola.Reify
+    Nikola.Smart
+    Nikola.Syntax
+    Nikola.ToC
+    Text.PrettyPrint.Mainland
+
+  hs-source-dirs:  src
+  include-dirs:    /usr/local/cuda/include src
+  extra-lib-dirs:  /usr/local/cuda/lib
+  extra-libraries: cuda
+
+  ghc-options: -W -Werror
+  cpp-options: -DRICH_ANTIQUOTES
+
+executable quoting
+  build-depends:
+    array,
+    base>=4 && <5,
+    bytestring,
+    containers,
+    filepath,
+    haskell98,
+    haskell-src-meta,
+    mtl,
+    process,
+    syb,
+    template-haskell,
+    vector
+
+  other-modules:
+    Control.Monad.ContextException
+    Control.Monad.Exception
+    Data.IString
+    Data.Loc
+    Language.C
+    Language.C.Parser
+    Language.C.Parser.Exceptions
+    Language.C.Parser.Lexer
+    Language.C.Parser.Monad
+    Language.C.Parser.Parser
+    Language.C.Parser.Tokens
+    Language.C.Pretty
+    Language.C.Quote.Base
+    Language.C.Quote.C
+    Language.C.Quote.CUDA
+    Language.C.Quote.GCC
+    Language.C.Smart
+    Language.C.Syntax
+    Text.PrettyPrint.Mainland
+
+  main-is:         quoting.hs
+  hs-source-dirs:  src tests
+
+  ghc-options: -W -Werror
+  cpp-options: -DRICH_ANTIQUOTES
+
+  if flag(tests)
+    buildable: True
+  else
+    buildable: False
+
+executable nikola
+  build-depends:
+    HUnit,
+    array,
+    base>=4 && <5,
+    bytestring,
+    containers,
+    filepath,
+    haskell98,
+    haskell-src-meta,
+    hmatrix,
+    mtl,
+    process,
+    syb,
+    template-haskell,
+    vector
+
+  other-modules:
+    CUDA.Alloc
+    CUDA.Compile
+    CUDA.Context
+    CUDA.Event
+    CUDA.Internal
+    CUDA.Module
+    CUDA.Stream
+    CUDA.Storable
+    Control.Monad.ContextException
+    Control.Monad.Exception
+    Data.IString
+    Data.Loc
+    Language.C
+    Language.C.Parser
+    Language.C.Parser.Exceptions
+    Language.C.Parser.Lexer
+    Language.C.Parser.Monad
+    Language.C.Parser.Parser
+    Language.C.Parser.Tokens
+    Language.C.Pretty
+    Language.C.Quote.Base
+    Language.C.Quote.C
+    Language.C.Quote.CUDA
+    Language.C.Quote.GCC
+    Language.C.Smart
+    Nikola
+    Language.C.Syntax
+    Text.PrettyPrint.Mainland
+
+  main-is:         nikola.hs
+  hs-source-dirs:  src tests
+  include-dirs:    /usr/local/cuda/include src
+  extra-lib-dirs:  /usr/local/cuda/lib
+  extra-libraries: cuda
+
+  ghc-options:      -W -Werror
+
+  build-depends:
+
+  cpp-options:
+    -DRICH_ANTIQUOTES
+
+  if flag(tests)
+    buildable: True
+  else
+    buildable: False
+
+executable blackscholes
+  build-depends:
+    array,
+    base>=4 && <5,
+    bytestring,
+    containers,
+    criterion,
+    filepath,
+    haskell98,
+    haskell-src-meta,
+    hmatrix,
+    mersenne-random-pure64,
+    mtl,
+    process,
+    statistics,
+    syb,
+    template-haskell,
+    uniplate,
+    uvector,
+    vector,
+    vector-random
+
+  other-modules:
+    CUDA.Alloc
+    CUDA.Compile
+    CUDA.Context
+    CUDA.Event
+    CUDA.Internal
+    CUDA.Module
+    CUDA.Stream
+    CUDA.Storable
+    Control.Monad.ContextException
+    Control.Monad.Exception
+    Data.IString
+    Data.Loc
+    Language.C
+    Language.C.Parser
+    Language.C.Parser.Exceptions
+    Language.C.Parser.Lexer
+    Language.C.Parser.Monad
+    Language.C.Parser.Parser
+    Language.C.Parser.Tokens
+    Language.C.Pretty
+    Language.C.Quote.Base
+    Language.C.Quote.C
+    Language.C.Quote.CUDA
+    Language.C.Quote.GCC
+    Language.C.Smart
+    Language.C.Syntax
+    Nikola
+    Text.PrettyPrint.Mainland
+
+  main-is:         Main.hs
+  hs-source-dirs:  src examples/blackscholes
+  include-dirs:    /usr/local/cuda/include src
+  extra-lib-dirs:  /usr/local/cuda/lib
+  extra-libraries: cuda
+
+  ghc-options: -W -Werror
+  cpp-options: -DRICH_ANTIQUOTES
+
+  if flag(examples)
+    buildable: True
+  else
+    buildable: False
+
+executable radix
+  build-depends:
+    array,
+    base>=4 && <5,
+    bytestring,
+    containers,
+    criterion,
+    filepath,
+    haskell98,
+    haskell-src-meta,
+    hmatrix,
+    mersenne-random-pure64,
+    mtl,
+    primitive,
+    process,
+    statistics,
+    syb,
+    template-haskell,
+    uniplate,
+    uvector,
+    vector,
+    vector-random
+
+  other-modules:
+    CUDA.Alloc
+    CUDA.Compile
+    CUDA.Context
+    CUDA.Event
+    CUDA.Internal
+    CUDA.Module
+    CUDA.Stream
+    CUDA.Storable
+    Control.Monad.ContextException
+    Control.Monad.Exception
+    Data.IString
+    Data.Loc
+    Language.C
+    Language.C.Parser
+    Language.C.Parser.Exceptions
+    Language.C.Parser.Lexer
+    Language.C.Parser.Monad
+    Language.C.Parser.Parser
+    Language.C.Parser.Tokens
+    Language.C.Pretty
+    Language.C.Quote.Base
+    Language.C.Quote.C
+    Language.C.Quote.CUDA
+    Language.C.Quote.GCC
+    Language.C.Smart
+    Language.C.Syntax
+    Nikola
+    Text.PrettyPrint.Mainland
+
+  main-is:         Main.hs
+  hs-source-dirs:  src examples/radix
+  include-dirs:    /usr/local/cuda/include src
+  extra-lib-dirs:  /usr/local/cuda/lib
+  extra-libraries: cuda
+
+  ghc-options: -W
+  cpp-options: -DRICH_ANTIQUOTES
+
+  if flag(examples)
+    buildable: True
+  else
+    buildable: False
