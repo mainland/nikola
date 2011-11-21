@@ -25,6 +25,7 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -47,5 +48,7 @@ module Nikola.Embeddable (
 
 import Nikola.Embeddable.Class
 import Nikola.Embeddable.Base ()
+#if defined(HMATRIX)
 import Nikola.Embeddable.Hmatrix ()
+#endif /* defined(HMATRIX) */
 import Nikola.Embeddable.Vector ()

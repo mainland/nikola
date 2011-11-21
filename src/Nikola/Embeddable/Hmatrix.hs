@@ -62,13 +62,19 @@ deriving instance Typeable1 Matrix
 -- | A helper function that adapts 'Data.Packed.Development.vec' to a more
 -- traditional \"with\"-style interface. @f@ is passed the vector's length and a
 -- 'Ptr' to its contents.
-withVector :: Vector t -> (CInt -> Ptr t -> IO ()) -> IO ()
+withVector  ::  Foreign.Storable t
+            =>  Vector t
+            ->  (CInt -> Ptr t -> IO ())
+            ->  IO ()
 withVector v f = vec v $ \g -> g f
 
 -- | A helper function that adapts 'Data.Packed.Development.mat' to a more
 -- traditional \"with\"-style interface. @f@ is passed the number of rows, the
 -- number of columns, and a 'Ptr' to the matrix contents.
-withMatrix :: Matrix t -> (CInt -> CInt -> Ptr t -> IO ()) -> IO ()
+withMatrix  ::  Foreign.Storable t
+            =>  Matrix t
+            ->  (CInt -> CInt -> Ptr t -> IO ())
+            ->  IO ()
 withMatrix m f = mat m $ \g -> g f
 
 instance (IsScalar a, Storable a, Foreign.Storable a, Foreign.Storable (Rep a))

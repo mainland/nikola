@@ -51,7 +51,6 @@ import Criterion.Config
 import Criterion.Environment
 import Criterion.Main
 import Criterion.Monad
-import Data.Array.Vector
 import Data.Bits (shiftL)
 import qualified Data.Vector.Algorithms.Radix as R
 import qualified Data.Vector.Storable as V
@@ -90,7 +89,7 @@ main = withNewContext $ \_ -> do
         printf ",%0.2e,%0.2e,%0.2e" mu min max
       where
         mu         = mean samp
-        (min, max) = (unpairS . minMax) samp
+        (min, max) = minMax samp
 
 benchmarkIO :: (V.Vector Int -> IO a)
             -> Int

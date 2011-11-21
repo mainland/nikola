@@ -716,12 +716,14 @@ cuMemGetInfo = do
 cuMemAlloc :: Int -> IO (CUDevicePtr a)
 cuMemAlloc n = do
     devPtr <- malloc
+    poke devPtr 0
     c_cuMemAlloc devPtr (fromIntegral n) >>= checkCUResult
     return (CUDevicePtr devPtr)
 
 cuMemAllocPitch :: Int -> Int -> Int -> IO (CUDevicePtr a, Int)
 cuMemAllocPitch w h elemSize = do
     devPtr <- malloc
+    poke devPtr 0
     alloca $ \pitchPtr -> do
     c_cuMemAllocPitch devPtr pitchPtr
         (fromIntegral w) (fromIntegral h)

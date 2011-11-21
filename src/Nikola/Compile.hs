@@ -37,14 +37,17 @@
 
 module Nikola.Compile (
     withCompiledCFun,
+    withCompiledFunction',
     withCompiledFunction,
 
     call,
     compile,
-    compileTH
+    compileTH,
+    compileTH'
   ) where
 
 import Prelude hiding (map, zipWith)
+import qualified Prelude
 
 import CUDA.Compile
 import CUDA.Internal
@@ -52,7 +55,7 @@ import CUDA.Module
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans (MonadIO(..))
-import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as B
 import Data.Data
 import Foreign hiding (Storable(..))
 import qualified Foreign
@@ -84,15 +87,23 @@ withCompiledCFun :: CFun a
 withCompiledCFun cfun act =
     withRawCompiledCFun cfun (act . F)
 
+withCompiledFunction' :: (ReifiableFun a b)
+                      => ROpts
+                      -> (a -> b)
+                      -> (F (a -> b) -> IO c)
+                      -> IO c
+withCompiledFunction' ropts f act = do
+    cfun <- reify ropts f >>= compileTopFun fname
+    withRawCompiledCFun cfun (act . F)
+  where
+    fname = "f"
+
 withCompiledFunction :: (ReifiableFun a b)
                      => (a -> b)
                      -> (F (a -> b) -> IO c)
                      -> IO c
-withCompiledFunction f act = do
-    cfun <- reify f >>= compileTopFun fname
-    withRawCompiledCFun cfun (act . F)
-  where
-    fname = "f"
+withCompiledFunction =
+    withCompiledFunction' defaultROpts
 
 cfunLaunch :: CFun a -> Ex b -> Ex b
 cfunLaunch cfun comp = do
@@ -128,7 +139,7 @@ instance (Embeddable a, Embeddable b) =>
       where
         sigma :: IO (F (Exp a -> Exp b))
         sigma = do
-          F <$> snd <$> reifyCompileAndLoad f
+          F <$> snd <$> reifyCompileAndLoad defaultROpts f
 
     compilekIO sigma args = \x -> do
         sigma' <- sigma
@@ -144,7 +155,7 @@ instance (Embeddable a, Embeddable b) =>
       where
         sigma :: IO (F (Exp a -> Exp b))
         sigma = do
-          F <$> snd <$> reifyCompileAndLoad f
+          F <$> snd <$> reifyCompileAndLoad defaultROpts f
 
     compilekIO sigma args = \x -> do
         sigma' <- sigma
@@ -159,7 +170,7 @@ instance (Embeddable a, ReifiableFun (Exp a) (b -> c), CompilableIO b c d) =>
     compileIO f = compilekIO sigma id
       where
         sigma :: IO (F (Exp a -> b -> c))
-        sigma = F <$> snd <$> reifyCompileAndLoad f
+        sigma = F <$> snd <$> reifyCompileAndLoad defaultROpts f
 
     compilekIO sigma args = \x -> compilekIO sigma' (args . withArg x)
       where
@@ -192,7 +203,7 @@ instance (Embeddable a, Embeddable b) =>
     compilePure f = compilekPure sigma id
       where
         sigma :: F (Exp a -> Exp b)
-        sigma = F $ snd $ unsafePerformIO (reifyCompileAndLoad f)
+        sigma = F $ snd $ unsafePerformIO (reifyCompileAndLoad defaultROpts f)
 
     compilekPure sigma args = \x ->
         unsafePerformIO $
@@ -207,7 +218,7 @@ instance (Embeddable a, Embeddable b) =>
     compilePure f = compilekPure sigma id
       where
         sigma :: F (Exp a -> IO (Exp b))
-        sigma = F $ snd $ unsafePerformIO (reifyCompileAndLoad f)
+        sigma = F $ snd $ unsafePerformIO (reifyCompileAndLoad defaultROpts f)
 
     compilekPure sigma args = \x ->
         flip evalEx (unF sigma) $
@@ -221,7 +232,7 @@ instance (Embeddable a, ReifiableFun (Exp a) (b -> c), CompilablePure b c d) =>
     compilePure f = compilekPure sigma id
       where
         sigma :: F (Exp a -> b -> c)
-        sigma = F $ snd $ unsafePerformIO (reifyCompileAndLoad f)
+        sigma = F $ snd $ unsafePerformIO (reifyCompileAndLoad defaultROpts f)
 
     compilekPure sigma args = \x -> compilekPure sigma' (args . withArg x)
       where
@@ -229,10 +240,11 @@ instance (Embeddable a, ReifiableFun (Exp a) (b -> c), CompilablePure b c d) =>
         sigma' = castF sigma
 
 reifyCompileAndLoad :: ReifiableFun a b
-                    => (a -> b)
+                    => ROpts
+                    -> (a -> b)
                     -> IO (CUModule, ExState)
-reifyCompileAndLoad f =
-    reify f >>= compileTopFun fname >>= compileAndLoad
+reifyCompileAndLoad ropts f =
+    reify ropts f >>= compileTopFun fname >>= compileAndLoad
   where
     fname = "f"
 
@@ -249,7 +261,7 @@ compileAndLoad cfun = do
 newtype QExp a = QExp { unQExp :: ExpQ }
 
 class CompilablePureTH a b c | a b -> c where
-    compilePureTH :: (a -> b) -> QExp c
+    compilePureTH :: ROpts -> (a -> b) -> QExp c
 
     compilekPureTH :: QExp (F (a -> b))
                    -> QExp (forall a . Ex a -> Ex a)
@@ -257,10 +269,10 @@ class CompilablePureTH a b c | a b -> c where
 
 instance (Embeddable a, Embeddable b) =>
   CompilablePureTH (Exp a) (Exp b) (a -> b) where
-    compilePureTH f = compilekPureTH sigma (QExp [|id|])
+    compilePureTH ropts f = compilekPureTH sigma (QExp [|id|])
       where
         sigma :: QExp (F (Exp a -> Exp b))
-        sigma = QExp [|F $ snd $ unsafePerformIO $(reifyCompileAndLoadTH f)|]
+        sigma = QExp [|F $ snd $ unsafePerformIO $(reifyCompileAndLoadTH ropts f)|]
 
     compilekPureTH sigma args = QExp [|\x ->
         unsafePerformIO $
@@ -272,10 +284,10 @@ instance (Embeddable a, Embeddable b) =>
 
 instance (Embeddable a, Embeddable b) =>
   CompilablePureTH (Exp a) (IO (Exp b)) (a -> IO b) where
-    compilePureTH f = compilekPureTH sigma (QExp [|id|])
+    compilePureTH ropts f = compilekPureTH sigma (QExp [|id|])
       where
         sigma :: QExp (F (Exp a -> IO (Exp b)))
-        sigma = QExp [|F $ snd $ unsafePerformIO $(reifyCompileAndLoadTH f)|]
+        sigma = QExp [|F $ snd $ unsafePerformIO $(reifyCompileAndLoadTH ropts f)|]
 
     compilekPureTH sigma args = QExp [|\x ->
         flip evalEx (unF $(unQExp sigma)) $
@@ -286,10 +298,10 @@ instance (Embeddable a, Embeddable b) =>
 
 instance (Embeddable a, ReifiableFun (Exp a) (b -> c), CompilablePureTH b c d) =>
   CompilablePureTH (Exp a) (b -> c) (a -> d) where
-    compilePureTH f = compilekPureTH sigma (QExp [|id|])
+    compilePureTH ropts f = compilekPureTH sigma (QExp [|id|])
       where
         sigma :: QExp (F (Exp a -> b -> c))
-        sigma = QExp [|F $ snd $ unsafePerformIO $(reifyCompileAndLoadTH f)|]
+        sigma = QExp [|F $ snd $ unsafePerformIO $(reifyCompileAndLoadTH ropts f)|]
 
     compilekPureTH sigma args =
         QExp [|\x -> $(unQExp (compilekPureTH sigma' (QExp [|$(unQExp args) . withArg x|])))|]
@@ -297,23 +309,27 @@ instance (Embeddable a, ReifiableFun (Exp a) (b -> c), CompilablePureTH b c d) =
         sigma' ::  QExp (F (b -> c))
         sigma' = QExp [|castF $(unQExp sigma)|]
 
+compileTH :: CompilableTH a => a -> ExpQ
+compileTH = compileTH' defaultROpts
+
 class CompilableTH a where
-    compileTH :: a -> ExpQ
+    compileTH' :: ROpts -> a -> ExpQ
 
 instance CompilablePureTH a b c => CompilableTH (a -> b) where
-    compileTH = unQExp . compilePureTH
+    compileTH' ropts = unQExp . compilePureTH ropts
 
 instance CompilablePureTH a b c => CompilableTH (CFun (a -> b)) where
-    compileTH cfun = unQExp $ compilekPureTH f (QExp [|id|])
+    compileTH' _ cfun = unQExp $ compilekPureTH f (QExp [|id|])
       where
         f :: QExp (F (a -> b))
         f = QExp [|F $ snd $ unsafePerformIO $(compileAndLoadTH cfun)|]
 
 reifyCompileAndLoadTH :: ReifiableFun a b
-                      => (a -> b)
+                      => ROpts
+                      -> (a -> b)
                       -> ExpQ
-reifyCompileAndLoadTH f = do
-    cfun <- liftIO $ reify f >>= compileTopFun fname
+reifyCompileAndLoadTH ropts f = do
+    cfun <- liftIO $ reify ropts f >>= compileTopFun fname
     compileAndLoadTH cfun
   where
     fname :: String
@@ -322,8 +338,8 @@ reifyCompileAndLoadTH f = do
 compileAndLoadTH :: CFun a
                  -> ExpQ
 compileAndLoadTH cfun = do
-    bs   <- liftIO $ compileFunction (cfunDefs cfun)
-    [|do { mod     <- cuModuleLoadData (B.pack $(lift (B.unpack bs)))
+    bs <- liftIO $ compileFunction (cfunDefs cfun)
+    [|do { mod     <- cuModuleLoadData (B.pack $(stringE (B.unpack bs)))
          ; cudaFun <- cuModuleGetFunction mod $(lift (cfunName cfun))
          ; let sigma = emptyExState { exFun    = cudaFun
                                     , exLaunch = $(cfunLaunchTH cfun)
@@ -346,46 +362,77 @@ compileAndLoadTH cfun = do
         qExecConfig :: ExpQ
         qExecConfig = lift (cfunExecConfig cfun)
 
-dataToQa :: forall a k q. Data a
-         => (String -> k)
-         -> (Lit -> Q q)
-         -> (k -> [Q q] -> Q q)
-         -> a
-         -> Q q
-dataToQa mkCon mkLit appCon t =
-    case constrRep constr of
-      AlgConstr _ ->      appCon con conArgs
-      IntConstr n ->      mkLit $ integerL n
-      FloatConstr n ->    mkLit $ rationalL (toRational n)
-      StringConstr [c] -> mkLit $ charL c
-      StringConstr s ->   mkLit $ stringL s
-  where
-    constr :: Constr
-    constr = toConstr t
-
-    con :: k
-    con = mkCon (constrName constr)
-      where
-        constrName :: Constr -> String
-        constrName k =
-            case showConstr k of
-              "(:)" -> ":"
-              k' -> k'
-
-    conArgs :: [Q q]
-    conArgs = gmapQ (dataToQa mkCon mkLit appCon) t
-
-dataToQExp :: Data a
-           => a
-           -> ExpQ
-dataToQExp = dataToQa mkCon litE (foldl appE)
-  where
-    mkCon :: String -> ExpQ
-    mkCon ":%" = (varE . mkName) "%"
-    mkCon s    = (conE . mkName) s
-
 instance Data a => Lift a where
-    lift = dataToQExp
+    lift = dataToExpQ (const Nothing)
 
 instance MonadIO Q where
     liftIO = runIO
+
+dataToQa  ::  forall a k q. Data a
+          =>  (Name -> k)
+          ->  (Lit -> Q q)
+          ->  (k -> [Q q] -> Q q)
+          ->  (forall b . Data b => b -> Maybe (Q q))
+          ->  a
+          ->  Q q
+dataToQa mkCon mkLit appCon antiQ t =
+    case antiQ t of
+      Nothing ->
+          case constrRep constr of
+            AlgConstr _  ->
+                appCon con conArgs
+            IntConstr n ->
+                mkLit $ integerL n
+            FloatConstr n ->
+                mkLit $ rationalL (toRational n)
+            CharConstr c ->
+                mkLit $ charL c
+        where
+          constr :: Constr
+          constr = toConstr t
+
+          con :: k
+          con = mkCon (mkName' mod occ)
+            where
+              mod :: String
+              mod = (tyconModule . dataTypeName . dataTypeOf) t
+
+              occ :: String
+              occ = showConstr constr
+
+              mkName' :: String -> String -> Name
+              mkName' "Prelude" "(:)" = Name (mkOccName ":") NameS
+              mkName' "Prelude" "[]"  = Name (mkOccName "[]") NameS
+              mkName' "Prelude" "()"  = Name (mkOccName "()") NameS
+
+              mkName' "Prelude" s@('(' : ',' : rest) = go rest
+                where
+                  go :: String -> Name
+                  go (',' : rest) = go rest
+                  go ")"          = Name (mkOccName s) NameS
+                  go _            = Name (mkOccName occ) (NameQ (mkModName mod))
+
+              mkName' "GHC.Real" ":%" = mkNameG_d "base" "GHC.Real" ":%"
+
+              mkName' mod occ = Name (mkOccName occ) (NameQ (mkModName mod))
+
+          conArgs :: [Q q]
+          conArgs = gmapQ (dataToQa mkCon mkLit appCon antiQ) t
+
+      Just y -> y
+
+-- | 'dataToExpQ' converts a value to a 'Q Exp' representation of the same
+-- value. It takes a function to handle type-specific cases.
+dataToExpQ  ::  Data a
+            =>  (forall b . Data b => b -> Maybe TH.ExpQ)
+            ->  a
+            ->  ExpQ
+dataToExpQ = dataToQa conE litE (foldl appE)
+
+-- | 'dataToPatQ' converts a value to a 'Q Pat' representation of the same
+-- value. It takes a function to handle type-specific cases.
+dataToPatQ  ::  Data a
+            =>  (forall b . Data b => b -> Maybe TH.PatQ)
+            ->  a
+            ->  PatQ
+dataToPatQ = dataToQa id litP conP

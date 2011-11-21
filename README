@@ -1,5 +1,0 @@
-If your CUDA distribution is not in /usr/local/cuda, you'll need to use the
---extra-include-dirs and --extra-lib-dirs arguments to cabal configure.
-
-This package depends on haskell-src-meta, which is not yet compatible with GHC
-6.12.

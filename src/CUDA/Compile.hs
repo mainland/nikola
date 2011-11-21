@@ -25,6 +25,7 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
@@ -47,10 +48,12 @@ import System.Cmd
 import System.Exit
 import Text.PrettyPrint.Mainland
 
+#include "Nikola.h"
+
 compileFunction :: [C.Definition] -> IO B.ByteString
 compileFunction cdefs = do
     writeFile "temp.cu" (show (stack (map ppr cdefs)))
-    exitCode <- rawSystem "nvcc" ["-O", "--cubin", "temp.cu"]
+    exitCode <- rawSystem nVCC ["-O", "--ptx", "temp.cu"]
     when (exitCode /= ExitSuccess) $
         fail "nvcc failed"
-    B.readFile "temp.cubin"
+    B.readFile "temp.ptx"

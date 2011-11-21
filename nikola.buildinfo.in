@@ -1,0 +1,3 @@
+include-dirs: @CUDA_INCLUDE_DIRS@
+extra-lib-dirs: @CUDA_LIB_DIRS@
+extra-libraries: @CUDA_LIBS@

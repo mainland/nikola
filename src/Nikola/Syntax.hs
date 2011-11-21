@@ -35,6 +35,7 @@ module Nikola.Syntax (
     nGridDimX,
     nGridDimY,
     threadBlockWidth,
+    maxGridWidth,
 
     Tau(..),
     Rho(..),
@@ -59,8 +60,7 @@ module Nikola.Syntax (
 import CUDA.Storable
 import Control.Monad.State
 import Control.Monad.Trans
-import Data.Data hiding (Fixity)
-import Data.Dynamic
+import Data.Generics (Data, Typeable)
 import qualified Data.Set as Set
 import System.Mem.StableName
 import Text.PrettyPrint.Mainland
@@ -71,7 +71,11 @@ import {-# SOURCE #-} Nikola.Reify
 type ParamIdx = Int
 
 -- |Gross constant...but we need it to perform type-level calculations.
-threadBlockWidth = 64
+threadBlockWidth :: Integer
+threadBlockWidth = 128
+
+maxGridWidth :: Integer
+maxGridWidth = 32768
 
 -- |Type-level "numbers". These numbers are all derived from the size of a
 -- function arguments.
@@ -124,7 +128,7 @@ nGridDimX :: Integral a
           -> a
           -> N
 nGridDimX n w_ =
-    NMin [NMax [1, (n + w - 1) `div` w], 32768]
+    NMin [NMax [1, (n + w - 1) `div` w], fromIntegral maxGridWidth]
   where
     w :: N
     w = fromIntegral w_
@@ -134,7 +138,7 @@ nGridDimY :: Integral a
           -> a
           -> N
 nGridDimY n w_ =
-    NMax [1, (n + 32768*w - 1) `div` (32768*w)]
+    NMax [1, (n + (fromIntegral maxGridWidth)*w - 1) `div` ((fromIntegral maxGridWidth)*w)]
   where
     w :: N
     w = fromIntegral w_
@@ -169,6 +173,24 @@ matrixT tau s r c = MatrixT tau (NMatStride s) (NMatRows r) (NMatCols c)
 
 data Var = Var String
   deriving (Eq, Ord, Typeable)
+
+data Fixity = Fixity FixityDirection Int
+  deriving (Eq, Ord, Typeable)
+
+data FixityDirection = InfixL | InfixR | Infix
+  deriving (Eq, Ord, Typeable)
+
+infix_ :: Int -> Fixity
+infix_ = Fixity Infix
+
+infixl_ :: Int -> Fixity
+infixl_ = Fixity InfixL
+
+infixr_ :: Int -> Fixity
+infixr_ = Fixity InfixR
+
+defaultFixity :: Fixity
+defaultFixity = infixr_ 9
 
 data Unop = Lnot
 
@@ -228,7 +250,7 @@ data DExp = VarE Var
           | AppE DExp [DExp]
           | BoolE Bool
           | IntE Int
-          | FloatE Float
+          | FloatE Double
           | UnopE Unop DExp
           | BinopE Binop DExp DExp
           | IfteE DExp DExp DExp
@@ -317,11 +339,11 @@ class (Monad m, MonadIO m, MonadUniqueVar m) => MonadStableExp m where
     lookupStableName :: Typeable a => StableName a -> m (Maybe DExp)
     insertStableName :: Typeable a => StableName a -> DExp -> m ()
 
-eqPrec :: Int
-eqPrec = 4
-
 landPrec :: Int
 landPrec = 3
+
+eqPrec :: Int
+eqPrec = 4
 
 lorPrec :: Int
 lorPrec = 2
@@ -329,29 +351,48 @@ lorPrec = 2
 addPrec :: Int
 addPrec = 6
 
-addPrec1 :: Int
-addPrec1 = addPrec + 1
-
 mulPrec :: Int
 mulPrec = 7
 
-mulPrec1 :: Int
-mulPrec1 = mulPrec + 1
+bandPrec :: Int
+bandPrec = 7
 
 powPrec :: Int
 powPrec = 8
-
-defaultPrec :: Int
-defaultPrec = 9
-
-defaultPrec1 :: Int
-defaultPrec1 = defaultPrec + 1
 
 appPrec :: Int
 appPrec = 10
 
 appPrec1 :: Int
 appPrec1 = appPrec + 1
+
+infixop :: (Pretty a, Pretty b)
+        => Int    -- Precedence of context
+        -> Fixity -- Fixity of the operator
+        -> Doc    -- Operator
+        -> a      -- Left argument
+        -> b      -- Right argument
+        -> Doc
+infixop prec (Fixity opAssoc opPrec) op l r =
+    parensIf (prec > opPrec) $
+    pprPrec leftPrec l <+> op <+/> pprPrec rightPrec r
+  where
+    leftPrec   | opAssoc == InfixR  = opPrec + 1
+               | otherwise          = opPrec
+    rightPrec  | opAssoc == InfixL  = opPrec + 1
+               | otherwise          = opPrec
+
+embrace ::[Doc] -> Doc
+embrace ds =
+    case ds of
+      [] ->  lbrace <> rbrace
+      [d] -> lbrace <+> d <+> rbrace
+      _ ->   lbrace </> stack (semis ds) </> rbrace
+  where
+    semis :: [Doc] -> [Doc]
+    semis []     = []
+    semis [d]    = [d]
+    semis (d:ds) = d <> semi : semis ds
 
 instance Pretty N where
     pprPrec _ (NVecLength n) = text "veclen" <+> parens (ppr n)
@@ -362,32 +403,29 @@ instance Pretty N where
     pprPrec _ (N i) = ppr i
 
     pprPrec p (NAdd n1 n2) =
-        parensIf (p > addPrec) $
-        pprPrec addPrec1 n1 <+> text "+" <+> pprPrec addPrec n2
+        infixop p (infixl_ addPrec) (text "+") n1 n2
 
     pprPrec p (NSub n1 n2) =
-        parensIf (p > addPrec) $
-        pprPrec addPrec1 n1 <+> text "-" <+> pprPrec addPrec n2
+        infixop p (infixl_ addPrec) (text "-") n1 n2
 
     pprPrec p (NMul n1 n2) =
-        parensIf (p > mulPrec) $
-        pprPrec mulPrec1 n1 <+> text "*" <+> pprPrec mulPrec n2
+        infixop p (infixl_ mulPrec) (text "*") n1 n2
 
     pprPrec p (NNegate n) =
         parensIf (p > addPrec) $
         text "-" <> pprPrec addPrec n
 
     pprPrec p (NDiv n1 n2) =
-        parensIf (p > defaultPrec) $
-        pprPrec defaultPrec n1 <+> text "`div`" <+> pprPrec defaultPrec1 n2
+        infixop p defaultFixity (text "`div`") n1 n2
 
     pprPrec p (NMod n1 n2) =
-        parensIf (p > defaultPrec) $
-        pprPrec defaultPrec n1 <+> text "`mod`" <+> pprPrec defaultPrec1 n2
+        infixop p defaultFixity (text "`mod`") n1 n2
 
-    pprPrec _ (NMin ns)      = text "min" <> parens (commasep (map ppr ns))
+    pprPrec _ (NMin ns) =
+        text "min" <> parens (commasep (map ppr ns))
 
-    pprPrec _ (NMax ns)      = text "max" <> parens (commasep (map ppr ns))
+    pprPrec _ (NMax ns) =
+        text "max" <> parens (commasep (map ppr ns))
 
 instance Show N where
     show = show . ppr
@@ -410,7 +448,7 @@ instance Pretty Rho where
 
     pprPrec p (FunT tau1 tau2) =
         parensIf (p > appPrec) $
-        infixOp 0 (infixr_ 0) (text "->") tau1 tau2
+        infixop 0 (infixr_ 0) (text "->") tau1 tau2
 
 instance Pretty Var where
     ppr (Var v) = text v
@@ -425,8 +463,8 @@ instance Pretty DExp where
     pprPrec p (LetE v tau e1 e2) =
         parensIf (p > appPrec) $
         nest 4 (text "let" <+>
-            embrace (ppr v <+> text "::" <+> ppr tau <+>
-                     text "=" <+> ppr e1)) </>
+            embrace [ppr v <+> text "::" <+> ppr tau <+>
+                     text "=" <+> ppr e1]) </>
         text "in" </>
         ppr e2
 
@@ -468,7 +506,7 @@ instance Pretty DExp where
         pprPrec appPrec1 e2
 
     pprPrec p (BinopE op e1 e2) =
-        infixOp p (fixity op) (ppr op) e1 e2
+        infixop p (fixity op) (ppr op) e1 e2
       where
         fixity :: Binop -> Fixity
         fixity Land = infixr_ landPrec
@@ -481,7 +519,7 @@ instance Pretty DExp where
         fixity Llt = infix_ eqPrec
         fixity Lle = infix_ eqPrec
 
-        fixity Band = infix_ 7
+        fixity Band = infixl_ bandPrec
 
         fixity Iadd = infixl_ addPrec
         fixity Isub = infixl_ addPrec

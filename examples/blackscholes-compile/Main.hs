@@ -1,4 +1,4 @@
--- Copyright (c) 2006-2010
+-- Copyright (c) 2010
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -25,54 +25,30 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 
---------------------------------------------------------------------------------
--- |
--- Module      :  Language.C.Quote.C
--- Copyright   :  (c) Harvard University 2006-2010
--- License     :  BSD-style
--- Maintainer  :  mainland@eecs.harvard.edu
---
---------------------------------------------------------------------------------
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ImpredicativeTypes #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
-module Language.C.Quote.C (
-    module Data.IString,
-    module Data.Loc,
-    module Data.Ratio,
-    ToExp(..),
-    cexp,
-    cedecl,
-    cdecl,
-    csdecl,
-    cenum,
-    cty,
-    cparam,
-    cinit,
-    cstm,
-    cunit,
-    cfun
-  ) where
+module Main where
 
-import Data.IString
-import Data.Loc
-import Data.Ratio ((%))
-import qualified Language.C.Parser as P
-import qualified Language.C.Syntax as C
-import Language.C.Quote.Base
+import Control.Monad.Trans (liftIO)
+import Text.PrettyPrint.Mainland
 
-exts :: [C.Extensions]
-exts = []
+import Nikola hiding (map)
 
-typenames :: [String]
-typenames = []
+import qualified BlackScholes.Nikola as BSN
 
-cdecl  = quasiquote exts typenames P.parseDecl
-cedecl = quasiquote exts typenames P.parseEdecl
-cenum  = quasiquote exts typenames P.parseEnum
-cexp   = quasiquote exts typenames P.parseExp
-cfun   = quasiquote exts typenames P.parseFunc
-cinit  = quasiquote exts typenames P.parseInit
-cparam = quasiquote exts typenames P.parseParam
-csdecl = quasiquote exts typenames P.parseStructDecl
-cstm   = quasiquote exts typenames P.parseStm
-cty    = quasiquote exts typenames P.parseType
-cunit  = quasiquote exts typenames P.parseUnit
+main :: IO ()
+main = do
+    cfun <- liftIO $ reify defaultROpts BSN.blackscholes >>= compileTopFun "blackscholes"
+    print $ stack (map ppr (cfunDefs cfun))
+    print (cfunExecConfig cfun)

@@ -1,0 +1,3 @@
+nVCC :: String
+nVCC = "@NVCC@"
+

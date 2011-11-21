@@ -44,7 +44,6 @@ import CUDA.Internal
 import CUDA.Storable
 import Control.Monad.Trans (liftIO)
 import qualified Data.Vector.Storable as V
-import Data.Typeable
 import Foreign hiding (Storable(..))
 import qualified Foreign
 import Foreign.C.Types
@@ -53,8 +52,6 @@ import Nikola.Embeddable.Base ()
 import Nikola.Embeddable.Class
 import Nikola.Exec
 import Nikola.Syntax
-
-deriving instance Typeable1 V.Vector
 
 instance (IsScalar a, Storable a, Foreign.Storable a, Foreign.Storable (Rep a))
     => Embeddable (V.Vector a) where

@@ -4,6 +4,8 @@ module BlackScholes.CUDA (
     blackscholes
   ) where
 
+import qualified Data.Loc
+import qualified Data.Symbol
 import Data.Vector.Storable
 import Language.C.Quote.CUDA
 import qualified Language.C.Syntax as C
@@ -21,16 +23,16 @@ blackscholes :: CFun (   Exp (Vector Float)
 blackscholes = CFun { cfunName = "blackscholes"
                     , cfunDefs = defs
                     , cfunAllocs = [VectorT FloatT nmin]
-                    , cfunExecConfig = ExecConfig { gridDimX  = nGridDimX nmin threadWidth
+                    , cfunExecConfig = ExecConfig { gridDimX  = fromIntegral 480
                                                   , gridDimY  = 1
-                                                  , blockDimX = threadWidth
+                                                  , blockDimX = fromIntegral 128
                                                   , blockDimY = 1
                                                   , blockDimZ = 1
                                                   }
                     }
   where
     defs :: [C.Definition]
-    defs = [$cunit|
+    defs = [cunit|
       __device__ inline float cndGPU(float d){
           const float       A1 = 0.31938153f;
           const float       A2 = -0.356563782f;
@@ -95,6 +97,3 @@ blackscholes = CFun { cfunName = "blackscholes"
 
     nmin :: N
     nmin = NMin [NVecLength 0, NVecLength 1, NVecLength 2]
-
-    threadWidth :: Int
-    threadWidth = 256

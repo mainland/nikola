@@ -34,18 +34,11 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Nikola.CGen (
-    CGenEnv,
-    emptyCGenEnv,
-    MonadCGen(..),
-    codeToUnit
-  ) where
+module CGen where
 
 import Control.Applicative
 import Control.Monad.State
-import qualified Data.Loc
 import qualified Data.Set as Set
-import qualified Data.Symbol
 import Language.C.Quote.C
 import qualified Language.C.Syntax as C
 import qualified Language.C.Syntax
@@ -58,7 +51,6 @@ data CGenEnv = CGenEnv
   ,  cPrototypes :: [C.Definition]
   ,  cGlobals    :: [C.Definition]
 
-  ,  cParams :: [C.Param]
   ,  cLocals :: [C.InitGroup]
   ,  cStms   :: [C.Stm]
   }
@@ -72,14 +64,13 @@ emptyCGenEnv = CGenEnv
   ,  cPrototypes = []
   ,  cGlobals    = []
 
-  ,  cParams = []
   ,  cLocals = []
   ,  cStms   = []
   }
 
 codeToUnit :: CGenEnv -> [C.Definition]
 codeToUnit code =
-    [cunit|$edecls:includes
+    [$cunit|$edecls:includes
     $edecls:typedefs
     $edecls:prototypes
     $edecls:globals
@@ -89,7 +80,7 @@ codeToUnit code =
       where
         toInclude :: String -> C.Definition
         toInclude inc =
-            [cedecl|$esc:inc'|]
+            [$cedecl|$esc:inc'|]
           where
             inc' = "#include " ++ inc
 
@@ -136,10 +127,6 @@ class (Functor m, Monad m) => MonadCGen m where
     addGlobal def = modifyCGenEnv $ \s ->
         s { cGlobals = def : cGlobals s }
 
-    addParam :: C.Param -> m ()
-    addParam param = modifyCGenEnv $ \s ->
-        s { cParams = param : cParams s }
-
     addLocal :: C.InitGroup -> m ()
     addLocal def = modifyCGenEnv $ \s ->
         s { cLocals = def : cLocals s }
@@ -148,7 +135,7 @@ class (Functor m, Monad m) => MonadCGen m where
     addStm def = modifyCGenEnv $ \s ->
         s { cStms = def : cStms s }
 
-    inNewBlock :: m a -> m (a, [C.BlockItem])
+    inNewBlock :: m a -> m (a, C.Stm)
     inNewBlock act = do
         oldCSymbols <- getsCGenEnv cSymbols
         oldCLocals  <- getsCGenEnv cLocals
@@ -161,16 +148,9 @@ class (Functor m, Monad m) => MonadCGen m where
                                 , cLocals = oldCLocals
                                 , cStms = oldCStms
                                 }
-        return (x, map C.BlockDecl locals ++ map C.BlockStm stms)
+        case (locals, stms) of
+          ([], [stm]) -> return (x, stm)
+          _ -> return (x, [$cstm|{ $decls:locals $stms:stms }|])
 
-    inNewBlock_ :: m () -> m [C.BlockItem]
+    inNewBlock_ :: m () -> m C.Stm
     inNewBlock_ act = snd <$> inNewBlock act
-
-    inNewFunction :: m a -> m (a, [C.Param], [C.BlockItem])
-    inNewFunction comp = do
-        oldCParams <- getsCGenEnv cParams
-        modifyCGenEnv $ \s -> s { cParams = [] }
-        (x, items) <- inNewBlock comp
-        params <- getsCGenEnv cParams
-        modifyCGenEnv $ \s -> s { cParams = oldCParams }
-        return (x, reverse params, items)

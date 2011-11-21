@@ -51,7 +51,6 @@ import Criterion.Config
 import Criterion.Environment
 import Criterion.Main
 import Criterion.Monad
-import Data.Array.Vector
 import qualified Data.Vector.Generic as G
 import qualified Data.Vector.Storable as V
 import Data.Vector.Random.Mersenne
@@ -67,9 +66,12 @@ import System.Random.Mersenne.Pure64
 import Text.Printf
 
 import Nikola
+import qualified Nikola.Syntax
+import qualified Nikola.ToC
 
 import qualified BlackScholes.CUDA as BSC
 import qualified BlackScholes.Nikola as BSN
+import qualified BlackScholes.Nikola2 as BSN2
 import qualified BlackScholes.Vector as BSV
 
 rISKFREE :: Float
@@ -80,31 +82,22 @@ vOLATILITY = 0.30;
 
 main :: IO ()
 main = withNewContext $ \_ -> do
-{-
-    let n = 1000
-    g <- liftIO newPureMT
-    let ss = randomsRange g 5.0 30.0 n :: V.Vector Float
-    g <- liftIO newPureMT
-    let xs = randomsRange g 1.0 100.0 n :: V.Vector Float
-    g <- liftIO newPureMT
-    let ts = randomsRange g 0.25 10.0 n :: V.Vector Float
-
-    let callsVector = blackscholesVector ss xs ts
-    let callsCUDA   = blackscholesCUDA ss xs ts
-    let callsNikola = blackscholesNikola ss xs ts
-    printf "# CUDA: %0.2e\n" $ sqrt (V.sum (V.zipWith (\x y -> (x-y)**2) callsVector callsCUDA) / fromIntegral n)
-    printf "# Nikola: %0.2e\n" $ sqrt (V.sum (V.zipWith (\x y -> (x-y)**2) callsVector callsNikola) / fromIntegral n)
--}
     (cfg, _) <- parseArgs defaultConfig defaultOptions =<< System.Environment.getArgs
     withConfig cfg $ do
         env <- measureEnvironment
         -- Powers of two up to 256MB
-        forM_ [0..28] $ \e -> do
+        forM_ [0..25] $ \e -> do
             let n = truncate (2**e)
             samplesCUDA           <- runBenchmark env
                                      (benchmarkBlackScholes blackscholesCUDA n)
             samplesNikola         <- runBenchmark env
                                      (benchmarkBlackScholesIO blackscholesNikola n)
+            samplesNikolaCompiledNoObservedSharingNoVapply <-
+                                     runBenchmark env
+                                     (benchmarkBlackScholes blackscholesNikolaCompiledNoObservedSharingNoVapply n)
+            samplesNikolaCompiledNoVapply <-
+                                     runBenchmark env
+                                     (benchmarkBlackScholes blackscholesNikolaCompiledNoVapply n)
             samplesNikolaCompiled <- runBenchmark env
                                      (benchmarkBlackScholes blackscholesNikolaCompiled n)
             samplesVector         <- runBenchmark env
@@ -112,6 +105,8 @@ main = withNewContext $ \_ -> do
             liftIO $ printf "%d" n
             liftIO $ printSample samplesCUDA
             liftIO $ printSample samplesNikola
+            liftIO $ printSample samplesNikolaCompiledNoObservedSharingNoVapply
+            liftIO $ printSample samplesNikolaCompiledNoVapply
             liftIO $ printSample samplesNikolaCompiled
             liftIO $ printSample samplesVector
             liftIO $ printf "\n"
@@ -121,7 +116,7 @@ main = withNewContext $ \_ -> do
         printf ",%0.2e,%0.2e,%0.2e" mu min max
       where
         mu         = mean samp
-        (min, max) = (unpairS . minMax) samp
+        (min, max) = minMax samp
 
 benchmarkBlackScholes :: (   V.Vector Float
                           -> V.Vector Float
@@ -168,6 +163,36 @@ blackscholesNikola :: V.Vector Float
                    -> IO (V.Vector Float)
 blackscholesNikola ss xs ts =
     call BSN.blackscholes ss xs ts rISKFREE vOLATILITY
+
+blackscholesNikolaCompiledNoObservedSharingNoVapply :: V.Vector Float
+                                                    -> V.Vector Float
+                                                    -> V.Vector Float
+                                                    -> V.Vector Float
+blackscholesNikolaCompiledNoObservedSharingNoVapply ss xs ts =
+    blackscholes ss xs ts rISKFREE vOLATILITY
+  where
+    blackscholes :: V.Vector Float
+                 -> V.Vector Float
+                 -> V.Vector Float
+                 -> Float
+                 -> Float
+                 -> V.Vector Float
+    blackscholes = $(compileTH' (ROpts False) BSN2.blackscholes)
+
+blackscholesNikolaCompiledNoVapply :: V.Vector Float
+                                   -> V.Vector Float
+                                   -> V.Vector Float
+                                   -> V.Vector Float
+blackscholesNikolaCompiledNoVapply ss xs ts =
+    blackscholes ss xs ts rISKFREE vOLATILITY
+  where
+    blackscholes :: V.Vector Float
+                 -> V.Vector Float
+                 -> V.Vector Float
+                 -> Float
+                 -> Float
+                 -> V.Vector Float
+    blackscholes = $(compileTH' (ROpts True) BSN2.blackscholes)
 
 blackscholesNikolaCompiled :: V.Vector Float
                            -> V.Vector Float

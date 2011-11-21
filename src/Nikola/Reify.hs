@@ -34,7 +34,9 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Nikola.Reify (
-    REnv(..),
+    REnv,
+    ROpts(..),
+    defaultROpts,
     R(..),
     runR,
 
@@ -62,11 +64,18 @@ type StableNameHash = Int
 
 type Binding = (Var, Rho, DExp)
 
+data ROpts = ROpts
+    { roptObserveSharing :: Bool }
+  deriving (Show)
+
+defaultROpts = ROpts { roptObserveSharing = True }
+
 data REnv = REnv
-    {  uniq     :: Int
-    ,  vars     :: Map.Map Var Rho
-    ,  names    :: IntMap.IntMap [(Dynamic, DExp)]
-    ,  bindings :: [Binding]
+    {  uniq      :: Int
+    ,  ropts     :: ROpts
+    ,  vars      :: Map.Map Var Rho
+    ,  names     :: IntMap.IntMap [(Dynamic, DExp)]
+    ,  bindings  :: [Binding]
     }
   deriving (Show)
 
@@ -100,13 +109,15 @@ instance MonadStableExp R where
         add Nothing   = Just [(toDyn sn, e)]
         add (Just xs) = Just ((toDyn sn, e) : xs)
 
-runR  ::  R a
+runR  ::  ROpts
+      ->  R a
       ->  IO a
-runR m = evalStateT (unR m) emptyREnv
+runR opts m = evalStateT (unR m) emptyREnv
   where
     emptyREnv :: REnv
     emptyREnv = REnv
         {  uniq      = 0
+        ,  ropts     = opts
         ,  vars      = Map.empty
         ,  names     = IntMap.empty
         ,  bindings  = []
@@ -128,6 +139,14 @@ instance MonadCheck R where
         return x
       where
         insert m (k, v) = Map.insert k v m
+
+getObserveSharing :: R Bool
+getObserveSharing =
+    gets (roptObserveSharing . ropts)
+
+setObserveSharing :: Bool -> R ()
+setObserveSharing flag =  modify $ \s ->
+    s { ropts = (ropts s) { roptObserveSharing = flag } }
 
 gensym :: R Var
 gensym = newUniqueVar "x"
@@ -206,22 +225,30 @@ letBind  ((v,tau,e) : bs)  body = letBind bs $ LetE v tau e body
 
 reifyR :: DExp -> R DExp
 reifyR e = do
-    sn <-       liftIO $ makeStableName $! e
-    maybe_e' <- lookupStableName sn
-    case maybe_e' of
-      Just e' -> return e'
-      Nothing -> do  e' <- mapReifyR e >>= bind
-                     insertStableName sn e'
-                     return e'
+    obSharing <- getObserveSharing
+    if obSharing then observeSharingReifyR else ignoreSharingReifyR
   where
-    bind :: DExp -> R DExp
-    bind (VarE v)   = return $ VarE v
-    bind (BoolE n)  = return $ BoolE n
-    bind (IntE n)   = return $ IntE n
-    bind (FloatE n) = return $ FloatE n
-    bind e          = do  v <- newUniqueVar "v"
-                          insertBinding v e
-                          return (VarE v)
+    observeSharingReifyR :: R DExp
+    observeSharingReifyR = do
+        sn <-       liftIO $ makeStableName $! e
+        maybe_e' <- lookupStableName sn
+        case maybe_e' of
+          Just e' -> return e'
+          Nothing -> do  e' <- mapReifyR e >>= bind
+                         insertStableName sn e'
+                         return e'
+      where
+        bind :: DExp -> R DExp
+        bind (VarE v)   = return $ VarE v
+        bind (BoolE n)  = return $ BoolE n
+        bind (IntE n)   = return $ IntE n
+        bind (FloatE n) = return $ FloatE n
+        bind e          = do  v <- newUniqueVar "v"
+                              insertBinding v e
+                              return (VarE v)
+
+    ignoreSharingReifyR :: R DExp
+    ignoreSharingReifyR = mapReifyR e
 
 mapReifyR :: DExp
           -> R DExp
@@ -350,16 +377,16 @@ instance (Embeddable a, ReifiableFun b c)
           reifyfunk ((x, rho) : xrhos) (f (E (VarE x)))
 
 class Reifiable a where
-    reify :: a -> IO DExp
+    reify :: ROpts -> a -> IO DExp
 
 instance Reifiable DExp where
-    reify = runR . flushBindings . reifyR
+    reify ropts = runR ropts . flushBindings . reifyR
 
 instance Reifiable (Exp a) where
-    reify = reify . unE
+    reify ropts = reify ropts . unE
 
 instance ReifiableFun a b => Reifiable (a -> b) where
-    reify = runR . reifyfun
+    reify ropts = runR ropts . reifyfun
 
 class (ReifiableFun a b) => VApply a b c d |  a -> c,
                                               b -> d,

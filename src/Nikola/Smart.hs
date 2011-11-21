@@ -59,10 +59,15 @@ instance Ord (Exp a) where
     _ `compare` _ = error "Cannot compare values of type Exp a"
 
 unop :: Unop -> Exp a -> Exp b
-unop op = E . UnopE op . unE
+unop Fsqrt (E (FloatE x)) = E (FloatE (sqrt x))
+unop op e                 = (E . UnopE op . unE) e
 
 binop :: Binop -> Exp a -> Exp b -> Exp c
-binop op e1 e2 = E $ BinopE op (unE e1) (unE e2)
+binop Fadd (E (FloatE x)) (E (FloatE y)) = E (FloatE (x + y))
+binop Fsub (E (FloatE x)) (E (FloatE y)) = E (FloatE (x - y))
+binop Fmul (E (FloatE x)) (E (FloatE y)) = E (FloatE (x * y))
+binop Fdiv (E (FloatE x)) (E (FloatE y)) = E (FloatE (x / y))
+binop op e1 e2                           = E $ BinopE op (unE e1) (unE e2)
 
 class IsBool a where
     true :: a

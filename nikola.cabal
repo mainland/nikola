@@ -1,17 +1,21 @@
-name:           CUDA
-version:        0.1
-cabal-version:  >= 1.2
+name:           nikola
+version:        0.2
+cabal-version:  >= 1.8
 license:        BSD3
 license-file:   LICENSE
-copyright:      (c) 2006-2010 Harvard University
+copyright:      (c) 2006-2011 Harvard University
 author:         Geoffrey Mainland <mainland@eecs.harvard.edu>
 maintainer:     mainland@eecs.harvard.edu
 stability:      alpha
-homepage:       http://www.eecs.harvard.edu/~mainland/
+homepage:       http://www.eecs.harvard.edu/~mainland/projects/nikola
 category:       Language
-synopsis:       An embedded DSL for GPU array computation.
+synopsis:       Embedded language for GPU computation
 
-build-type:     Simple
+build-type:     Custom
+
+flag benchmarks
+  description: Build benchmark programs.
+  default:     False
 
 flag tests
   description: Build test programs.
@@ -21,21 +25,11 @@ flag examples
   description: Build example programs.
   default:     False
 
-library
-  build-depends:
-    array, base>=4 && <5,
-    bytestring,
-    containers,
-    filepath,
-    haskell98,
-    haskell-src-meta,
-    hmatrix,
-    mtl,
-    process,
-    syb,
-    template-haskell,    
-    vector
+flag hmatrix
+  description: Build classes necessary for Hmatrix itegration.
+  default:     False
 
+library
   exposed-modules:
     CUDA.Alloc
     CUDA.Compile
@@ -45,222 +39,89 @@ library
     CUDA.Module
     CUDA.Stream
     CUDA.Storable
-    Control.Monad.ContextException
-    Control.Monad.Exception
-    Data.IString
-    Data.Loc
-    Language.C
-    Language.C.Parser
-    Language.C.Parser.Exceptions
-    Language.C.Parser.Lexer
-    Language.C.Parser.Monad
-    Language.C.Parser.Parser
-    Language.C.Parser.Tokens
-    Language.C.Pretty
-    Language.C.Quote.Base
-    Language.C.Quote.C
-    Language.C.Quote.CUDA
-    Language.C.Quote.GCC
-    Language.C.Smart
-    Language.C.Syntax
     Nikola
-
-  other-modules:
     Nikola.CGen
     Nikola.Check
     Nikola.Compile
     Nikola.Embeddable
     Nikola.Embeddable.Base
     Nikola.Embeddable.Class
-    Nikola.Embeddable.Hmatrix
     Nikola.Embeddable.Vector
     Nikola.Exec
     Nikola.Reify
     Nikola.Smart
     Nikola.Syntax
     Nikola.ToC
-    Text.PrettyPrint.Mainland
+
+  build-depends:
+    base >=4 && <5,
+    bytestring >=0.9 && <0.10,
+    containers >=0.4 && <0.5,
+    exception-mtl >=0.3 && <0.4,
+    exception-transformers >=0.3 && <0.4,
+    language-c-quote >=0.3 && <0.4,
+    mainland-pretty >=0.1 && <0.2,
+    mtl >=2 && <3,
+    process >=1.0 && <1.1,
+    srcloc >=0.1 && <0.2,
+    syb >=0.3 && <0.4,
+    symbol >=0.1 && <0.2,
+    template-haskell >=2.3 && <2.6,
+    vector >=0.7 && <0.8
+
+  if flag(hmatrix)
+    exposed-modules:
+      Nikola.Embeddable.Hmatrix
+
+    build-depends:
+      hmatrix >=0.10 && <0.11
+
+    ghc-options: -DHMATRIX
 
   hs-source-dirs:  src
-  include-dirs:    /usr/local/cuda/include src
-  extra-lib-dirs:  /usr/local/cuda/lib
-  extra-libraries: cuda
-
-  ghc-options: -W -Werror
-  cpp-options: -DRICH_ANTIQUOTES
-
-executable quoting
-  build-depends:
-    array,
-    base>=4 && <5,
-    bytestring,
-    containers,
-    filepath,
-    haskell98,
-    haskell-src-meta,
-    mtl,
-    process,
-    syb,
-    template-haskell,
-    vector
-
-  other-modules:
-    Control.Monad.ContextException
-    Control.Monad.Exception
-    Data.IString
-    Data.Loc
-    Language.C
-    Language.C.Parser
-    Language.C.Parser.Exceptions
-    Language.C.Parser.Lexer
-    Language.C.Parser.Monad
-    Language.C.Parser.Parser
-    Language.C.Parser.Tokens
-    Language.C.Pretty
-    Language.C.Quote.Base
-    Language.C.Quote.C
-    Language.C.Quote.CUDA
-    Language.C.Quote.GCC
-    Language.C.Smart
-    Language.C.Syntax
-    Text.PrettyPrint.Mainland
-
-  main-is:         quoting.hs
-  hs-source-dirs:  src tests
-
-  ghc-options: -W -Werror
-  cpp-options: -DRICH_ANTIQUOTES
-
-  if flag(tests)
-    buildable: True
-  else
-    buildable: False
-
-executable nikola
-  build-depends:
-    HUnit,
-    array,
-    base>=4 && <5,
-    bytestring,
-    containers,
-    filepath,
-    haskell98,
-    haskell-src-meta,
-    hmatrix,
-    mtl,
-    process,
-    syb,
-    template-haskell,
-    vector
-
-  other-modules:
-    CUDA.Alloc
-    CUDA.Compile
-    CUDA.Context
-    CUDA.Event
-    CUDA.Internal
-    CUDA.Module
-    CUDA.Stream
-    CUDA.Storable
-    Control.Monad.ContextException
-    Control.Monad.Exception
-    Data.IString
-    Data.Loc
-    Language.C
-    Language.C.Parser
-    Language.C.Parser.Exceptions
-    Language.C.Parser.Lexer
-    Language.C.Parser.Monad
-    Language.C.Parser.Parser
-    Language.C.Parser.Tokens
-    Language.C.Pretty
-    Language.C.Quote.Base
-    Language.C.Quote.C
-    Language.C.Quote.CUDA
-    Language.C.Quote.GCC
-    Language.C.Smart
-    Nikola
-    Language.C.Syntax
-    Text.PrettyPrint.Mainland
-
-  main-is:         nikola.hs
-  hs-source-dirs:  src tests
-  include-dirs:    /usr/local/cuda/include src
-  extra-lib-dirs:  /usr/local/cuda/lib
-  extra-libraries: cuda
-
-  ghc-options:      -W -Werror
-
-  build-depends:
-
-  cpp-options:
-    -DRICH_ANTIQUOTES
-
-  if flag(tests)
-    buildable: True
-  else
-    buildable: False
+  include-dirs:	   include
+  
+  extra-libraries:
+    cuda
 
 executable blackscholes
   build-depends:
-    array,
-    base>=4 && <5,
-    bytestring,
-    containers,
-    criterion,
-    filepath,
-    haskell98,
-    haskell-src-meta,
-    hmatrix,
-    mersenne-random-pure64,
-    mtl,
-    process,
-    statistics,
-    syb,
-    template-haskell,
-    uniplate,
-    uvector,
-    vector,
-    vector-random
+    base >=4 && <5,
+    criterion >=0.5 && <0.6,
+    language-c-quote >=0.3 && <0.4,
+    mersenne-random-pure64 >=0.2 && <0.3,
+    mtl >=2 && <3,
+    nikola >=0.2 && <0.3,
+    mainland-pretty >=0.1 && <0.2,
+    srcloc >=0.1 && <0.2,
+    statistics >=0.9 && <0.10,
+    symbol >=0.1 && <0.2,
+    vector >=0.7 && <0.8,
+    vector-random >=0.2 && <0.3
 
-  other-modules:
-    CUDA.Alloc
-    CUDA.Compile
-    CUDA.Context
-    CUDA.Event
-    CUDA.Internal
-    CUDA.Module
-    CUDA.Stream
-    CUDA.Storable
-    Control.Monad.ContextException
-    Control.Monad.Exception
-    Data.IString
-    Data.Loc
-    Language.C
-    Language.C.Parser
-    Language.C.Parser.Exceptions
-    Language.C.Parser.Lexer
-    Language.C.Parser.Monad
-    Language.C.Parser.Parser
-    Language.C.Parser.Tokens
-    Language.C.Pretty
-    Language.C.Quote.Base
-    Language.C.Quote.C
-    Language.C.Quote.CUDA
-    Language.C.Quote.GCC
-    Language.C.Smart
-    Language.C.Syntax
-    Nikola
-    Text.PrettyPrint.Mainland
+  main-is: 	   Main.hs
+  hs-source-dirs:  examples/blackscholes
 
-  main-is:         Main.hs
-  hs-source-dirs:  src examples/blackscholes
-  include-dirs:    /usr/local/cuda/include src
-  extra-lib-dirs:  /usr/local/cuda/lib
-  extra-libraries: cuda
+  if flag(examples)
+    buildable: True
+  else
+    buildable: False
 
-  ghc-options: -W -Werror
-  cpp-options: -DRICH_ANTIQUOTES
+executable blackscholes-compile
+  build-depends:
+    base >=4 && <5,
+    criterion >=0.5 && <0.6,
+    language-c-quote >=0.3 && <0.4,
+    mersenne-random-pure64 >=0.2 && <0.3,
+    mtl >=2 && <3,
+    nikola >=0.2 && <0.3,
+    mainland-pretty >=0.1 && <0.2,
+    statistics >=0.9 && <0.10,
+    vector >=0.7 && <0.8,
+    vector-random >=0.2 && <0.3
+
+  main-is: 	   Main.hs
+  hs-source-dirs:  examples/blackscholes-compile
 
   if flag(examples)
     buildable: True
@@ -269,67 +130,50 @@ executable blackscholes
 
 executable radix
   build-depends:
-    array,
-    base>=4 && <5,
-    bytestring,
-    containers,
-    criterion,
-    filepath,
-    haskell98,
-    haskell-src-meta,
-    hmatrix,
-    mersenne-random-pure64,
-    mtl,
-    primitive,
-    process,
-    statistics,
-    syb,
-    template-haskell,
-    uniplate,
-    uvector,
-    vector,
-    vector-random
+    base >=4 && <5,
+    criterion >=0.5 && <0.6,
+    mersenne-random-pure64 >=0.2 && <0.3,
+    mtl >=2 && <3,
+    nikola >=0.2 && <0.3,
+    statistics >=0.9 && <0.10,
+    vector >=0.7 && <0.8,
+    vector-algorithms >=0.3 && <0.5,
+    vector-random >=0.2 && <0.3
 
-  other-modules:
-    CUDA.Alloc
-    CUDA.Compile
-    CUDA.Context
-    CUDA.Event
-    CUDA.Internal
-    CUDA.Module
-    CUDA.Stream
-    CUDA.Storable
-    Control.Monad.ContextException
-    Control.Monad.Exception
-    Data.IString
-    Data.Loc
-    Language.C
-    Language.C.Parser
-    Language.C.Parser.Exceptions
-    Language.C.Parser.Lexer
-    Language.C.Parser.Monad
-    Language.C.Parser.Parser
-    Language.C.Parser.Tokens
-    Language.C.Pretty
-    Language.C.Quote.Base
-    Language.C.Quote.C
-    Language.C.Quote.CUDA
-    Language.C.Quote.GCC
-    Language.C.Smart
-    Language.C.Syntax
-    Nikola
-    Text.PrettyPrint.Mainland
-
-  main-is:         Main.hs
-  hs-source-dirs:  src examples/radix
-  include-dirs:    /usr/local/cuda/include src
-  extra-lib-dirs:  /usr/local/cuda/lib
-  extra-libraries: cuda
-
-  ghc-options: -W
-  cpp-options: -DRICH_ANTIQUOTES
+  main-is: 	   Main.hs
+  hs-source-dirs:  examples/radix
 
   if flag(examples)
     buildable: True
   else
     buildable: False
+
+executable search
+  build-depends:
+    base >=4 && <5,
+    containers >=0.4 && <0.5,
+    language-c-quote >=0.3 && <0.4,
+    logict >=0.4 && <0.5,
+    mainland-pretty >=0.1 && <0.2,
+    mtl >=2 && <3,
+    nikola >=0.2 && <0.3,
+    statistics >=0.9 && <0.10,
+    uniplate >=1.5 && <1.7,
+    vector >=0.7 && <0.8
+
+  main-is: 	   Main.hs
+  hs-source-dirs:  examples/search
+
+  ghc-options: -W -Werror
+
+  if flag(hmatrix) && flag(examples)
+    build-depends:
+      hmatrix >=0.10 && <0.11
+
+    buildable: True
+  else
+    buildable: False
+
+source-repository head
+  type:     svn
+  location: http://senseless.eecs.harvard.edu/repos/mainland-projects/nikola/trunk/

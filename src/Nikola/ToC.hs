@@ -43,14 +43,15 @@ module Nikola.ToC (
   ) where
 
 import Control.Applicative
-import Control.Exception
-import Control.Monad.Error
+import Control.Monad.Exception
 import Control.Monad.State
-import Data.Data
+import Data.Generics (Data, Typeable)
+import Data.Loc
 import qualified Data.Map as Map
 import Data.Maybe (fromJust)
 import Data.List (find, foldl')
 import qualified Data.Set as Set
+import qualified Data.Symbol
 import Language.C.Quote.CUDA
 import qualified Language.C.Syntax as C
 import qualified Language.C.Syntax
@@ -71,12 +72,12 @@ instance Pretty BlockVar where
     ppr = text . show
 
 instance ToExp BlockVar where
-    toExp = go . blockDim
+    toExp bv _ = go (blockDim bv)
       where
         go :: Int -> C.Exp
-        go 0 = [$cexp|threadIdx.x|]
-        go 1 = [$cexp|threadIdx.y|]
-        go 2 = [$cexp|threadIdx.z|]
+        go 0 = [cexp|threadIdx.x|]
+        go 1 = [cexp|threadIdx.y|]
+        go 2 = [cexp|threadIdx.z|]
         go _ = error "bad thread block variable"
 
 -- | Index into a grid
@@ -89,8 +90,8 @@ instance Pretty GridVar where
     ppr = text . show
 
 instance ToExp GridVar where
-    toExp (GridVar { gridBlockVar = t }) =
-        [$cexp|(blockIdx.x + blockIdx.y*gridDim.x)*$(blockWidth t) + $t|]
+    toExp (GridVar { gridBlockVar = t }) _ =
+        [cexp|(blockIdx.x + blockIdx.y*gridDim.x)*$(blockWidth t) + $t|]
 
 -- | A compiled expression.
 data CExp = ScalarCExp C.Exp
@@ -99,13 +100,16 @@ data CExp = ScalarCExp C.Exp
           | FunCExp String Rho [DevAlloc] [DevAlloc]
 
 instance Pretty CExp where
-    ppr = ppr . toExp
+    ppr (ScalarCExp e)       = ppr e
+    ppr (VectorCExp e _)     = ppr e
+    ppr (MatrixCExp e _ _ _) = ppr e
+    ppr (FunCExp v _ _ _)    = ppr [cexp|$id:v|]
 
 instance ToExp CExp where
-    toExp (ScalarCExp e)       = e
-    toExp (VectorCExp e _)     = e
-    toExp (MatrixCExp e _ _ _) = e
-    toExp (FunCExp v _ _ _)    = [$cexp|$id:v|]
+    toExp (ScalarCExp e)       = const e
+    toExp (VectorCExp e _)     = const e
+    toExp (MatrixCExp e _ _ _) = const e
+    toExp (FunCExp v _ _ _)    = const [cexp|$id:v|]
 
 vectorSize :: CExp -> C.Exp
 vectorSize (VectorCExp _ n) = n
@@ -134,7 +138,7 @@ toTempArgs (ScalarCExp e) =
     return [e]
 
 toTempArgs (VectorCExp e ne) =
-    return [e, [$cexp|&$ne|] ]
+    return [e, [cexp|&$ne|] ]
 
 toTempArgs (MatrixCExp e _ _ _) =
     return [e]
@@ -150,7 +154,7 @@ data ExecConfig = ExecConfig
     ,  blockDimY :: Int
     ,  blockDimZ :: Int
     }
-  deriving (Data, Typeable)
+  deriving (Show, Data, Typeable)
 
 configToLaunchParams :: ExecConfig -> Ex (Int, Int, Int, Int, Int)
 configToLaunchParams config = do
@@ -211,10 +215,11 @@ data CState = CState
     ,  cusedBlockVars :: Set.Set BlockVar
     }
 
-newtype C a = C { unC :: StateT CState (ErrorT SomeException IO) a }
-  deriving (Monad, MonadIO,
-            MonadState CState,
-            MonadError SomeException)
+newtype C a = C { unC :: StateT CState (ExceptionT IO) a }
+  deriving (Monad,
+            MonadException,
+            MonadIO,
+            MonadState CState)
 
 instance MonadUniqueVar C where
     newUniqueVar v = do
@@ -260,70 +265,70 @@ instance MonadEvalN C.Exp C where
             faildoc $ text "Cannot evaluate:" <+> ppr n
 
         go (N i) =
-            return [$cexp|$int:i|]
+            return [cexp|$int:i|]
 
         go (NAdd n1 n2) = do
             e1 :: C.Exp <- evalN n1
             e2 :: C.Exp <- evalN n2
-            return [$cexp|$e1 + $e2|]
+            return [cexp|$e1 + $e2|]
 
         go (NSub n1 n2) = do
             e1 :: C.Exp <- evalN n1
             e2 :: C.Exp <- evalN n2
-            return [$cexp|$e1 - $e2|]
+            return [cexp|$e1 - $e2|]
 
         go (NMul n1 n2) = do
             e1 :: C.Exp <- evalN n1
             e2 :: C.Exp <- evalN n2
-            return [$cexp|$e1 * $e2|]
+            return [cexp|$e1 * $e2|]
 
         go (NNegate n) = do
             e :: C.Exp <- evalN n
-            return [$cexp|-$e|]
+            return [cexp|-$e|]
 
         go (NDiv n1 n2) = do
             e1 :: C.Exp <- evalN n1
             e2 :: C.Exp <- evalN n2
-            return [$cexp|$e1 / $e2|]
+            return [cexp|$e1 / $e2|]
 
         go (NMod n1 n2) = do
             e1 :: C.Exp <- evalN n1
             e2 :: C.Exp <- evalN n2
-            return [$cexp|$e1 % $e2|]
+            return [cexp|$e1 % $e2|]
 
         go n@(NMin ns) = do
             vn <- gensym "tempn"
-            addLocal [$cdecl|int $id:vn;|]
+            addLocal [cdecl|int $id:vn;|]
             es :: [C.Exp] <- mapM evalN ns
             cminimum vn es
-            insertNExp n [$cexp|$id:vn|]
-            return [$cexp|$id:vn|]
+            insertNExp n [cexp|$id:vn|]
+            return [cexp|$id:vn|]
           where
             cminimum :: String -> [C.Exp] -> C ()
             cminimum _    []       = fail "cminimum"
-            cminimum temp [e]      = addStm [$cstm|$id:temp = $e;|]
-            cminimum temp [e1, e2] = addStm [$cstm|$id:temp = $e1 < $e2 ? $e1 : $e2;|]
+            cminimum temp [e]      = addStm [cstm|$id:temp = $e;|]
+            cminimum temp [e1, e2] = addStm [cstm|$id:temp = $e1 < $e2 ? $e1 : $e2;|]
 
             cminimum temp (e : es) = do
                 cminimum temp es
-                addStm [$cstm|if ($e < $id:temp) { $id:temp = $e; }|]
+                addStm [cstm|if ($e < $id:temp) { $id:temp = $e; }|]
 
         go n@(NMax ns) = do
             vn <- gensym "tempn"
-            addLocal [$cdecl|int $id:vn;|]
+            addLocal [cdecl|int $id:vn;|]
             es :: [C.Exp] <- mapM evalN ns
             cmaximum vn es
-            insertNExp n [$cexp|$id:vn|]
-            return [$cexp|$id:vn|]
+            insertNExp n [cexp|$id:vn|]
+            return [cexp|$id:vn|]
           where
             cmaximum :: String -> [C.Exp] -> C ()
             cmaximum _    []       = fail "cmaximum"
-            cmaximum temp [e]      = addStm [$cstm|$id:temp = $e;|]
-            cmaximum temp [e1, e2] = addStm [$cstm|$id:temp = $e1 > $e2 ? $e1 : $e2;|]
+            cmaximum temp [e]      = addStm [cstm|$id:temp = $e;|]
+            cmaximum temp [e1, e2] = addStm [cstm|$id:temp = $e1 > $e2 ? $e1 : $e2;|]
 
             cmaximum temp (e : es) = do
                 cmaximum temp es
-                addStm [$cstm|if ($e > $id:temp) { $id:temp = $e; }|]
+                addStm [cstm|if ($e > $id:temp) { $id:temp = $e; }|]
 
 instance MonadCGen C where
     getCGenEnv = gets cgenenv
@@ -339,11 +344,8 @@ instance Applicative C where
     (<*>) = ap
 
 runC :: C a -> IO a
-runC m = do
-    result <- runErrorT (evalStateT (unC m) emptyCState)
-    case result of
-      Left (SomeException e) -> throw e
-      Right x ->                return x
+runC m =
+    runExceptionT (evalStateT (unC m) emptyCState) >>= liftException
   where
     emptyCState :: CState
     emptyCState = CState
@@ -488,20 +490,20 @@ getDevAllocs = gets cdevAllocs
 
 -- | Translate a base type to its C equivalent
 baseTypeToC :: Tau -> C.Type
-baseTypeToC UnitT  = [$cty|void|]
-baseTypeToC BoolT  = [$cty|unsigned char|]
-baseTypeToC IntT   = [$cty|long long|]
-baseTypeToC FloatT = [$cty|float|]
+baseTypeToC UnitT  = [cty|void|]
+baseTypeToC BoolT  = [cty|unsigned char|]
+baseTypeToC IntT   = [cty|long long|]
+baseTypeToC FloatT = [cty|float|]
 
 -- | Translate a type to its C equivalent
 typeToC :: Rho -> C.Type
 typeToC (ScalarT tau)       = baseTypeToC tau
-typeToC (VectorT tau _)     = [$cty|$ty:(baseTypeToC tau) *|]
-typeToC (MatrixT tau _ _ _) = [$cty|$ty:(baseTypeToC tau) *|]
-typeToC (FunT rhos rho)     = [$cty|$ty:(typeToC rho) (*)($params:params)|]
+typeToC (VectorT tau _)     = [cty|$ty:(baseTypeToC tau) *|]
+typeToC (MatrixT tau _ _ _) = [cty|$ty:(baseTypeToC tau) *|]
+typeToC (FunT rhos rho)     = [cty|$ty:(typeToC rho) (*)($params:params)|]
   where
     params :: [C.Param]
-    params = map (\rho -> [$cparam|$ty:(typeToC rho)|]) rhos
+    params = map (\rho -> [cparam|$ty:(typeToC rho)|]) rhos
 
 -- | Allocate space for a function argument
 allocArgs :: [(Var, Rho)] -> C [CExp]
@@ -510,18 +512,18 @@ allocArgs vtaus =
   where
     allocArg :: ((Var, Rho), Int) -> C CExp
     allocArg ((Var v, ScalarT tau), _) = do
-        addParam [$cparam|$ty:cty $id:v|]
-        return $ ScalarCExp [$cexp|$id:v|]
+        addParam [cparam|$ty:cty $id:v|]
+        return $ ScalarCExp [cexp|$id:v|]
       where
         cty :: C.Type
         cty = baseTypeToC tau
 
     allocArg ((Var v, VectorT tau _), i) = do
-        addParam [$cparam|$ty:cty* $id:v|]
-        addParam [$cparam|int $id:vn|]
+        addParam [cparam|$ty:cty* $id:v|]
+        addParam [cparam|int $id:vn|]
         let n = NVecLength i
-        insertNExp n [$cexp|$id:vn|]
-        return $ VectorCExp [$cexp|$id:v|] [$cexp|$id:vn|]
+        insertNExp n [cexp|$id:vn|]
+        return $ VectorCExp [cexp|$id:v|] [cexp|$id:vn|]
       where
         cty :: C.Type
         cty = baseTypeToC tau
@@ -530,17 +532,17 @@ allocArgs vtaus =
         vn = v ++ "n"
 
     allocArg ((Var v, MatrixT tau _ _ _), i) = do
-        addParam [$cparam|$ty:cty* $id:v|]
-        addParam [$cparam|int $id:vs|]
-        addParam [$cparam|int $id:vr|]
-        addParam [$cparam|int $id:vc|]
+        addParam [cparam|$ty:cty* $id:v|]
+        addParam [cparam|int $id:vs|]
+        addParam [cparam|int $id:vr|]
+        addParam [cparam|int $id:vc|]
         let s = NMatStride i
         let r = NMatRows i
         let c = NMatCols i
-        insertNExp s [$cexp|$id:vs|]
-        insertNExp r [$cexp|$id:vr|]
-        insertNExp c [$cexp|$id:vc|]
-        return $ MatrixCExp [$cexp|$id:v|] s r c
+        insertNExp s [cexp|$id:vs|]
+        insertNExp r [cexp|$id:vr|]
+        insertNExp c [cexp|$id:vc|]
+        return $ MatrixCExp [cexp|$id:v|] s r c
       where
         cty :: C.Type
         cty = baseTypeToC tau
@@ -557,8 +559,8 @@ allocArgs vtaus =
 allocTemp :: Rho -> C CExp
 allocTemp (ScalarT tau) = do
     v <- gensym "temp"
-    addLocal [$cdecl|$ty:cty $id:v;|]
-    return $ ScalarCExp [$cexp|$id:v|]
+    addLocal [cdecl|$ty:cty $id:v;|]
+    return $ ScalarCExp [cexp|$id:v|]
   where
     cty :: C.Type
     cty = baseTypeToC tau
@@ -567,11 +569,11 @@ allocTemp (VectorT tau n) = do
     v  <- gensym "temp"
     vn <- gensym "tempn"
     addDevAlloc DevAlloc  {  devAllocVar    = v
-                          ,  devAllocParams = [ [$cparam|$ty:cty* $id:v|],
-                                                [$cparam|long long* $id:vn|] ]
+                          ,  devAllocParams = [ [cparam|$ty:cty* $id:v|],
+                                                [cparam|long long* $id:vn|] ]
                           ,  devAllocType   = VectorT tau n
                           }
-    return $ VectorCExp [$cexp|$id:v|] [$cexp|*$id:vn|]
+    return $ VectorCExp [cexp|$id:v|] [cexp|*$id:vn|]
   where
     cty :: C.Type
     cty = baseTypeToC tau
@@ -579,10 +581,10 @@ allocTemp (VectorT tau n) = do
 allocTemp (MatrixT tau s r c) = do
     v <- gensym "temp"
     addDevAlloc DevAlloc  {  devAllocVar    = v
-                          ,  devAllocParams = [ [$cparam|$ty:cty* $id:v|] ]
+                          ,  devAllocParams = [ [cparam|$ty:cty* $id:v|] ]
                           ,  devAllocType   = MatrixT tau s r c
                           }
-    return $ MatrixCExp [$cexp|$id:v|] s r c
+    return $ MatrixCExp [cexp|$id:v|] s r c
   where
     cty :: C.Type
     cty = baseTypeToC tau
@@ -600,9 +602,9 @@ allocResult (ScalarT UnitT) _ =
 
 allocResult (ScalarT tau) (ScalarCExp ce) = do
     v <- gensym "result"
-    addStm [$cstm|*$id:v = $ce;|]
+    addStm [cstm|*$id:v = $ce;|]
     addDevAlloc DevAlloc  {  devAllocVar    = v
-                          ,  devAllocParams = [ [$cparam|$ty:cty* $id:v|] ]
+                          ,  devAllocParams = [ [cparam|$ty:cty* $id:v|] ]
                           ,  devAllocType   = ScalarT tau
                           }
     return [v]
@@ -627,14 +629,14 @@ allocResult tau ce =
 -- list of variables that make up the result.
 returnResult :: Rho -> CExp -> C (C.Type, [String])
 returnResult (ScalarT tau) (ScalarCExp ce) = do
-    addStm [$cstm|return $ce;|]
+    addStm [cstm|return $ce;|]
     return (baseTypeToC tau, [])
 
 returnResult (VectorT {}) (VectorCExp (C.Var (C.Id v _) _) _) =
-    return ([$cty|void|], [v])
+    return ([cty|void|], [v])
 
 returnResult (MatrixT {}) (MatrixCExp (C.Var (C.Id v _) _) _ _ _) =
-    return ([$cty|void|], [v])
+    return ([cty|void|], [v])
 
 returnResult tau ce =
     faildoc $  text "returnResult: type mismatch between expression" <+>
@@ -649,27 +651,38 @@ parfor ctx v n cont = do
     v'        <- gensym v
     ce        <- evalN n
     (x, body) <- inNewBlock $
-                 cont [$cexp|$id:v'|]
-    withGridVar ctx n $ \maybe_g ->
+                 cont [cexp|$id:v'|]
+    withGridVar ctx (fromIntegral (gridWidth*threadBlockWidth)) $ \maybe_g ->
+    --withGridVar ctx n $ \maybe_g ->
         case maybe_g of
-          Just g ->  gridParfor g v' ce [$cstm|{ $items:body }|]
+          Just g ->  gridParfor g v' ce [cstm|{ $items:body }|]
           Nothing -> withBlockVar ctx $ \maybe_t ->
-                         threadParfor maybe_t v' ce [$cstm|{ $items:body }|]
+                         threadParfor maybe_t v' ce [cstm|{ $items:body }|]
     return x
   where
     gridParfor :: GridVar -> String -> C.Exp -> C.Stm -> C ()
     gridParfor g v n body = do
-        addLocal [$cdecl|const int $id:v = $g;|]
-        addStm [$cstm|if ($id:v < $n) $stm:body|]
+        vs <- gensym (v ++ "s")
+        addStm [cstm|for (int $id:v = $g; $id:v < $n; $id:v += $(blockWidth (gridBlockVar g))*$gridWidth) {
+                          if ($id:v < $n) $stm:body
+                      }|]
+
+    gridWidth :: Integer
+    gridWidth = 240
+
+{-
+        addLocal [cdecl|const int $id:v = $g;|]
+        addStm [cstm|if ($id:v < $n) $stm:body|]
+-}
 
     threadParfor :: Maybe BlockVar -> String -> C.Exp -> C.Stm -> C ()
     threadParfor Nothing v n body = do
-        addStm [$cstm|for (int $id:v = 0; $id:v < $n; ++$id:v)
+        addStm [cstm|for (int $id:v = 0; $id:v < $n; ++$id:v)
                           $stm:body |]
 
-    threadParfor(Just t)  v n body = do
+    threadParfor (Just t) v n body = do
         vs <- gensym (v ++ "s")
-        addStm [$cstm|for (int $id:vs = 0; $id:vs < $n; $id:vs += $(blockWidth t)) {
+        addStm [cstm|for (int $id:vs = 0; $id:vs < $n; $id:vs += $(blockWidth t)) {
                           const int $id:v = $id:vs + $t;
                           if ($id:v < $n) $stm:body
                       }|]
@@ -689,13 +702,13 @@ compileExp ctx (LetE v@(Var vname) tau e1 e2) = do
     compileExp (nest ctx) e2
   where
     compileLet :: Rho -> CExp -> C CExp
-    compileLet (ScalarT _) ce@(ScalarCExp [$cexp|$id:_|]) = do
+    compileLet (ScalarT _) ce@(ScalarCExp [cexp|$id:_|]) = do
         return ce
 
     compileLet (ScalarT tau) (ScalarCExp ce1) = do
-        addLocal [$cdecl|$ty:cty $id:vname;|]
-        addStm [$cstm|$id:vname = $ce1;|]
-        return $ ScalarCExp [$cexp|$id:vname|]
+        addLocal [cdecl|$ty:cty $id:vname;|]
+        addStm [cstm|$id:vname = $ce1;|]
+        return $ ScalarCExp [cexp|$id:vname|]
       where
         cty :: C.Type
         cty = baseTypeToC tau
@@ -729,13 +742,13 @@ compileExp ctx (AppE f es) = do
     resultArgs   <- mapM toTempArgs results >>= return . concat
     case tau of
       ScalarT {} -> do  temp <- gensym "temp"
-                        addLocal [$cdecl|$ty:(typeToC tau) $id:temp;|]
-                        addStm [$cstm|$id:temp = $id:fname($args:explicitArgs,
+                        addLocal [cdecl|$ty:(typeToC tau) $id:temp;|]
+                        addStm [cstm|$id:temp = $id:fname($args:explicitArgs,
                                                            $args:tempArgs,
                                                            $args:resultArgs);|]
-                        toCExp [$cexp|$id:temp|] tau
+                        toCExp [cexp|$id:temp|] tau
       _ -> do  let [ce] = results
-               addStm [$cstm|$id:fname($args:explicitArgs,
+               addStm [cstm|$id:fname($args:explicitArgs,
                                        $args:tempArgs,
                                        $args:resultArgs);|]
                return ce
@@ -753,17 +766,17 @@ compileExp ctx (AppE f es) = do
     toCExp ce (MatrixT _ s r c) = return $ MatrixCExp ce s r c
     toCExp _  (FunT {})         = fail "Function cannot return a function type"
 
-compileExp _ (BoolE False) = return (ScalarCExp [$cexp|0|])
-compileExp _ (BoolE True)  = return (ScalarCExp [$cexp|1|])
+compileExp _ (BoolE False) = return (ScalarCExp [cexp|0|])
+compileExp _ (BoolE True)  = return (ScalarCExp [cexp|1|])
 
 compileExp _ (IntE n) =
-    return (ScalarCExp [$cexp|$int:i|])
+    return (ScalarCExp [cexp|$int:i|])
   where
     i :: Integer
     i = toInteger n
 
 compileExp _ (FloatE n) =
-    return (ScalarCExp [$cexp|$float:r|])
+    return (ScalarCExp [cexp|$float:r|])
   where
     r :: Rational
     r = toRational n
@@ -780,31 +793,31 @@ compileExp ctx (UnopE op e) = do
         ppr op <+> text "to" <+> ppr cexp
 
     compile :: Unop -> C.Exp -> C.Exp
-    compile Lnot e = [$cexp|!$e|]
+    compile Lnot e = [cexp|!$e|]
 
-    compile Ineg e    = [$cexp|- $e|]
-    compile Iabs e    = [$cexp|abs($e)|]
-    compile Isignum e = [$cexp|$e > 0 ? 1 : ($e < 0 ? -1 : 0)|]
+    compile Ineg e    = [cexp|- $e|]
+    compile Iabs e    = [cexp|abs($e)|]
+    compile Isignum e = [cexp|$e > 0 ? 1 : ($e < 0 ? -1 : 0)|]
 
-    compile Fneg e    = [$cexp|- $e|]
-    compile Fabs e    = [$cexp|fabsf($e)|]
-    compile Fsignum e = [$cexp|$e > 0 ? 1 : ($e < 0 ? -1 : 0)|]
+    compile Fneg e    = [cexp|- $e|]
+    compile Fabs e    = [cexp|fabsf($e)|]
+    compile Fsignum e = [cexp|$e > 0 ? 1 : ($e < 0 ? -1 : 0)|]
 
-    compile Fexp e   = [$cexp|expf($e)|]
-    compile Fsqrt e  = [$cexp|sqrtf($e)|]
-    compile Flog e   = [$cexp|logf($e)|]
-    compile Fsin e   = [$cexp|sinf($e)|]
-    compile Ftan e   = [$cexp|tanf($e)|]
-    compile Fcos e   = [$cexp|cosf($e)|]
-    compile Fasin e  = [$cexp|asinf($e)|]
-    compile Fatan e  = [$cexp|atanf($e)|]
-    compile Facos e  = [$cexp|acosf($e)|]
-    compile Fsinh e  = [$cexp|asinh($e)|]
-    compile Ftanh e  = [$cexp|atanh($e)|]
-    compile Fcosh e  = [$cexp|acosh($e)|]
-    compile Fasinh e = [$cexp|asinh($e)|]
-    compile Fatanh e = [$cexp|atanh($e)|]
-    compile Facosh e = [$cexp|acosh($e)|]
+    compile Fexp e   = [cexp|__expf($e)|]
+    compile Fsqrt e  = [cexp|sqrtf($e)|]
+    compile Flog e   = [cexp|__logf($e)|]
+    compile Fsin e   = [cexp|sinf($e)|]
+    compile Ftan e   = [cexp|tanf($e)|]
+    compile Fcos e   = [cexp|cosf($e)|]
+    compile Fasin e  = [cexp|asinf($e)|]
+    compile Fatan e  = [cexp|atanf($e)|]
+    compile Facos e  = [cexp|acosf($e)|]
+    compile Fsinh e  = [cexp|asinh($e)|]
+    compile Ftanh e  = [cexp|atanh($e)|]
+    compile Fcosh e  = [cexp|acosh($e)|]
+    compile Fasinh e = [cexp|asinh($e)|]
+    compile Fatanh e = [cexp|atanh($e)|]
+    compile Facosh e = [cexp|acosh($e)|]
 
 compileExp ctx (BinopE op e1 e2) = do
     ce1 <- compileExp (nest ctx) e1 >>= fromScalar
@@ -819,30 +832,30 @@ compileExp ctx (BinopE op e1 e2) = do
         ppr op <+> text "to" <+> ppr cexp
 
     compile :: Binop -> C.Exp -> C.Exp -> C.Exp
-    compile Land e1 e2 = [$cexp|$e1 && $e2|]
-    compile Lor e1 e2  = [$cexp|$e1 || $e2|]
+    compile Land e1 e2 = [cexp|$e1 && $e2|]
+    compile Lor e1 e2  = [cexp|$e1 || $e2|]
 
-    compile Leq e1 e2 = [$cexp|$e1 == $e2|]
-    compile Lne e1 e2 = [$cexp|$e1 != $e2|]
-    compile Lgt e1 e2 = [$cexp|$e1 > $e2|]
-    compile Lge e1 e2 = [$cexp|$e1 >= $e2|]
-    compile Llt e1 e2 = [$cexp|$e1 < $e2|]
-    compile Lle e1 e2 = [$cexp|$e1 <= $e2|]
+    compile Leq e1 e2 = [cexp|$e1 == $e2|]
+    compile Lne e1 e2 = [cexp|$e1 != $e2|]
+    compile Lgt e1 e2 = [cexp|$e1 > $e2|]
+    compile Lge e1 e2 = [cexp|$e1 >= $e2|]
+    compile Llt e1 e2 = [cexp|$e1 < $e2|]
+    compile Lle e1 e2 = [cexp|$e1 <= $e2|]
 
-    compile Band e1 e2 = [$cexp|$e1 & $e2|]
+    compile Band e1 e2 = [cexp|$e1 & $e2|]
 
-    compile Iadd e1 e2 = [$cexp|$e1 + $e2|]
-    compile Isub e1 e2 = [$cexp|$e1 - $e2|]
-    compile Imul e1 e2 = [$cexp|$e1 * $e2|]
-    compile Idiv e1 e2 = [$cexp|$e1 / $e2|]
+    compile Iadd e1 e2 = [cexp|$e1 + $e2|]
+    compile Isub e1 e2 = [cexp|$e1 - $e2|]
+    compile Imul e1 e2 = [cexp|$e1 * $e2|]
+    compile Idiv e1 e2 = [cexp|$e1 / $e2|]
 
-    compile Fadd e1 e2 = [$cexp|$e1 + $e2|]
-    compile Fsub e1 e2 = [$cexp|$e1 - $e2|]
-    compile Fmul e1 e2 = [$cexp|$e1 * $e2|]
-    compile Fdiv e1 e2 = [$cexp|$e1 / $e2|]
+    compile Fadd e1 e2 = [cexp|$e1 + $e2|]
+    compile Fsub e1 e2 = [cexp|$e1 - $e2|]
+    compile Fmul e1 e2 = [cexp|$e1 * $e2|]
+    compile Fdiv e1 e2 = [cexp|$e1 / $e2|]
 
-    compile Fpow e1 e2     = [$cexp|powf($e1, $e2)|]
-    compile FlogBase e1 e2 = [$cexp|logf($e2)/logf($e1)|]
+    compile Fpow e1 e2     = [cexp|powf($e1, $e2)|]
+    compile FlogBase e1 e2 = [cexp|logf($e2)/logf($e1)|]
 
 compileExp ctx (IfteE teste thene elsee) = do
     testce <- compileExp (nest ctx) teste
@@ -852,7 +865,7 @@ compileExp ctx (IfteE teste thene elsee) = do
                            compileExp (nest ctx) elsee
     tau      <- check thene
     result   <- allocTemp tau
-    addStm [$cstm|if ($testce) {
+    addStm [cstm|if ($testce) {
                       $items:thenItems
                       $result = $thence;
                   } else {
@@ -869,13 +882,13 @@ compileExp ctx e@(MapE (LamE [(x, _)] body) e1) = do
     cx                <- compileExp (nest ctx) e1
     (fapp, items) <-
         extendVars    [(x, ScalarT tau1)] $
-        extendVarExps [(x, ScalarCExp [$cexp|$cx[i]|])] $
+        extendVarExps [(x, ScalarCExp [cexp|$cx[i]|])] $
         inNewBlock $
         compileExp (nest ctx) body
     parfor ctx "i" n $ \i -> do
-        addStm [$cstm|{$items:items $result[$i] = $fapp; }|]
-        addStm [$cstm|if ($i == 0) $(vectorSize result) = $cn;|]
-    addStm [$cstm|__syncthreads();|]
+        addStm [cstm|{$items:items $result[$i] = $fapp; }|]
+        addStm [cstm|if ($i == 0) $(vectorSize result) = $cn;|]
+    addStm [cstm|__syncthreads();|]
     return result
 
 compileExp _ (MapE {}) =
@@ -889,12 +902,12 @@ compileExp ctx (MapME (LamE [(x, rho)] body) xs ys) = do
     cys            <- compileExp (nest ctx) ys
     (fapp, items) <-
         extendVars    [(x, rho)] $
-        extendVarExps [(x, ScalarCExp [$cexp|$cxs[i]|])] $
+        extendVarExps [(x, ScalarCExp [cexp|$cxs[i]|])] $
         inNewBlock $
         compileExp (nest ctx) body
     parfor ctx "i" n $ \i -> do
-        addStm [$cstm|{$items:items $cys[$i] = $fapp; }|]
-    addStm [$cstm|__syncthreads();|]
+        addStm [cstm|{$items:items $cys[$i] = $fapp; }|]
+    addStm [cstm|__syncthreads();|]
     return $ error "mapM returns unit"
 
 compileExp _ (MapME {}) =
@@ -907,12 +920,12 @@ compileExp ctx e@(PermuteE xs is) = do
     cxs               <- compileExp (nest ctx) xs
     cis               <- compileExp (nest ctx) is
     parfor ctx "i" n $ \i -> do
-        addStm [$cstm|{
+        addStm [cstm|{
                    $cys[$cis[$i]] = $cxs[$i];
                    if ($i == 0)
                        $(vectorSize cys) = $cn;
                }|]
-    addStm [$cstm|__syncthreads();|]
+    addStm [cstm|__syncthreads();|]
     return cys
 
 compileExp ctx (PermuteME xs is ys) = do
@@ -924,10 +937,10 @@ compileExp ctx (PermuteME xs is ys) = do
     cis            <- compileExp (nest ctx) is
     cys            <- compileExp (nest ctx) ys
     parfor ctx "i" n $ \i -> do
-        addStm [$cstm|{
+        addStm [cstm|{
                    $cys[$cis[$i]] = $cxs[$i];
                }|]
-    addStm [$cstm|__syncthreads();|]
+    addStm [cstm|__syncthreads();|]
     return $ error "permuteM returns unit"
 
 compileExp ctx e@(ZipWithE (LamE [(x, _), (y, _)] body) e1 e2) = do
@@ -941,14 +954,14 @@ compileExp ctx e@(ZipWithE (LamE [(x, _), (y, _)] body) e1 e2) = do
     (fapp, items) <-
         extendVars    [(x, ScalarT tau1),
                        (y, ScalarT tau2)] $
-        extendVarExps [(x, ScalarCExp [$cexp|$cx[i]|]),
-                       (y, ScalarCExp [$cexp|$cy[i]|])] $
+        extendVarExps [(x, ScalarCExp [cexp|$cx[i]|]),
+                       (y, ScalarCExp [cexp|$cy[i]|])] $
         inNewBlock $
         compileExp (nest ctx) body
     parfor ctx "i" n $ \i -> do
-        addStm [$cstm|{$items:items $result[$i] = $fapp; }|]
-        addStm [$cstm|if ($i == 0) $(vectorSize result) = $cn;|]
-    addStm [$cstm|__syncthreads();|]
+        addStm [cstm|{$items:items $result[$i] = $fapp; }|]
+        addStm [cstm|if ($i == 0) $(vectorSize result) = $cn;|]
+    addStm [cstm|__syncthreads();|]
     return result
 
 compileExp _ (ZipWithE {}) =
@@ -968,15 +981,15 @@ compileExp ctx e@(ZipWith3E (LamE [(x, _), (y, _), (z, _)] body) e1 e2 e3) = do
         extendVars    [(x, ScalarT tau1),
                        (y, ScalarT tau2),
                        (z, ScalarT tau3)] $
-        extendVarExps [(x, ScalarCExp [$cexp|$cx[i]|]),
-                       (y, ScalarCExp [$cexp|$cy[i]|]),
-                       (z, ScalarCExp [$cexp|$cz[i]|])] $
+        extendVarExps [(x, ScalarCExp [cexp|$cx[i]|]),
+                       (y, ScalarCExp [cexp|$cy[i]|]),
+                       (z, ScalarCExp [cexp|$cz[i]|])] $
         inNewBlock $
         compileExp (nest ctx) body
     parfor ctx "i" n $ \i -> do
-        addStm [$cstm|{$items:items $result[$i] = $fapp; }|]
-        addStm [$cstm|if ($i == 0) $(vectorSize result) = $cn;|]
-    addStm [$cstm|__syncthreads();|]
+        addStm [cstm|{$items:items $result[$i] = $fapp; }|]
+        addStm [cstm|if ($i == 0) $(vectorSize result) = $cn;|]
+    addStm [cstm|__syncthreads();|]
     return result
 
 compileExp _ (ZipWith3E {}) =
@@ -996,14 +1009,14 @@ compileExp ctx (ZipWith3ME (LamE [(x, _), (y, _), (z, _)] body) xs ys zs results
         extendVars    [(x, ScalarT tau1),
                        (y, ScalarT tau2),
                        (z, ScalarT tau3)] $
-        extendVarExps [(x, ScalarCExp [$cexp|$cxs[i]|]),
-                       (y, ScalarCExp [$cexp|$cys[i]|]),
-                       (z, ScalarCExp [$cexp|$czs[i]|])] $
+        extendVarExps [(x, ScalarCExp [cexp|$cxs[i]|]),
+                       (y, ScalarCExp [cexp|$cys[i]|]),
+                       (z, ScalarCExp [cexp|$czs[i]|])] $
         inNewBlock $
         compileExp (nest ctx) body
     parfor ctx "i" n $ \i -> do
-        addStm [$cstm|{$items:items $cresults[$i] = $fapp; }|]
-    addStm [$cstm|__syncthreads();|]
+        addStm [cstm|{$items:items $cresults[$i] = $fapp; }|]
+    addStm [cstm|__syncthreads();|]
     return $ error "zipWith3M returns unit"
 
 compileExp _ (ZipWith3ME {}) =
@@ -1018,11 +1031,11 @@ compileExp ctx e@(ScanE (LamE [(x, _), (y, _)] body) z xs) = do
     cxs                 <- compileExp (nest ctx) xs
     temp                <- gensym "temp"
     t                   <- gensym "t"
-    addLocal [$cdecl|__shared__ $ty:ctau $id:temp[2*$int:threadBlockWidth];|]
+    addLocal [cdecl|__shared__ $ty:ctau $id:temp[2*$int:threadBlockWidth];|]
     parfor ctx "i" ((n+1) `div` 2) $ \i -> do
-        (sum1, items1) <- plus tau [$cexp|$id:temp[ai]|] [$cexp|$id:temp[bi]|]
-        (sum2, items2) <- plus tau [$cexp|$id:temp[bi]|] [$cexp|$id:t|]
-        addStm [$cstm|{
+        (sum1, items1) <- plus tau [cexp|$id:temp[ai]|] [cexp|$id:temp[bi]|]
+        (sum2, items2) <- plus tau [cexp|$id:temp[bi]|] [cexp|$id:t|]
+        addStm [cstm|{
             int offset = 1;
 
             $id:temp[2*$i]   = $cxs[2*$i];
@@ -1070,7 +1083,7 @@ compileExp ctx e@(ScanE (LamE [(x, _), (y, _)] body) z xs) = do
             if ($i == 0)
                 $(vectorSize result) = $cn;
           }|]
-    addStm [$cstm|__syncthreads();|]
+    addStm [cstm|__syncthreads();|]
     return result
   where
     plus :: Tau -> C.Exp -> C.Exp -> C (CExp, [C.BlockItem])
@@ -1095,11 +1108,11 @@ compileExp ctx e@(BlockedScanME (LamE [(x, _), (y, _)] body) z xs) = do
     cz                    <- compileExp (nest ctx) z
     cxs                   <- compileExp (nest ctx) xs
     temp                  <- gensym "temp"
-    addLocal [$cdecl|__shared__ $ty:ctau $id:temp[2*$int:threadBlockWidth];|]
+    addLocal [cdecl|__shared__ $ty:ctau $id:temp[2*$int:threadBlockWidth];|]
     parfor ctx "i" ((n+1) `div` 2) $ \i -> do
-        (sum1, items1) <- plus tau [$cexp|$id:temp[ai]|] [$cexp|$id:temp[bi]|]
-        (sum2, items2) <- plus tau [$cexp|$id:temp[bi]|] [$cexp|t|]
-        addStm [$cstm|{
+        (sum1, items1) <- plus tau [cexp|$id:temp[ai]|] [cexp|$id:temp[bi]|]
+        (sum2, items2) <- plus tau [cexp|$id:temp[bi]|] [cexp|t|]
+        addStm [cstm|{
             int offset = 1;
             int block = 2*blockIdx.x*$int:threadBlockWidth;
             int tid = threadIdx.x;
@@ -1184,11 +1197,11 @@ compileExp ctx e@(BlockedNacsME (LamE [(x, _), (y, _)] body) z xs) = do
     cz                    <- compileExp (nest ctx) z
     cxs                   <- compileExp (nest ctx) xs
     temp                  <- gensym "temp"
-    addLocal [$cdecl|__shared__ $ty:ctau $id:temp[2*$int:threadBlockWidth];|]
+    addLocal [cdecl|__shared__ $ty:ctau $id:temp[2*$int:threadBlockWidth];|]
     parfor ctx "i" ((n+1) `div` 2) $ \i -> do
-        (sum1, items1) <- plus tau [$cexp|$id:temp[ai]|] [$cexp|$id:temp[bi]|]
-        (sum2, items2) <- plus tau [$cexp|$id:temp[bi]|] [$cexp|t|]
-        addStm [$cstm|{
+        (sum1, items1) <- plus tau [cexp|$id:temp[ai]|] [cexp|$id:temp[bi]|]
+        (sum2, items2) <- plus tau [cexp|$id:temp[bi]|] [cexp|t|]
+        addStm [cstm|{
             int offset = 1;
             int block = 2*blockIdx.x*$int:threadBlockWidth;
             int tid = threadIdx.x;
@@ -1268,7 +1281,7 @@ compileExp ctx (BlockedAddME xs sums) = do
     cxs         <- compileExp (nest ctx) xs
     csums       <- compileExp (nest ctx) sums
     parfor ctx "i" ((n+1) `div` 2) $ \_ -> do
-        addStm [$cstm|{
+        addStm [cstm|{
             int block = 2*blockIdx.x*$int:threadBlockWidth;
             int tid = threadIdx.x;
 
@@ -1328,9 +1341,9 @@ compileFun fname vrhos body = do
         (tempAllocs, resultAllocs) <- orderFunAllocs results
         return (cty, tau, tempAllocs, resultAllocs)
 
-    addGlobal [$cedecl|__device__ $ty:cty $id:fname($params:ps)
-                       { $items:items }
-                      |]
+    addGlobal [cedecl|__device__ $ty:cty $id:fname($params:ps)
+                      { $items:items }
+                     |]
 
     return $ FunCExp fname tau tempAllocs resultAllocs
 
@@ -1347,9 +1360,9 @@ compileTopFun fname (LamE vrhos body) =
             results <- allocResult tau ce
             orderFunAllocs results
 
-        addGlobal [$cedecl|extern "C" __global__ void $id:fname($params:ps)
-                           { $items:items }
-                          |]
+        addGlobal [cedecl|extern "C" __global__ void $id:fname($params:ps)
+                          { $items:items }
+                         |]
 
         return (fname, tempAllocs ++ resultAllocs)
 
