@@ -1,4 +1,4 @@
--- Copyright (c) 2010
+-- Copyright (c) 2010-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -25,6 +25,7 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -37,11 +38,14 @@
 module CGen where
 
 import Control.Applicative
-import Control.Monad.State
 import qualified Data.Set as Set
 import Language.C.Quote.C
 import qualified Language.C.Syntax as C
+#if !MIN_VERSION_template_haskell(2,7,0)
+import qualified Data.Loc
+import qualified Data.Symbol
 import qualified Language.C.Syntax
+#endif /* !MIN_VERSION_template_haskell(2,7,0) */
 
 data CGenEnv = CGenEnv
   {  cSymbols :: Set.Set String
@@ -70,7 +74,7 @@ emptyCGenEnv = CGenEnv
 
 codeToUnit :: CGenEnv -> [C.Definition]
 codeToUnit code =
-    [$cunit|$edecls:includes
+    [cunit|$edecls:includes
     $edecls:typedefs
     $edecls:prototypes
     $edecls:globals
@@ -80,7 +84,7 @@ codeToUnit code =
       where
         toInclude :: String -> C.Definition
         toInclude inc =
-            [$cedecl|$esc:inc'|]
+            [cedecl|$esc:inc'|]
           where
             inc' = "#include " ++ inc
 
@@ -150,7 +154,7 @@ class (Functor m, Monad m) => MonadCGen m where
                                 }
         case (locals, stms) of
           ([], [stm]) -> return (x, stm)
-          _ -> return (x, [$cstm|{ $decls:locals $stms:stms }|])
+          _ -> return (x, [cstm|{ $decls:locals $stms:stms }|])
 
     inNewBlock_ :: m () -> m C.Stm
     inNewBlock_ act = snd <$> inNewBlock act

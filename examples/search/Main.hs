@@ -1,4 +1,4 @@
--- Copyright (c) 2010
+-- Copyright (c) 2010-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -25,6 +25,7 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -56,7 +57,6 @@ import qualified Data.Vector as Vector
 import Language.C.Quote.CUDA
 import Language.C.Smart
 import qualified Language.C.Syntax as C
-import qualified Language.C.Syntax
 import Numeric.Container
 import Statistics.Sample
 import System.Console.GetOpt
@@ -65,8 +65,13 @@ import System.IO
 import Text.PrettyPrint.Mainland
 import Text.Printf
 
+#if !MIN_VERSION_template_haskell(2,7,0)
+import qualified Data.Loc
+import qualified Data.Symbol
+import qualified Language.C.Syntax
+#endif /* !MIN_VERSION_template_haskell(2,7,0) */
+
 import Nikola hiding (map)
-import Nikola.Compile
 
 data GridVar = GridVar { gridDimIdx :: Int
                        , gridStrips :: Int
@@ -89,7 +94,7 @@ data IVar = SerialIVar { ivarVar       :: String
   deriving (Eq, Ord, Show)
 
 instance ToExp IVar where
-    toExp ivar = [$cexp|$id:(ivarVar ivar)|]
+    toExp ivar _ = [cexp|$id:(ivarVar ivar)|]
 
 isSerialIVar :: IVar -> Bool
 isSerialIVar (SerialIVar {}) = True
@@ -107,9 +112,9 @@ blockIdx idx = go idx
     go _                 = fail "Not a parallelized index"
 
     toDim :: Int -> m C.Exp
-    toDim 0 = return [$cexp|blockIdx.x|]
-    toDim 1 = return [$cexp|blockIdx.y|]
-    toDim 2 = return [$cexp|blockIdx.z|]
+    toDim 0 = return [cexp|blockIdx.x|]
+    toDim 1 = return [cexp|blockIdx.y|]
+    toDim 2 = return [cexp|blockIdx.z|]
     toDim _ = fail "blockIdx: bad index"
 
 threadIdx :: forall m . Monad m => IVar -> m C.Exp
@@ -122,8 +127,8 @@ threadIdx idx = go idx
         fail "Not a thread block index"
 
     toDim :: Int -> m C.Exp
-    toDim 0 = return [$cexp|threadIdx.x|]
-    toDim 1 = return [$cexp|threadIdx.y|]
+    toDim 0 = return [cexp|threadIdx.x|]
+    toDim 1 = return [cexp|threadIdx.y|]
     toDim _ = fail "blockIdx: bad index"
 
 ivarBlockWidth :: Monad m => IVar -> m Int
@@ -481,8 +486,8 @@ parfor v ty from to step widths nus cont = do
         (x, body) <- inNewBlock $
                      unrollLoop v nroll $
                      cont ivar'
-        addStm [$cstm|for ($ty:ty $id:v = $from; $id:v < $to; $id:v += $int:(step + nroll))
-                          $stm:body |]
+        addStm [cstm|for ($ty:ty $id:v = $from; $id:v < $to; $id:v += $int:(step + nroll))
+                         $stm:body |]
         return x
 
     go nroll ivar@(ParIVar { ivarBlockVar = Nothing }) = do
@@ -491,8 +496,8 @@ parfor v ty from to step widths nus cont = do
                          }
         gdim <- blockIdx ivar
         case nroll + 1 of
-          1 -> addLocal [$cdecl|const $ty:ty $id:v = $gdim;|]
-          n -> addLocal [$cdecl|const $ty:ty $id:v = $gdim*$int:n;|]
+          1 -> addLocal [cdecl|const $ty:ty $id:v = $gdim;|]
+          n -> addLocal [cdecl|const $ty:ty $id:v = $gdim*$int:n;|]
         unrollLoop v nroll $ cont ivar'
 
     go nroll ivar@(ParIVar { ivarBlockVar = Just _ }) = do
@@ -503,9 +508,9 @@ parfor v ty from to step widths nus cont = do
         tdim <- threadIdx ivar
         w    <- ivarBlockWidth ivar
         case nroll of
-          0 -> addLocal [$cdecl|const $ty:ty $id:v = $gdim*$(w) + $tdim;|]
-          _ -> addLocal [$cdecl|const $ty:ty $id:v = $gdim*$((nroll+1) * w) +
-                                                     $int:(nroll+1)*$tdim;|]
+          0 -> addLocal [cdecl|const $ty:ty $id:v = $gdim*$(w) + $tdim;|]
+          _ -> addLocal [cdecl|const $ty:ty $id:v = $gdim*$((nroll+1) * w) +
+                                                    $int:(nroll+1)*$tdim;|]
         unrollLoop v nroll $ cont ivar'
 
 for :: String         -- ^ Suggested name of the index variable
@@ -524,8 +529,8 @@ for v ty from to step nus cont = do
     (x, body) <- inNewBlock $
                  unrollLoop v nroll $
                  cont ivar
-    addStm [$cstm|for ($ty:ty $id:v = $from; $id:v < $to; $id:v += $step)
-                      $stm:body |]
+    addStm [cstm|for ($ty:ty $id:v = $from; $id:v < $to; $id:v += $step)
+                     $stm:body |]
     return x
 
 nestfor :: (String, String)       -- ^ Suggested name of the index variable
@@ -537,8 +542,8 @@ nestfor :: (String, String)       -- ^ Suggested name of the index variable
                                   -- loop variable, and the loop index)
         -> S a
 nestfor (iv, jv) (m, n) ws nus cont =
-    parfor iv [$cty|int|] 0 m 1 ws nus $ \i -> do
-    parfor jv [$cty|int|] 0 n 1 ws nus $ \j -> do
+    parfor iv [cty|int|] 0 m 1 ws nus $ \i -> do
+    parfor jv [cty|int|] 0 n 1 ws nus $ \j -> do
     cont (i, j)
 
 data Flag = Run
@@ -570,11 +575,11 @@ test :: S () -> S ()
 test innerloop = do
     body <- inNewBlock_ innerloop
     addGlobal
-      [$cedecl|extern "C" __global__ void
-               kmatmul(float *a, int lda, int m, int l,
-                       float *b, int ldb, int l_, int n,
-                       float *c)
-               { $stm:body }|]
+      [cedecl|extern "C" __global__ void
+              kmatmul(float *a, int lda, int m, int l,
+                      float *b, int ldb, int l_, int n,
+                      float *c)
+              { $stm:body }|]
     (sx, wx, sy, wy) <- mkLaunch
     defs   <- getsCGenEnv codeToUnit
     let k :: CFun (Exp (Matrix Float) -> Exp (Matrix Float) -> Exp (Matrix Float))
@@ -617,26 +622,26 @@ test innerloop = do
         -- config <- getKernelConfig
         -- liftIO $ print config
         -- liftIO $ print (dimX, dimY, dimZ, gridDimX 512, gridDimY 512)
-        let cGridDimX = gridDimX [$cexp|m|]
-        let cGridDimY = gridDimY [$cexp|n|]
+        let cGridDimX = gridDimX [cexp|m|]
+        let cGridDimY = gridDimY [cexp|n|]
         addInclude "<assert.h>"
         addGlobal
-          [$cedecl|extern "C" void
-                   matmul(float *a, int lda, int m, int k,
-                           float *b, int ldb, int k_, int n,
-                           float *c)
-                   { dim3 dimBlock;
-                     dim3 dimGrid;
-                     dimBlock.x = $int:dimX;
-                     dimBlock.y = $int:dimY;
-                     dimBlock.z = $int:dimZ;
-                     dimGrid.x = $cGridDimX;
-                     dimGrid.y = $cGridDimY;
-                     dimGrid.z = 1;
-                     assert(m % $strideX == 0);
-                     assert(n % $strideY == 0);
-                     kmatmul<<<dimGrid, dimBlock>>>(a, lda, m, k, b, ldb, k_, n, c);
-                   }|]
+          [cedecl|extern "C" void
+                  matmul(float *a, int lda, int m, int k,
+                         float *b, int ldb, int k_, int n,
+                         float *c)
+                  { dim3 dimBlock;
+                    dim3 dimGrid;
+                    dimBlock.x = $int:dimX;
+                    dimBlock.y = $int:dimY;
+                    dimBlock.z = $int:dimZ;
+                    dimGrid.x = $cGridDimX;
+                    dimGrid.y = $cGridDimY;
+                    dimGrid.z = 1;
+                    assert(m % $strideX == 0);
+                    assert(n % $strideY == 0);
+                    kmatmul<<<dimGrid, dimBlock>>>(a, lda, m, k, b, ldb, k_, n, c);
+                  }|]
         sx <- ivarStripWidth <$> getIVar 0
         wx <- blockDim 0
         sy <- ivarStripWidth <$> getIVar 1
@@ -645,10 +650,10 @@ test innerloop = do
 
 innerloop1 :: S ()
 innerloop1 = do
-    parfor "i" [$cty|int|] 0 m 1 ws nus $ \i -> do
+    parfor "i" [cty|int|] 0 m 1 ws nus $ \i -> do
     guard (not (isSerialIVar i))
     guard (ivarStripWidth i <= 512)
-    parfor "j" [$cty|int|] 0 n 1 ws nus $ \j -> do
+    parfor "j" [cty|int|] 0 n 1 ws nus $ \j -> do
         let iu =  ivarUnrolling i
         let ju =  ivarUnrolling j
         ku     <- choose nus
@@ -659,28 +664,28 @@ innerloop1 = do
         guard (ivarStripWidth j <= 512)
         setKernelConfig (Config (i, j) iu ju ku)
 
-        addLocal [$cdecl|float sum = 0.0;|]
+        addLocal [cdecl|float sum = 0.0;|]
         temp <- choose [i, j]
-        stripmine temp "k" [$cty|int|] 0 l [ku] $ \k -> do
+        stripmine temp "k" [cty|int|] 0 l [ku] $ \k -> do
             addStm $ sum += a i k * b k j
         addStm $ c i j === sum
   where
     ws = [32, 64, 128, 256, 512]
     nus = [0, 1, 3, 7, 15]
 
-    sum = [$cexp|sum|]
-    m = [$cexp|m|]
-    n = [$cexp|n|]
-    l = [$cexp|l|]
+    sum = [cexp|sum|]
+    m = [cexp|m|]
+    n = [cexp|n|]
+    l = [cexp|l|]
 
     a :: (ToExp a, ToExp b) => a -> b -> C.Exp
-    a i j = [$cexp|a[$i+lda*$j]|]
+    a i j = [cexp|a[$i+lda*$j]|]
 
     b :: (ToExp a, ToExp b) => a -> b -> C.Exp
-    b i j = [$cexp|b[$i+ldb*$j]|]
+    b i j = [cexp|b[$i+ldb*$j]|]
 
     c :: (ToExp a, ToExp b) => a -> b -> C.Exp
-    c i j = [$cexp|c[$i+ldb*$j]|]
+    c i j = [cexp|c[$i+ldb*$j]|]
 
 innerloop2 :: S ()
 innerloop2 =
@@ -696,28 +701,28 @@ innerloop2 =
     guard (iu == 0 || ju == 0)
     setKernelConfig (Config (i, j) iu ju ku)
 
-    addLocal [$cdecl|float sum = 0.0;|]
+    addLocal [cdecl|float sum = 0.0;|]
     temp <- choose [i, j]
-    stripmine temp "k" [$cty|int|] 0 l [ku] $ \k -> do
+    stripmine temp "k" [cty|int|] 0 l [ku] $ \k -> do
         addStm $ sum += a i k * b k j
     addStm $ c i j === sum
   where
     ws = [32, 64, 128, 256, 512]
     nus = [0, 1, 3, 7, 15]
 
-    sum = [$cexp|sum|]
-    m = [$cexp|m|]
-    n = [$cexp|n|]
-    l = [$cexp|l|]
+    sum = [cexp|sum|]
+    m = [cexp|m|]
+    n = [cexp|n|]
+    l = [cexp|l|]
 
     a :: (ToExp a, ToExp b) => a -> b -> C.Exp
-    a i j = [$cexp|a[$i+lda*$j]|]
+    a i j = [cexp|a[$i+lda*$j]|]
 
     b :: (ToExp a, ToExp b) => a -> b -> C.Exp
-    b i j = [$cexp|b[$i+ldb*$j]|]
+    b i j = [cexp|b[$i+ldb*$j]|]
 
     c :: (ToExp a, ToExp b) => a -> b -> C.Exp
-    c i j = [$cexp|c[$i+ldb*$j]|]
+    c i j = [cexp|c[$i+ldb*$j]|]
 
 innerloop3 :: S ()
 innerloop3 =
@@ -737,11 +742,11 @@ innerloop3 =
 
     ix <- threadIdx i
     jx <- threadIdx j
-    addLocal [$cdecl|const int ix = $ix;|]
-    addLocal [$cdecl|const int jx = $jx;|]
+    addLocal [cdecl|const int ix = $ix;|]
+    addLocal [cdecl|const int jx = $jx;|]
 
-    let ix = [$cexp|ix|]
-    let jx = [$cexp|jx|]
+    let ix = [cexp|ix|]
+    let jx = [cexp|jx|]
     let kw = max iw jw
 
     let kw1 = case kw `mod` 16 of
@@ -751,20 +756,20 @@ innerloop3 =
                 0 -> jw + 1
                 _ -> jw
 
-    addLocal [$cdecl|__shared__ float at[$iw][$kw1];|]
-    addLocal [$cdecl|__shared__ float bt[$kw][$jw1];|]
-    addLocal [$cdecl|float sum = 0.0;|]
+    addLocal [cdecl|__shared__ float at[$iw][$kw1];|]
+    addLocal [cdecl|__shared__ float bt[$kw][$jw1];|]
+    addLocal [cdecl|float sum = 0.0;|]
 
-    for "ks" [$cty|int|] 0 l (toExp kw) [0] $ \ks -> do
-        addStm [$cstm|__syncthreads();|]
+    for "ks" [cty|int|] 0 l [cexp|$kw|] [0] $ \ks -> do
+        addStm [cstm|__syncthreads();|]
         unroll jx jw kw $ \k -> do
-            addStm $ at ix k === a i (toExp ks + toExp k)
+            addStm $ at ix k === a i [cexp|$ks + $k|]
         unroll ix iw kw $ \k -> do
-            addStm $ bt k jx === b (toExp ks + toExp k) j
-        addStm [$cstm|__syncthreads();|]
+            addStm $ bt k jx === b [cexp|$ks + $k|] j
+        addStm [cstm|__syncthreads();|]
 
-        for "k" [$cty|int|] 0 (toExp kw) 1 [0] $ \k -> do
-            addStm $ sum += at ix (toExp k) * bt (toExp k) jx
+        for "k" [cty|int|] 0 [cexp|kw|] 1 [0] $ \k -> do
+            addStm $ sum += at ix [cexp|$k|] * bt [cexp|$k|] jx
     addStm $ c i j === sum
   where
     ws = [16]
@@ -780,30 +785,30 @@ innerloop3 =
         | iw == jw  = cont i
         | otherwise = forM_ [0..n-1] $ \k ->
                       case k of
-                        0 -> cont [$cexp|$(n)*$i|]
-                        _ -> cont [$cexp|$(n)*$i+$(k)|]
+                        0 -> cont [cexp|$(n)*$i|]
+                        _ -> cont [cexp|$(n)*$i+$(k)|]
       where
         n = jw `div` iw
 
-    sum = [$cexp|sum|]
-    m = [$cexp|m|]
-    n = [$cexp|n|]
-    l = [$cexp|l|]
+    sum = [cexp|sum|]
+    m = [cexp|m|]
+    n = [cexp|n|]
+    l = [cexp|l|]
 
     a :: (ToExp a, ToExp b) => a -> b -> C.Exp
-    a i j = [$cexp|a[$i+lda*$j]|]
+    a i j = [cexp|a[$i+lda*$j]|]
 
     b :: (ToExp a, ToExp b) => a -> b -> C.Exp
-    b i j = [$cexp|b[$i+ldb*$j]|]
+    b i j = [cexp|b[$i+ldb*$j]|]
 
     c :: (ToExp a, ToExp b) => a -> b -> C.Exp
-    c i j = [$cexp|c[$i+ldb*$j]|]
+    c i j = [cexp|c[$i+ldb*$j]|]
 
     at :: (ToExp a, ToExp b) => a -> b -> C.Exp
-    at i j = [$cexp|at[$i][$j]|]
+    at i j = [cexp|at[$i][$j]|]
 
     bt :: (ToExp a, ToExp b) => a -> b -> C.Exp
-    bt i j = [$cexp|bt[$i][$j]|]
+    bt i j = [cexp|bt[$i][$j]|]
 
 -- | Add the proper statments to synchronize threads after executing an
 -- operation indexed by an @IVar@. When utilizing more threads than fit in a
@@ -813,7 +818,7 @@ syncthreads :: MonadCGen m
             => IVar -- ^ The @IVar@
             -> m ()
 syncthreads (ParIVar { ivarBlockVar = Just t })
-    | blockWidth t > 32 = addStm [$cstm|__syncthreads();|]
+    | blockWidth t > 32 = addStm [cstm|__syncthreads();|]
 syncthreads _ = return ()
 
 -- | Strip-mine a loop of the form:
@@ -845,17 +850,17 @@ stripmine s v ty from to nus cont = do
             cont ivar
     w <- ivarBlockWidth s
     t <- threadIdx s
-    acc@[$cexp|$id:arr[$id:_ + $idx]|] <- strideOneArrays v body
+    acc@[cexp|$id:arr[$id:_ + $idx]|] <- strideOneArrays v body
     addSymbol v
     addSymbol arr
     is     <- gensym (v ++ "s")
     arrbuf <- gensym (arr ++ "buf")
-    addLocal [$cdecl|__shared__ float $id:arrbuf[$int:w];|]
-    for is ty from to [$cexp|$int:w|] [0] $ \is -> do
-        addStm [$cstm|$id:arrbuf[$t] = $id:arr[$is + $t + $idx];|]
+    addLocal [cdecl|__shared__ float $id:arrbuf[$int:w];|]
+    for is ty from to [cexp|$int:w|] [0] $ \is -> do
+        addStm [cstm|$id:arrbuf[$t] = $id:arr[$is + $t + $idx];|]
         syncthreads s
-        for v ty (toExp is) [$cexp|$is + $int:w|] (fromIntegral (n+1)) [n] $ \i -> do
-            addStm $ transformBi (replace acc [$cexp|$id:arrbuf[$i-$is]|]) body
+        for v ty [cexp|$is|] [cexp|$is + $int:w|] (fromIntegral (n+1)) [n] $ \i -> do
+            addStm $ transformBi (replace acc [cexp|$id:arrbuf[$i-$is]|]) body
         syncthreads s
   where
     replace :: Eq a => a -> a -> a -> a
@@ -870,10 +875,10 @@ stripmine s v ty from to nus cont = do
                     strideOneArray i e]
       where
         strideOneArray :: String -> C.Exp -> Bool
-        strideOneArray i [$cexp|$id:_[$id:i' + $e]|]
+        strideOneArray i [cexp|$id:_[$id:i' + $e]|]
             | i' == i &&
-              toExp s `notElem` universeBi e = True
-        strideOneArray _ _                   = False
+              [cexp|$s|] `notElem` universeBi e = True
+        strideOneArray _ _                      = False
 
 type Phi = Set.Set String
 type Theta = Map.Map String C.Exp
@@ -898,13 +903,13 @@ unrollLoop i n act = do
     return x
   where
     initEnv :: Int -> Map.Map String C.Exp
-    initEnv 0 = Map.singleton i [$cexp|$id:i|]
-    initEnv n = Map.singleton i [$cexp|$id:i + $int:n|]
+    initEnv 0 = Map.singleton i [cexp|$id:i|]
+    initEnv n = Map.singleton i [cexp|$id:i + $int:n|]
 
 toBlock :: [C.Stm] -> C.Stm
 toBlock []    = error "toBlock: empty statement list"
 toBlock [stm] = stm
-toBlock stms  = [$cstm|{ $stms:stms }|]
+toBlock stms  = [cstm|{ $stms:stms }|]
 
 containsOneOf :: (Ord b, Biplate a b)
               => a
@@ -928,10 +933,10 @@ subst :: Biplate a C.Exp
 subst theta e = transformBi lookup e
   where
     lookup :: C.Exp -> C.Exp
-    lookup e@[$cexp|$id:v|] = case Map.lookup v theta of
-                                Nothing -> e
-                                Just e' -> e'
-    lookup e                = e
+    lookup e@[cexp|$id:v|] = case Map.lookup v theta of
+                               Nothing -> e
+                               Just e' -> e'
+    lookup e               = e
 
 class Unroll a b | a -> b where
     unroll :: Phi -> [Theta] -> a -> S b
@@ -990,7 +995,7 @@ instance Unroll C.Stm [C.Stm] where
             | v `Set.member` phi' = do
             addSymbol v
             vs <- replicateM (length thetas) (gensym v)
-            let thetas' = [Map.insert v [$cexp|$id:v'|] theta | (theta, v') <- thetas `zip` vs]
+            let thetas' = [Map.insert v [cexp|$id:v'|] theta | (theta, v') <- thetas `zip` vs]
             let init'   = [C.Init (C.Id v' vloc) decl label init attrs loc | v' <- vs]
             return (thetas', init')
 

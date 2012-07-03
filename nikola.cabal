@@ -3,7 +3,7 @@ version:        0.2
 cabal-version:  >= 1.8
 license:        BSD3
 license-file:   LICENSE
-copyright:      (c) 2006-2011 Harvard University
+copyright:      (c) 2006-2012 Harvard University
 author:         Geoffrey Mainland <mainland@eecs.harvard.edu>
 maintainer:     mainland@eecs.harvard.edu
 stability:      alpha
@@ -67,14 +67,14 @@ library
     syb >=0.3 && <0.4,
     symbol >=0.1 && <0.2,
     template-haskell >=2.3 && <2.6,
-    vector >=0.7 && <0.8
+    vector >=0.9 && <0.10
 
   if flag(hmatrix)
     exposed-modules:
       Nikola.Embeddable.Hmatrix
 
     build-depends:
-      hmatrix >=0.10 && <0.11
+      hmatrix >=0.14 && <0.15
 
     ghc-options: -DHMATRIX
 
@@ -87,16 +87,16 @@ library
 executable blackscholes
   build-depends:
     base >=4 && <5,
-    criterion >=0.5 && <0.6,
+    criterion >=0.6 && <0.7,
     language-c-quote >=0.3 && <0.4,
     mersenne-random-pure64 >=0.2 && <0.3,
     mtl >=2 && <3,
     nikola >=0.2 && <0.3,
     mainland-pretty >=0.1 && <0.2,
     srcloc >=0.1 && <0.2,
-    statistics >=0.9 && <0.10,
+    statistics >=0.10 && <0.11,
     symbol >=0.1 && <0.2,
-    vector >=0.7 && <0.8,
+    vector >=0.9 && <0.10,
     vector-random >=0.2 && <0.3
 
   main-is: 	   Main.hs
@@ -110,14 +110,14 @@ executable blackscholes
 executable blackscholes-compile
   build-depends:
     base >=4 && <5,
-    criterion >=0.5 && <0.6,
+    criterion >=0.6 && <0.7,
     language-c-quote >=0.3 && <0.4,
     mersenne-random-pure64 >=0.2 && <0.3,
     mtl >=2 && <3,
     nikola >=0.2 && <0.3,
     mainland-pretty >=0.1 && <0.2,
-    statistics >=0.9 && <0.10,
-    vector >=0.7 && <0.8,
+    statistics >=0.10 && <0.11,
+    vector >=0.9 && <0.10,
     vector-random >=0.2 && <0.3
 
   main-is: 	   Main.hs
@@ -131,13 +131,13 @@ executable blackscholes-compile
 executable radix
   build-depends:
     base >=4 && <5,
-    criterion >=0.5 && <0.6,
+    criterion >=0.6 && <0.7,
     mersenne-random-pure64 >=0.2 && <0.3,
     mtl >=2 && <3,
     nikola >=0.2 && <0.3,
-    statistics >=0.9 && <0.10,
-    vector >=0.7 && <0.8,
-    vector-algorithms >=0.3 && <0.5,
+    statistics >=0.10 && <0.11,
+    vector >=0.9 && <0.10,
+    vector-algorithms >=0.5 && <0.6,
     vector-random >=0.2 && <0.3
 
   main-is: 	   Main.hs
@@ -157,9 +157,11 @@ executable search
     mainland-pretty >=0.1 && <0.2,
     mtl >=2 && <3,
     nikola >=0.2 && <0.3,
-    statistics >=0.9 && <0.10,
+    srcloc >=0.1 && <0.2,
+    statistics >=0.10 && <0.11,
+    symbol >=0.1 && <0.2,
     uniplate >=1.5 && <1.7,
-    vector >=0.7 && <0.8
+    vector >=0.9 && <0.10
 
   main-is: 	   Main.hs
   hs-source-dirs:  examples/search
@@ -168,7 +170,7 @@ executable search
 
   if flag(hmatrix) && flag(examples)
     build-depends:
-      hmatrix >=0.10 && <0.11
+      hmatrix >=0.14 && <0.15
 
     buildable: True
   else

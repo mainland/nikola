@@ -1,4 +1,4 @@
--- Copyright (c) 2009-2010
+-- Copyright (c) 2009-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -52,21 +52,11 @@ import Foreign.C.Types
 
 import Nikola.Embeddable.Base ()
 import Nikola.Embeddable.Class
+import Nikola.Embeddable.Vector
 import Nikola.Exec
 import Nikola.Syntax
 
-deriving instance Typeable1 Vector
-
 deriving instance Typeable1 Matrix
-
--- | A helper function that adapts 'Data.Packed.Development.vec' to a more
--- traditional \"with\"-style interface. @f@ is passed the vector's length and a
--- 'Ptr' to its contents.
-withVector  ::  Foreign.Storable t
-            =>  Vector t
-            ->  (CInt -> Ptr t -> IO ())
-            ->  IO ()
-withVector v f = vec v $ \g -> g f
 
 -- | A helper function that adapts 'Data.Packed.Development.mat' to a more
 -- traditional \"with\"-style interface. @f@ is passed the number of rows, the
@@ -76,61 +66,6 @@ withMatrix  ::  Foreign.Storable t
             ->  (CInt -> CInt -> Ptr t -> IO ())
             ->  IO ()
 withMatrix m f = mat m $ \g -> g f
-
-instance (IsScalar a, Storable a, Foreign.Storable a, Foreign.Storable (Rep a))
-    => Embeddable (Vector a) where
-    type Rep (Vector a) = CUDevicePtr (Rep a)
-
-    embeddedType _ n =
-        vectorT tau n
-      where
-        tau = embeddedBaseType (undefined :: a)
-
-    withArg v act = do
-        CUVector n devPtr <- liftIO $ toCUVector v
-
-        pushArg (VectorArg n)
-        pushParam devPtr
-        pushParam (fromIntegral n :: CInt)
-
-        result <- act
-        liftIO $ cuMemFree devPtr
-        return result
-
-    returnResult = do
-        count :: Int         <- returnResult
-        VectorAlloc devPtr _ <- popAlloc
-        xs <- liftIO $ fromCUVector (CUVector count (castCUDevicePtr devPtr))
-        liftIO $ cuMemFree devPtr
-        return xs
-
-instance (IsScalar a, Storable a, Foreign.Storable a, Foreign.Storable (Rep a))
-    => IsVector Vector a where
-    fromList = Data.Packed.Vector.fromList
-    toList = Data.Packed.Vector.toList
-
-    fromCUVector (CUVector 0 _) =
-        createVector 0
-
-    fromCUVector (CUVector count devPtr) = do
-        v <- createVector count
-        withVector v $ \_ ptr ->
-            cuMemcpyDtoH (castCUDevicePtr devPtr) ptr byteCount
-        return v
-      where
-        byteCount = count * sizeOf (undefined :: Rep a)
-
-    toCUVector v = do
-        devPtr <- liftIO $ cuMemAlloc byteCount
-        liftIO $ withVector v $ \_ ptr ->
-                 cuMemcpyHtoD ptr devPtr byteCount
-        return (CUVector n (castCUDevicePtr devPtr))
-      where
-        n :: Int
-        n = dim v
-
-        byteCount :: Int
-        byteCount = n * sizeOf (undefined :: Rep a)
 
 instance (Element a, IsScalar a, Storable a, Foreign.Storable a)
     => Embeddable (Matrix a) where
