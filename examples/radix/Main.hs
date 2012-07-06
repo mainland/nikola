@@ -55,16 +55,15 @@ import Data.Bits (shiftL)
 import qualified Data.Vector.Algorithms.Radix as R
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as M
-import Data.Vector.Random.Mersenne
 import Statistics.Function
 import Statistics.Sample
 import System.Environment
-import System.Random.Mersenne.Pure64
 -- import Text.PrettyPrint.Mainland
 import Text.Printf
 
 import Nikola
 import Nikola.Embeddable
+import Nikola.Util
 
 main :: IO ()
 main = withNewContext $ \_ -> do
@@ -95,8 +94,7 @@ benchmarkIO :: (V.Vector Int -> IO a)
             -> Int
             -> IO a
 benchmarkIO f n = do
-    g <- liftIO newPureMT
-    let v = randoms g n
+    v <- randoms n
     f v
 
 radixNikola :: V.Vector Int

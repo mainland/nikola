@@ -44,16 +44,74 @@ module CUDA.Compile (
 import Control.Monad.State
 import qualified Data.ByteString as B
 import qualified Language.C as C
-import System.Cmd
 import System.Exit
 import Text.PrettyPrint.Mainland
+
+#if MIN_VERSION_process(1,1,0)
+import System.Process (readProcessWithExitCode)
+#else /* !MIN_VERSION_process(1,1,0) */
+import Control.Concurrent (forkIO,
+                           newEmptyMVar,
+                           putMVar,
+                           takeMVar)
+import qualified Control.Exception as E
+import System.Process (StdStream(..),
+                       proc,
+                       createProcess,
+                       waitForProcess,
+                       std_in,
+                       std_out,
+                       std_err)
+import System.IO (hClose,
+                  hFlush,
+                  hGetContents,
+                  hPutStr)
+#endif /* !MIN_VERSION_process(1,1,0) */
 
 #include "Nikola.h"
 
 compileFunction :: [C.Definition] -> IO B.ByteString
 compileFunction cdefs = do
     writeFile "temp.cu" (show (stack (map ppr cdefs)))
-    exitCode <- rawSystem nVCC ["-O", "--ptx", "temp.cu"]
+    (exitCode, out, err) <- readProcessWithExitCode nVCC ["-O", "--compiler-bindir", nVCC_CC, "--ptx", "temp.cu"] ""
     when (exitCode /= ExitSuccess) $
-        fail "nvcc failed"
+        fail $ "nvcc failed: " ++ err
     B.readFile "temp.ptx"
+
+#if !MIN_VERSION_process(1,1,0)
+readProcessWithExitCode
+    :: FilePath                 -- ^ command to run
+    -> [String]                 -- ^ any arguments
+    -> String                   -- ^ standard input
+    -> IO (ExitCode,String,String) -- ^ exitcode, stdout, stderr
+readProcessWithExitCode cmd args input = do
+    (Just inh, Just outh, Just errh, pid) <-
+        createProcess (proc cmd args){ std_in  = CreatePipe,
+                                       std_out = CreatePipe,
+                                       std_err = CreatePipe }
+
+    outMVar <- newEmptyMVar
+
+    -- fork off a thread to start consuming stdout
+    out  <- hGetContents outh
+    _ <- forkIO $ E.evaluate (length out) >> putMVar outMVar ()
+
+    -- fork off a thread to start consuming stderr
+    err  <- hGetContents errh
+    _ <- forkIO $ E.evaluate (length err) >> putMVar outMVar ()
+
+    -- now write and flush any input
+    when (not (null input)) $ do hPutStr inh input; hFlush inh
+    hClose inh -- done with stdin
+
+    -- wait on the output
+    takeMVar outMVar
+    takeMVar outMVar
+    hClose outh
+    hClose errh
+
+    -- wait on the process
+    ex <- waitForProcess pid
+
+    return (ex, out, err)
+#endif /* !MIN_VERSION_process(1,1,0) */

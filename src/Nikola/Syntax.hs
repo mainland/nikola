@@ -1,4 +1,4 @@
--- Copyright (c) 2009-2010
+-- Copyright (c) 2009-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -436,6 +436,9 @@ instance Pretty Tau where
     ppr IntT   = text "Int"
     ppr FloatT = text "Float"
 
+instance Show Tau where
+    show = show . ppr
+
 instance Pretty Rho where
     pprPrec _ (ScalarT tau) =
         ppr tau
@@ -450,8 +453,14 @@ instance Pretty Rho where
         parensIf (p > appPrec) $
         infixop 0 (infixr_ 0) (text "->") tau1 tau2
 
+instance Show Rho where
+    show = show . ppr
+
 instance Pretty Var where
     ppr (Var v) = text v
+
+instance Show Var where
+    show = show . ppr
 
 instance Pretty DExp where
     pprPrec _ (VarE v) =
@@ -610,6 +619,9 @@ instance Pretty DExp where
             pprPrec appPrec1 xs <+>
             pprPrec appPrec1 sums
 
+instance Show DExp where
+    show = show . ppr
+
 instance Pretty Unop where
     ppr Lnot    = text "not"
 
@@ -636,6 +648,9 @@ instance Pretty Unop where
     ppr Fasinh = text "asinsh"
     ppr Fatanh = text "atanh"
     ppr Facosh = text "acosh"
+
+instance Show Unop where
+    show = show . ppr
 
 instance Pretty Binop where
     ppr Land = text ".&&."
@@ -664,8 +679,5 @@ instance Pretty Binop where
     ppr Fpow     = text "**"
     ppr FlogBase = text "`logBase`"
 
-instance Show Var where
-    show = show . ppr
-
-instance Show DExp where
+instance Show Binop where
     show = show . ppr

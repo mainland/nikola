@@ -1,3 +1,8 @@
 nVCC :: String
 nVCC = "@NVCC@"
 
+nVCC_VERSION :: String
+nVCC_VERSION = "@NVCC_VERSION@"
+
+nVCC_CC :: String
+nVCC_CC = "@NVCC_CC@"

@@ -53,7 +53,6 @@ import Criterion.Main
 import Criterion.Monad
 import qualified Data.Vector.Generic as G
 import qualified Data.Vector.Storable as V
-import Data.Vector.Random.Mersenne
 import qualified Data.Vector.Fusion.Stream         as Stream
 import qualified Data.Vector.Fusion.Stream.Monadic as S
 import qualified Data.Vector.Fusion.Stream.Size    as S
@@ -61,13 +60,13 @@ import Data.Vector.Fusion.Util
 import Statistics.Function
 import Statistics.Sample
 import System.Environment
-import System.Random.Mersenne.Pure64
 -- import Text.PrettyPrint.Mainland
 import Text.Printf
 
 import Nikola
 import qualified Nikola.Syntax
 import qualified Nikola.ToC
+import Nikola.Util
 
 import qualified BlackScholes.CUDA as BSC
 import qualified BlackScholes.Nikola as BSN
@@ -134,12 +133,9 @@ benchmarkBlackScholesIO :: (   V.Vector Float
                          -> Int
                          -> IO (V.Vector Float)
 benchmarkBlackScholesIO f n = do
-    g <- liftIO newPureMT
-    let ss = randomsRange g 5.0 30.0 n :: V.Vector Float
-    g <- liftIO newPureMT
-    let xs = randomsRange g 1.0 100.0 n :: V.Vector Float
-    g <- liftIO newPureMT
-    let ts = randomsRange g 0.25 10.0 n :: V.Vector Float
+    ss <- randomsRange n (5.0, 30.0)
+    xs <- randomsRange n (1.0, 100.0)
+    ts <- randomsRange n (0.25, 10.0)
     f ss xs ts
 
 blackscholesCUDA :: V.Vector Float
@@ -215,27 +211,3 @@ blackscholesVector :: V.Vector Float
                    -> V.Vector Float
 blackscholesVector ss xs ts =
     V.zipWith3 (\s x t -> BSV.blackscholes True s x t rISKFREE vOLATILITY) ss xs ts
-
-randomsRange :: forall a v . (RealFloat a, PureMTRandom a, G.Vector v a)
-             => PureMT
-             -> a
-             -> a
-             -> Int
-             -> v a
-randomsRange g hi lo n =
-    G.unstream (randomS g n)
-  where
-    scale :: Int -> a
-    scale x = (1.0 - t) * lo + t * hi
-      where
-        t :: a
-        t = fromIntegral x / fromIntegral (maxBound :: Int)
-
-    randomS :: PureMT -> Int -> Stream.Stream a
-    {-# INLINE [1] randomS #-}
-    randomS g n = S.Stream (return . step) (n, g) (S.Exact (delay_inline max n 0))
-      where
-        {-# INLINE [0] step #-}
-        step (i,g) | i <= 0    = S.Done
-                   | otherwise = g `seq` case random g of
-                                    (r, g') -> S.Yield (scale r) (i-1, g')
