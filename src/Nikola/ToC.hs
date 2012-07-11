@@ -496,7 +496,7 @@ getDevAllocs = gets cdevAllocs
 baseTypeToC :: Tau -> C.Type
 baseTypeToC UnitT  = [cty|void|]
 baseTypeToC BoolT  = [cty|unsigned char|]
-baseTypeToC IntT   = [cty|long long|]
+baseTypeToC IntT   = [cty|int|]
 baseTypeToC FloatT = [cty|float|]
 
 -- | Translate a type to its C equivalent
@@ -574,7 +574,7 @@ allocTemp (VectorT tau n) = do
     vn <- gensym "tempn"
     addDevAlloc DevAlloc  {  devAllocVar    = v
                           ,  devAllocParams = [ [cparam|$ty:cty* $id:v|],
-                                                [cparam|long long* $id:vn|] ]
+                                                [cparam|int* $id:vn|] ]
                           ,  devAllocType   = VectorT tau n
                           }
     return $ VectorCExp [cexp|$id:v|] [cexp|*$id:vn|]

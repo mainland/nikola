@@ -25,6 +25,8 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Nikola (
     module Nikola.Compile,
     module Nikola.Exec,
@@ -35,8 +37,15 @@ module Nikola (
 
     CUVector(..),
     unsafeWithNewVector,
-    unsafeFreeVector
+    unsafeFreeVector,
+
+    withNewContext
  ) where
+
+import Prelude hiding (catch)
+
+import Control.Exception
+import qualified Foreign.CUDA.Driver as CU
 
 import Nikola.Compile
 import Nikola.Embeddable
@@ -45,3 +54,15 @@ import Nikola.Reify
 import Nikola.Smart
 import Nikola.Syntax
 import Nikola.ToC
+
+withNewContext :: (CU.Context -> IO a) -> IO a
+withNewContext kont = do
+    CU.initialise []
+    ndevs <- CU.count
+    bracket (ctxCreate 0 ndevs) CU.destroy kont
+  where
+    ctxCreate :: Int -> Int -> IO CU.Context
+    ctxCreate i n | i >= n = CU.cudaError "Can't create a context"
+    ctxCreate i n =
+        (CU.device i >>= \dev -> CU.create dev [])
+      `catch` \(_ :: CU.CUDAException) -> ctxCreate (i+1) n

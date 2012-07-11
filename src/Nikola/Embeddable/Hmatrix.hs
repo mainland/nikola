@@ -39,15 +39,13 @@ module Nikola.Embeddable.Hmatrix (
     Embeddable
   ) where
 
-import CUDA.Internal
-import CUDA.Storable
 import Control.Monad.Trans (liftIO)
 import Data.Packed.Development
 import Data.Packed.Matrix
 import Data.Typeable
-import Foreign hiding (Storable(..))
-import qualified Foreign
+import Foreign
 import Foreign.C.Types
+import qualified Foreign.CUDA.Driver as CU
 
 import Nikola.Embeddable.Base ()
 import Nikola.Embeddable.Class
@@ -59,15 +57,15 @@ deriving instance Typeable1 Matrix
 -- | A helper function that adapts 'Data.Packed.Development.mat' to a more
 -- traditional \"with\"-style interface. @f@ is passed the number of rows, the
 -- number of columns, and a 'Ptr' to the matrix contents.
-withMatrix  ::  Foreign.Storable t
+withMatrix  ::  Storable t
             =>  Matrix t
             ->  (CInt -> CInt -> Ptr t -> IO ())
             ->  IO ()
 withMatrix m f = mat m $ \g -> g f
 
-instance (Element a, IsScalar a, Storable a, Foreign.Storable a)
+instance (Element a, IsScalar a, Storable a)
     => Embeddable (Matrix a) where
-    type Rep (Matrix a) = CUDevicePtr (Rep a)
+    type Rep (Matrix a) = CU.DevicePtr (Rep a)
 
     embeddedType _ n =
         matrixT tau n n n
@@ -75,34 +73,28 @@ instance (Element a, IsScalar a, Storable a, Foreign.Storable a)
         tau = embeddedBaseType (undefined :: a)
 
     withArg m act = do
-        devPtr <- liftIO $ cuMemAlloc byteCount
+        devPtr <- liftIO $ CU.mallocArray n
         liftIO $ withMatrix (fmat m) $ \_ _ ptr ->
-                 cuMemcpyHtoD ptr devPtr byteCount
+                 CU.pokeArray n ptr devPtr
 
-        pushArg (MatrixArg r r c)
-        pushParam devPtr
-        pushParam (fromIntegral r :: CInt)
-        pushParam (fromIntegral r :: CInt)
-        pushParam (fromIntegral c :: CInt)
+        pushArg (MatrixArg r r c (CU.castDevPtr devPtr))
 
         result <- act
-        liftIO $ cuMemFree devPtr
+        liftIO $ CU.free devPtr
         return result
       where
-        r, c :: Int
+        r, c, n :: Int
         r = rows m
         c = cols m
-
-        byteCount :: Int
-        byteCount = r * c * sizeOf (undefined :: a)
+        n = r * c
 
     returnResult = do
-        MatrixAlloc devPtr _ r c <- popAlloc
-        r <- evalN r
-        c <- evalN c
-        let byteCount = r * c * sizeOf (undefined :: a)
+        MatrixAlloc _ r c devPtr <- popAlloc
+        r      <-  evalN r
+        c      <-  evalN c
+        let n  =   r * c
         liftIO $ do  m <- createMatrix ColumnMajor r c
                      withMatrix m $ \_ _ ptr ->
-                         cuMemcpyDtoH (castCUDevicePtr devPtr) ptr byteCount
-                     cuMemFree devPtr
+                         CU.peekArray n (CU.castDevPtr devPtr) ptr
+                     CU.free devPtr
                      return m

@@ -48,13 +48,12 @@ module Nikola.Compile (
 
 import Prelude hiding (map, zipWith)
 
-import CUDA.Compile
-import CUDA.Internal
-import CUDA.Module
 import Control.Applicative
+import Control.Exception
 import Control.Monad.Trans (MonadIO(..))
 import qualified Data.ByteString.Char8 as B
 import Data.Data
+import qualified Foreign.CUDA.Driver as CU
 import qualified Language.Haskell.TH as TH
 import Language.Haskell.TH hiding (Exp, reify)
 import Language.Haskell.TH.Syntax hiding (Exp, reify)
@@ -62,9 +61,14 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import Nikola.Embeddable
 import Nikola.Exec
+import Nikola.Nvcc
 import Nikola.Reify
 import Nikola.Syntax (Exp)
 import Nikola.ToC
+
+withModuleFromByteString :: B.ByteString -> (CU.Module -> IO a) -> IO a
+withModuleFromByteString bs =
+    bracket (CU.loadData bs) CU.unload
 
 withRawCompiledCFun  :: CFun a
                      -> (ExState -> IO b)
@@ -72,7 +76,7 @@ withRawCompiledCFun  :: CFun a
 withRawCompiledCFun cfun act = do
     bs <- compileFunction (cfunDefs cfun)
     withModuleFromByteString bs $ \mod -> do
-    cudaFun <- cuModuleGetFunction mod (cfunName cfun)
+    cudaFun <- CU.getFun mod (cfunName cfun)
     act emptyExState { exFun    = cudaFun
                      , exLaunch = cfunLaunch cfun
                      }
@@ -105,7 +109,6 @@ cfunLaunch :: CFun a -> Ex b -> Ex b
 cfunLaunch cfun comp = do
     mapM_ alloc (cfunAllocs cfun)
     (dimX, dimY, dimZ, gridW, gridH) <- configToLaunchParams (cfunExecConfig cfun)
-    -- liftIO $ print (dimX, dimY, dimZ, gridW, gridH)
     defaultLaunch dimX dimY dimZ gridW gridH comp
 
 class Callable a b | a -> b where
@@ -238,17 +241,17 @@ instance (Embeddable a, ReifiableFun (Exp a) (b -> c), CompilablePure b c d) =>
 reifyCompileAndLoad :: ReifiableFun a b
                     => ROpts
                     -> (a -> b)
-                    -> IO (CUModule, ExState)
+                    -> IO (CU.Module, ExState)
 reifyCompileAndLoad ropts f =
     reify' ropts f >>= compileTopFun fname >>= compileAndLoad
   where
     fname = "f"
 
 compileAndLoad :: CFun a
-               -> IO (CUModule, ExState)
+               -> IO (CU.Module, ExState)
 compileAndLoad cfun = do
-    mod     <- compileFunction (cfunDefs cfun) >>= cuModuleLoadData
-    cudaFun <- cuModuleGetFunction mod (cfunName cfun)
+    mod     <- compileFunction (cfunDefs cfun) >>= CU.loadData
+    cudaFun <- CU.getFun mod (cfunName cfun)
     let sigma = emptyExState { exFun    = cudaFun
                              , exLaunch = cfunLaunch cfun
                              }
@@ -273,9 +276,9 @@ instance (Embeddable a, Embeddable b) =>
     compilekPureTH sigma args = QExp [|\x ->
         unsafePerformIO $
         flip evalEx (unF $(unQExp sigma)) $
-        $(unQExp args) $
-        withArg x $
-        launchKernel $
+        $(unQExp args) $ do
+        withArg x $ do
+        launchKernel $ do
         returnResult|]
 
 instance (Embeddable a, Embeddable b) =>
@@ -287,9 +290,9 @@ instance (Embeddable a, Embeddable b) =>
 
     compilekPureTH sigma args = QExp [|\x ->
         flip evalEx (unF $(unQExp sigma)) $
-        $(unQExp args) $
-        withArg x $
-        launchKernel $
+        $(unQExp args) $ do
+        withArg x $ do
+        launchKernel $ do
         returnResult|]
 
 instance (Embeddable a, ReifiableFun (Exp a) (b -> c), CompilablePureTH b c d) =>
@@ -335,8 +338,8 @@ compileAndLoadTH :: CFun a
                  -> ExpQ
 compileAndLoadTH cfun = do
     bs <- liftIO $ compileFunction (cfunDefs cfun)
-    [|do { mod     <- cuModuleLoadData (B.pack $(stringE (B.unpack bs)))
-         ; cudaFun <- cuModuleGetFunction mod $(lift (cfunName cfun))
+    [|do { mod     <- CU.loadData (B.pack $(stringE (B.unpack bs)))
+         ; cudaFun <- CU.getFun mod $(lift (cfunName cfun))
          ; let sigma = emptyExState { exFun    = cudaFun
                                     , exLaunch = $(cfunLaunchTH cfun)
                                     }

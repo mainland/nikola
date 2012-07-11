@@ -44,8 +44,6 @@ import Prelude hiding (catch)
 
 import CGen
 
-import CUDA.Context
-import CUDA.Internal
 import Control.Applicative
 import Control.Exception
 import Control.Monad.Logic
@@ -54,6 +52,7 @@ import Data.Generics.Uniplate.Data
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Vector as Vector
+import qualified Foreign.CUDA.Driver as CU
 import Language.C.Quote.CUDA
 import Language.C.Smart
 import qualified Language.C.Syntax as C
@@ -335,7 +334,7 @@ class (Functor m, MonadIO m, MonadPlus m) => MonadConfig m where
                        (configA s)
                        (configB s)
                        (configC s)
-                 `catch` \(e :: CUException) -> print e >> return Nothing
+                 `catch` \(e :: CU.CUDAException) -> print e >> return Nothing
       where
         check :: Int
               -> Matrix Float

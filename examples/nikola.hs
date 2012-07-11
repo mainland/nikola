@@ -37,7 +37,6 @@ module Main where
 import Prelude hiding (map, zipWith)
 import qualified Prelude as P
 
-import CUDA.Context
 import Control.Monad.Trans
 import Data.Packed.Vector
 import Text.PrettyPrint.Mainland

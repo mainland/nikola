@@ -51,13 +51,11 @@ module Nikola.Syntax (
     MonadUniqueVar(..),
     MonadStableExp(..),
 
-    sizeOfTau,
     vectorT,
     matrixT,
     freeVars
 ) where
 
-import CUDA.Storable
 import Control.Monad.State
 import Data.Generics (Data, Typeable)
 import qualified Data.Set as Set
@@ -156,13 +154,6 @@ data Rho = ScalarT Tau
          | MatrixT Tau N N N
          | FunT [Rho] Rho
   deriving (Eq, Ord, Data, Typeable)
-
--- | Size of base type on GPU
-sizeOfTau :: Tau -> Int
-sizeOfTau UnitT  = 0
-sizeOfTau BoolT  = sizeOf (undefined :: Bool)
-sizeOfTau IntT   = sizeOf (undefined :: Int)
-sizeOfTau FloatT = sizeOf (undefined :: Float)
 
 vectorT :: Tau -> Int -> Rho
 vectorT tau n = VectorT tau (NVecLength n)

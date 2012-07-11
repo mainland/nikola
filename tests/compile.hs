@@ -12,7 +12,6 @@ import Prelude hiding (map,
                        zipWith)
 import qualified Prelude as P
 
-import CUDA.Context
 import Control.Monad
 import Data.Packed.Matrix
 import Data.Packed.Vector

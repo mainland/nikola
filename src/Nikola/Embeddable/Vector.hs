@@ -40,22 +40,19 @@ module Nikola.Embeddable.Vector (
     IsVector
   ) where
 
-import CUDA.Internal
-import CUDA.Storable
 import Control.Monad.Trans (liftIO)
 import qualified Data.Vector.Storable as V
-import Foreign hiding (Storable(..))
-import qualified Foreign
-import Foreign.C.Types
+import Foreign
+import qualified Foreign.CUDA.Driver as CU
 
 import Nikola.Embeddable.Base ()
 import Nikola.Embeddable.Class
 import Nikola.Exec
 import Nikola.Syntax
 
-instance (IsScalar a, Storable a, Foreign.Storable a, Foreign.Storable (Rep a))
+instance (IsScalar a, Storable a, Storable (Rep a))
     => Embeddable (V.Vector a) where
-    type Rep (V.Vector a) = CUDevicePtr (Rep a)
+    type Rep (V.Vector a) = CU.DevicePtr (Rep a)
 
     embeddedType _ n =
         vectorT tau n
@@ -65,22 +62,20 @@ instance (IsScalar a, Storable a, Foreign.Storable a, Foreign.Storable (Rep a))
     withArg v act = do
         CUVector n devPtr <- liftIO $ toCUVector v
 
-        pushArg (VectorArg n)
-        pushParam devPtr
-        pushParam (fromIntegral n :: CInt)
+        pushArg (VectorArg n (CU.castDevPtr devPtr))
 
         result <- act
-        liftIO $ cuMemFree devPtr
+        liftIO $ CU.free devPtr
         return result
 
     returnResult = do
         count :: Int         <- returnResult
-        VectorAlloc devPtr _ <- popAlloc
-        xs <- liftIO $ fromCUVector (CUVector count (castCUDevicePtr devPtr))
-        liftIO $ cuMemFree devPtr
+        VectorAlloc _ devPtr <- popAlloc
+        xs <- liftIO $ fromCUVector (CUVector count (CU.castDevPtr devPtr))
+        liftIO $ CU.free devPtr
         return xs
 
-instance (IsScalar a, Storable a, Foreign.Storable a, Foreign.Storable (Rep a))
+instance (IsScalar a, Storable a, Storable (Rep a))
     => IsVector V.Vector a where
     fromList = V.fromList
     toList = V.toList
@@ -89,21 +84,16 @@ instance (IsScalar a, Storable a, Foreign.Storable a, Foreign.Storable (Rep a))
         return V.empty
 
     fromCUVector (CUVector count devPtr) = do
-        fptr <- mallocForeignPtrBytes byteCount
+        fptr <- mallocForeignPtrArray count
         withForeignPtr fptr $ \ptr ->
-            cuMemcpyDtoH (castCUDevicePtr devPtr) ptr byteCount
+            CU.peekArray count (CU.castDevPtr devPtr) ptr
         return $ V.unsafeFromForeignPtr fptr 0 count
-      where
-        byteCount = count * sizeOf (undefined :: Rep a)
 
     toCUVector v = do
-        devPtr <- liftIO $ cuMemAlloc byteCount
+        devPtr <- liftIO $ CU.mallocArray n
         liftIO $ V.unsafeWith v $ \ptr ->
-                 cuMemcpyHtoD ptr devPtr byteCount
-        return (CUVector n (castCUDevicePtr devPtr))
+                 CU.pokeArray n ptr devPtr
+        return (CUVector n (CU.castDevPtr devPtr))
       where
         n :: Int
         n = V.length v
-
-        byteCount :: Int
-        byteCount = n * sizeOf (undefined :: Rep a)

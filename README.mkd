@@ -12,9 +12,7 @@ cabal configure \
       --disable-library-profiling \
       --flags="hmatrix tests examples benchmarks" \
       --configure-option="--with-nvcc=/usr/local/cuda/4.2/cuda/bin/nvcc" \
-      --configure-option="--with-nvcc-cc=/usr/bin/gcc-4.5" \
-      --configure-option="--with-cuda-includes=/usr/local/cuda/4.2/cuda/include" \
-      --configure-option="--with-cuda-libraries=/usr/local/cuda/4.2/cuda/lib64"
+      --configure-option="--with-nvcc-cc=/usr/bin/gcc-4.5"
 ```
 
 * Running the benchmarks

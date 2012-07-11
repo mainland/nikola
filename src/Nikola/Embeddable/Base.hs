@@ -38,13 +38,10 @@ module Nikola.Embeddable.Base (
     Embeddable
   ) where
 
-import CUDA.Internal
-import CUDA.Storable
 import Control.Monad (liftM)
 import Control.Monad.Trans (liftIO)
-import Foreign hiding (Storable(..))
-import Foreign (peek)
-import qualified Foreign
+import qualified Foreign.CUDA.Driver as CU
+import Foreign
 import Foreign.C.Types
 
 import Nikola.Syntax
@@ -52,12 +49,12 @@ import Nikola.Exec
 import Nikola.Embeddable.Class
 
 instance Embeddable () where
-    type Rep () = CLLong
+    type Rep () = CInt
 
     embeddedType _ _ = ScalarT UnitT
 
     withArg _ act = do
-        pushArg (ScalarArg)
+        pushArg (IntArg 0)
         act
 
     returnResult =
@@ -70,24 +67,21 @@ instance IsScalar () where
     embeddedBaseType _ = UnitT
 
 instance Embeddable Int where
-    type Rep Int = CLLong
+    type Rep Int = CInt
 
     embeddedType _ _ = ScalarT IntT
 
     withArg n act = do
-        pushArg (ScalarArg)
-        pushParam n
+        pushArg (IntArg n)
         act
 
     returnResult = do
-        devPtr :: CUDevicePtr CLLong <- liftM (castCUDevicePtr . allocPtr) $ popAlloc
-        x <- liftIO $ allocaBytes count $ \hostPtr -> do
-             cuMemcpyDtoH devPtr hostPtr count
+        devPtr :: CU.DevicePtr (Rep Int) <- liftM (CU.castDevPtr . allocPtr) $ popAlloc
+        x <- liftIO $ alloca $ \hostPtr -> do
+             CU.peekArray 1 devPtr hostPtr
              peek hostPtr
-        liftIO $ cuMemFree devPtr
+        liftIO $ CU.free devPtr
         return (fromIntegral x)
-      where
-        count = sizeOf (undefined :: CLLong)
 
 instance IsScalar Int where
     toRep = fromIntegral
@@ -101,19 +95,16 @@ instance Embeddable Float where
     embeddedType _ _ = ScalarT FloatT
 
     withArg n act = do
-        pushArg ScalarArg
-        pushParam n
+        pushArg (FloatArg n)
         act
 
     returnResult = do
-        devPtr :: CUDevicePtr CFloat <- liftM (castCUDevicePtr . allocPtr) $ popAlloc
-        x <- liftIO $ allocaBytes count $ \hostPtr -> do
-             cuMemcpyDtoH devPtr hostPtr count
+        devPtr :: CU.DevicePtr Float <- liftM (CU.castDevPtr . allocPtr) $ popAlloc
+        x <- liftIO $ alloca $ \hostPtr -> do
+             CU.peekArray 1 devPtr hostPtr
              peek hostPtr
-        liftIO $ cuMemFree devPtr
+        liftIO $ CU.free devPtr
         return (realToFrac x)
-      where
-        count = sizeOf (undefined :: Float)
 
 instance IsScalar Float where
     toRep = realToFrac
@@ -123,7 +114,7 @@ instance IsScalar Float where
 
 instance (IsScalar a, Storable a, Foreign.Storable (Rep a))
     => Embeddable [a] where
-    type Rep [a] = CUDevicePtr (Rep a)
+    type Rep [a] = CU.DevicePtr (Rep a)
 
     embeddedType _ n =
         vectorT tau n
@@ -132,20 +123,17 @@ instance (IsScalar a, Storable a, Foreign.Storable (Rep a))
 
     withArg xs act = do
         CUVector n devPtr <- liftIO $ toCUVector xs
-
-        pushArg (VectorArg n)
-        pushParam devPtr
-        pushParam (fromIntegral n :: CInt)
+        pushArg (VectorArg n (CU.castDevPtr devPtr))
 
         result <- act
-        liftIO $ cuMemFree devPtr
+        liftIO $ CU.free devPtr
         return result
 
     returnResult = do
-        count :: Int         <- returnResult
-        VectorAlloc devPtr _ <- popAlloc
-        xs <- liftIO $ fromCUVector (CUVector count (castCUDevicePtr devPtr))
-        liftIO $ cuMemFree devPtr
+        count :: Int          <- returnResult
+        VectorAlloc _ devPtr  <- popAlloc
+        xs <- liftIO $ fromCUVector (CUVector count (CU.castDevPtr devPtr))
+        liftIO $ CU.free devPtr
         return xs
 
 instance (IsScalar a, Storable a, Foreign.Storable (Rep a))
@@ -157,30 +145,24 @@ instance (IsScalar a, Storable a, Foreign.Storable (Rep a))
         return []
 
     fromCUVector (CUVector count devPtr) = do
-        xs <- allocaBytes byteCount $ \(ptr :: Ptr (Rep a)) -> do
-              cuMemcpyDtoH (castCUDevicePtr devPtr) ptr byteCount
+        xs <- allocaArray count $ \(ptr :: Ptr (Rep a)) -> do
+              CU.peekArray count (CU.castDevPtr devPtr) ptr
               peekArray count ptr
         return (map fromRep xs)
-      where
-        byteCount = count * sizeOf (undefined :: Rep a)
 
     toCUVector xs = do
-        devPtr <- liftIO $ cuMemAlloc byteCount
-        allocaBytes byteCount $ \(ptr :: Ptr (Rep a)) -> do
+        devPtr <- liftIO $ CU.mallocArray count
+        allocaArray count $ \(ptr :: Ptr (Rep a)) -> do
             pokeArray ptr (map toRep xs)
-            cuMemcpyHtoD ptr devPtr byteCount
+            CU.pokeArray count ptr devPtr
         return (CUVector count devPtr)
       where
         count :: Int
         count = length xs
 
-        byteCount :: Int
-        byteCount = count * sizeOf (undefined :: Rep a)
-
-
 instance (IsScalar a, Storable a, Foreign.Storable (Rep a))
     => Embeddable (CUVector a) where
-    type Rep (CUVector a) = CUDevicePtr (Rep a)
+    type Rep (CUVector a) = CU.DevicePtr (Rep a)
 
     embeddedType _ n =
         vectorT tau n
@@ -188,16 +170,13 @@ instance (IsScalar a, Storable a, Foreign.Storable (Rep a))
         tau = embeddedBaseType (undefined :: a)
 
     withArg (CUVector n devPtr) act = do
-        pushArg (VectorArg n)
-        pushParam devPtr
-        pushParam (fromIntegral n :: CInt)
-
+        pushArg (VectorArg n (CU.castDevPtr devPtr))
         act
 
     returnResult = do
         count :: Int         <- returnResult
-        VectorAlloc devPtr _ <- popAlloc
-        return $ CUVector count (castCUDevicePtr devPtr)
+        VectorAlloc _ devPtr <- popAlloc
+        return $ CUVector count (CU.castDevPtr devPtr)
 
 instance (IsScalar a, Storable a, Foreign.Storable (Rep a))
     => IsVector CUVector a where

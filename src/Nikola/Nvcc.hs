@@ -37,7 +37,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module CUDA.Compile (
+module Nikola.Nvcc (
     compileFunction
   ) where
 
@@ -73,9 +73,24 @@ import System.IO (hClose,
 compileFunction :: [C.Definition] -> IO B.ByteString
 compileFunction cdefs = do
     writeFile "temp.cu" (show (stack (map ppr cdefs)))
-    (exitCode, _, err) <- readProcessWithExitCode NVCC ["-O", "--compiler-bindir", NVCC_CC, "--ptx", "temp.cu"] ""
+
+    (exitCode, _, err) <- readProcessWithExitCode NVCC
+        ["-O", "--compiler-bindir", NVCC_CC, "--ptx", "temp.cu"]
+        ""
+{-
+    (exitCode, _, err) <- readProcessWithExitCode NVCC
+        ["--compiler-bindir", NVCC_CC,
+         "-O",
+         "--fatbin",
+         "-gencode", "arch=compute_10,code=sm_10",
+         "-gencode", "arch=compute_20,code=sm_20",
+         "temp.cu"]
+        ""
+-}
+
     when (exitCode /= ExitSuccess) $
         fail $ "nvcc failed: " ++ err
+--    B.readFile "temp.fatbin"
     B.readFile "temp.ptx"
 
 #if !MIN_VERSION_process(1,1,0)

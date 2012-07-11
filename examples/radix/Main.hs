@@ -42,7 +42,6 @@ module Main where
 
 import Prelude hiding (map, mapM, zipWith, zipWith3)
 
-import CUDA.Context
 import Control.Monad (forM_)
 import Control.Monad.Trans (liftIO)
 import Criterion

@@ -45,16 +45,16 @@ module Nikola.Embeddable.Class (
     IsMatrix(..)
   ) where
 
-import CUDA.Internal
-import CUDA.Storable
 import Control.Applicative
 import Control.Exception
 import Data.Typeable
+import qualified Foreign.CUDA.Driver as CU
+import Foreign (Storable)
 
 import Nikola.Exec
 import Nikola.Syntax
 
-data CUVector a = CUVector !Int !(CUDevicePtr (Rep a))
+data CUVector a = CUVector !Int !(CU.DevicePtr (Rep a))
   deriving (Typeable)
 
 unsafeWithNewVector :: forall a b . Storable (Rep a)
@@ -64,14 +64,13 @@ unsafeWithNewVector :: forall a b . Storable (Rep a)
 unsafeWithNewVector n =
     bracket alloc free
   where
-    alloc = CUVector n <$> cuMemAlloc bytes
-    bytes = n * sizeOf (undefined :: Rep a)
+    alloc = CUVector n <$> CU.mallocArray n
 
-    free (CUVector _ ptr) = cuMemFree ptr
+    free (CUVector _ ptr) = CU.free ptr
 
 unsafeFreeVector :: CUVector a -> IO ()
 unsafeFreeVector (CUVector _ devPtr) =
-    cuMemFree devPtr
+    CU.free devPtr
 
 -- | A type that can be used in a GPU embedding.
 class (Typeable a, Storable (Rep a)) => Embeddable a where

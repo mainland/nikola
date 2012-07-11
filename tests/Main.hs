@@ -16,7 +16,6 @@ import qualified Data.Symbol
 import qualified Language.C.Syntax
 #endif /* !MIN_VERSION_template_haskell(2,7,0) */
 
-import CUDA.Context
 import Nikola
 import Nikola.Embeddable
 
@@ -32,7 +31,7 @@ test = do
     g = compile f2
 
     v :: Vector Float
-    v = fromList [0..32]
+    v = fromList [0..10]
 
 f :: Exp (Vector Float) -> Exp (Vector Float)
 f = map inc
@@ -64,7 +63,7 @@ __device__ float f0(float x2)
     v4 = x2 + 1.0F;
     return v4;
 }
-extern "C" __global__ void f2(float* x0, int x0n, float* temp, long long* tempn)
+extern "C" __global__ void f2(float* x0, int x0n, float* temp, int* tempn)
 {
     for (int i = (blockIdx.x + blockIdx.y * gridDim.x) * 128 + threadIdx.x; i <
          x0n; i += 128 * 240) {

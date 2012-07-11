@@ -9,10 +9,10 @@ ALEX_ARGS=-gi
 SOURCE = $(shell find src -type f)
 
 GHC_FLAGS += -W -Werror \
+	-O \
 	-isrc -idist/build \
 	-Iinclude -Idist/build \
 	-DHMATRIX \
-	-lcuda \
 	-optP-include -optPdist/build/autogen/cabal_macros.h
 
 GHC_FLAGS += \

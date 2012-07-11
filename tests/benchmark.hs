@@ -12,7 +12,6 @@ module Main where
 import Prelude hiding (map)
 import qualified Prelude as P
 
-import CUDA.Context
 import Control.Monad
 import Criterion.Config
 import Criterion.Main

@@ -8,7 +8,6 @@
 
 module Main where
 
-import CUDA.Context
 import Control.Monad
 import Data.Array.Vector
 import Data.Packed.Matrix
