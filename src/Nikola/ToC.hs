@@ -1,4 +1,4 @@
--- Copyright (c) 2009-2010
+-- Copyright (c) 2009-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -25,6 +25,7 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -46,16 +47,19 @@ import Control.Applicative
 import Control.Monad.Exception
 import Control.Monad.State
 import Data.Generics (Data, Typeable)
-import Data.Loc
 import qualified Data.Map as Map
 import Data.Maybe (fromJust)
 import Data.List (find, foldl')
 import qualified Data.Set as Set
-import qualified Data.Symbol
 import Language.C.Quote.CUDA
 import qualified Language.C.Syntax as C
-import qualified Language.C.Syntax
 import Text.PrettyPrint.Mainland hiding (nest)
+
+#if !MIN_VERSION_template_haskell(2,7,0)
+import qualified Data.Loc
+import qualified Data.Symbol
+import qualified Language.C.Syntax
+#endif /* !MIN_VERSION_template_haskell(2,7,0) */
 
 import Nikola.CGen
 import Nikola.Check
@@ -662,7 +666,6 @@ parfor ctx v n cont = do
   where
     gridParfor :: GridVar -> String -> C.Exp -> C.Stm -> C ()
     gridParfor g v n body = do
-        vs <- gensym (v ++ "s")
         addStm [cstm|for (int $id:v = $g; $id:v < $n; $id:v += $(blockWidth (gridBlockVar g))*$gridWidth) {
                           if ($id:v < $n) $stm:body
                       }|]

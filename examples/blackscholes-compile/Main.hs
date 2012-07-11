@@ -49,6 +49,6 @@ import qualified BlackScholes.Nikola as BSN
 
 main :: IO ()
 main = do
-    cfun <- liftIO $ reify defaultROpts BSN.blackscholes >>= compileTopFun "blackscholes"
+    cfun <- liftIO $ reify BSN.blackscholes >>= compileTopFun "blackscholes"
     print $ stack (map ppr (cfunDefs cfun))
     print (cfunExecConfig cfun)

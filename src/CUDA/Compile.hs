@@ -1,4 +1,4 @@
--- Copyright (c) 2009-2010
+-- Copyright (c) 2009-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -73,7 +73,7 @@ import System.IO (hClose,
 compileFunction :: [C.Definition] -> IO B.ByteString
 compileFunction cdefs = do
     writeFile "temp.cu" (show (stack (map ppr cdefs)))
-    (exitCode, out, err) <- readProcessWithExitCode nVCC ["-O", "--compiler-bindir", nVCC_CC, "--ptx", "temp.cu"] ""
+    (exitCode, _, err) <- readProcessWithExitCode NVCC ["-O", "--compiler-bindir", NVCC_CC, "--ptx", "temp.cu"] ""
     when (exitCode /= ExitSuccess) $
         fail $ "nvcc failed: " ++ err
     B.readFile "temp.ptx"

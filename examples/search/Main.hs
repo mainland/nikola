@@ -72,6 +72,7 @@ import qualified Language.C.Syntax
 #endif /* !MIN_VERSION_template_haskell(2,7,0) */
 
 import Nikola hiding (map)
+import Nikola.Embeddable.Hmatrix ()
 
 data GridVar = GridVar { gridDimIdx :: Int
                        , gridStrips :: Int

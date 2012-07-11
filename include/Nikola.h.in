@@ -1,8 +1,3 @@
-nVCC :: String
-nVCC = "@NVCC@"
-
-nVCC_VERSION :: String
-nVCC_VERSION = "@NVCC_VERSION@"
-
-nVCC_CC :: String
-nVCC_CC = "@NVCC_CC@"
+#define NVCC "@NVCC@"
+#define NVCC_VERSION "@NVCC_VERSION@"
+#define NVCC_CC "@NVCC_CC@"

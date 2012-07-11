@@ -1,4 +1,4 @@
--- Copyright (c) 2009-2010
+-- Copyright (c) 2009-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -40,7 +40,6 @@ module CUDA.Storable (
     Storable(..)
   ) where
 
-import Control.Monad.State
 import Foreign hiding (Storable(..))
 import qualified Foreign
 import Foreign.C.Types

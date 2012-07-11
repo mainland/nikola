@@ -1,4 +1,4 @@
--- Copyright (c) 2009
+-- Copyright (c) 2009-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -35,7 +35,6 @@ import Control.Applicative
 import Control.Exception
 import Control.Monad (liftM)
 import Data.ByteString
-import Data.ByteString.Internal
 import Data.ByteString.Unsafe
 import Data.Typeable
 import Foreign

@@ -1,15 +1,19 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE QuasiQuotes #-}
 
 module BlackScholes.CUDA (
     blackscholes
   ) where
 
-import qualified Data.Loc
-import qualified Data.Symbol
 import Data.Vector.Storable
 import Language.C.Quote.CUDA
 import qualified Language.C.Syntax as C
+
+#if !MIN_VERSION_template_haskell(2,7,0)
+import qualified Data.Loc
+import qualified Data.Symbol
 import qualified Language.C.Syntax
+#endif /* !MIN_VERSION_template_haskell(2,7,0) */
 
 import Nikola
 

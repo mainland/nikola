@@ -59,7 +59,6 @@ module Nikola.Syntax (
 
 import CUDA.Storable
 import Control.Monad.State
-import Control.Monad.Trans
 import Data.Generics (Data, Typeable)
 import qualified Data.Set as Set
 import System.Mem.StableName

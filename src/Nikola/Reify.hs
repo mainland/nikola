@@ -1,4 +1,4 @@
--- Copyright (c) 2009-2010
+-- Copyright (c) 2009-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -143,10 +143,6 @@ instance MonadCheck R where
 getObserveSharing :: R Bool
 getObserveSharing =
     gets (roptObserveSharing . ropts)
-
-setObserveSharing :: Bool -> R ()
-setObserveSharing flag =  modify $ \s ->
-    s { ropts = (ropts s) { roptObserveSharing = flag } }
 
 gensym :: R Var
 gensym = newUniqueVar "x"
@@ -377,16 +373,19 @@ instance (Embeddable a, ReifiableFun b c)
           reifyfunk ((x, rho) : xrhos) (f (E (VarE x)))
 
 class Reifiable a where
-    reify :: ROpts -> a -> IO DExp
+    reify :: a -> IO DExp
+    reify = reify' defaultROpts
+
+    reify' :: ROpts -> a -> IO DExp
 
 instance Reifiable DExp where
-    reify ropts = runR ropts . flushBindings . reifyR
+    reify' ropts = runR ropts . flushBindings . reifyR
 
 instance Reifiable (Exp a) where
-    reify ropts = reify ropts . unE
+    reify' ropts = reify' ropts . unE
 
 instance ReifiableFun a b => Reifiable (a -> b) where
-    reify ropts = runR ropts . reifyfun
+    reify' ropts = runR ropts . reifyfun
 
 class (ReifiableFun a b) => VApply a b c d |  a -> c,
                                               b -> d,

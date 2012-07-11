@@ -1,4 +1,4 @@
--- Copyright (c) 2010
+-- Copyright (c) 2010-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -25,6 +25,7 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -42,13 +43,15 @@ module Nikola.CGen (
   ) where
 
 import Control.Applicative
-import Control.Monad.State
-import qualified Data.Loc
 import qualified Data.Set as Set
-import qualified Data.Symbol
 import Language.C.Quote.C
 import qualified Language.C.Syntax as C
+
+#if !MIN_VERSION_template_haskell(2,7,0)
+import qualified Data.Loc
+import qualified Data.Symbol
 import qualified Language.C.Syntax
+#endif /* !MIN_VERSION_template_haskell(2,7,0) */
 
 data CGenEnv = CGenEnv
   {  cSymbols :: Set.Set String
@@ -112,13 +115,13 @@ class (Functor m, Monad m) => MonadCGen m where
         s { cSymbols = Set.insert sym (cSymbols s) }
 
     gensym :: String -> m String
-    gensym s = do
-        syms <- getsCGenEnv cSymbols
-        let s' =  head [s | s <- ss, s `Set.notMember` syms]
-        modifyCGenEnv $ \s -> s { cSymbols = Set.insert s' (cSymbols s) }
-        return s'
+    gensym str = do
+        syms     <- getsCGenEnv cSymbols
+        let str' =  head [s | s <- ss, s `Set.notMember` syms]
+        modifyCGenEnv $ \s -> s { cSymbols = Set.insert str' (cSymbols s) }
+        return str'
       where
-        ss = s : [s ++ show i | i <- [0 :: Integer ..]]
+        ss = str : [str ++ show i | i <- [0 :: Integer ..]]
 
     addInclude :: String -> m ()
     addInclude inc = modifyCGenEnv $ \s ->

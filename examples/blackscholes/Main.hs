@@ -1,4 +1,4 @@
--- Copyright (c) 2010
+-- Copyright (c) 2010-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -41,7 +41,6 @@
 module Main where
 
 import Prelude hiding (map, zipWith, zipWith3)
-import qualified Prelude as P
 
 import CUDA.Context
 import Control.Monad
@@ -51,12 +50,7 @@ import Criterion.Config
 import Criterion.Environment
 import Criterion.Main
 import Criterion.Monad
-import qualified Data.Vector.Generic as G
 import qualified Data.Vector.Storable as V
-import qualified Data.Vector.Fusion.Stream         as Stream
-import qualified Data.Vector.Fusion.Stream.Monadic as S
-import qualified Data.Vector.Fusion.Stream.Size    as S
-import Data.Vector.Fusion.Util
 import Statistics.Function
 import Statistics.Sample
 import System.Environment

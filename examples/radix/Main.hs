@@ -1,4 +1,4 @@
--- Copyright (c) 2010
+-- Copyright (c) 2010-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -41,7 +41,6 @@
 module Main where
 
 import Prelude hiding (map, mapM, zipWith, zipWith3)
-import qualified Prelude as P
 
 import CUDA.Context
 import Control.Monad (forM_)

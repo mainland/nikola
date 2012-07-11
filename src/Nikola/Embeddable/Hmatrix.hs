@@ -44,7 +44,6 @@ import CUDA.Storable
 import Control.Monad.Trans (liftIO)
 import Data.Packed.Development
 import Data.Packed.Matrix
-import Data.Packed.Vector
 import Data.Typeable
 import Foreign hiding (Storable(..))
 import qualified Foreign
@@ -52,7 +51,6 @@ import Foreign.C.Types
 
 import Nikola.Embeddable.Base ()
 import Nikola.Embeddable.Class
-import Nikola.Embeddable.Vector
 import Nikola.Exec
 import Nikola.Syntax
 

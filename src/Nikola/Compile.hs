@@ -1,4 +1,4 @@
--- Copyright (c) 2009-2010
+-- Copyright (c) 2009-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -47,22 +47,18 @@ module Nikola.Compile (
   ) where
 
 import Prelude hiding (map, zipWith)
-import qualified Prelude
 
 import CUDA.Compile
 import CUDA.Internal
 import CUDA.Module
 import Control.Applicative
-import Control.Monad
 import Control.Monad.Trans (MonadIO(..))
 import qualified Data.ByteString.Char8 as B
 import Data.Data
-import Foreign hiding (Storable(..))
-import qualified Foreign
 import qualified Language.Haskell.TH as TH
 import Language.Haskell.TH hiding (Exp, reify)
 import Language.Haskell.TH.Syntax hiding (Exp, reify)
-import System.IO
+import System.IO.Unsafe (unsafePerformIO)
 
 import Nikola.Embeddable
 import Nikola.Exec
@@ -93,7 +89,7 @@ withCompiledFunction' :: (ReifiableFun a b)
                       -> (F (a -> b) -> IO c)
                       -> IO c
 withCompiledFunction' ropts f act = do
-    cfun <- reify ropts f >>= compileTopFun fname
+    cfun <- reify' ropts f >>= compileTopFun fname
     withRawCompiledCFun cfun (act . F)
   where
     fname = "f"
@@ -244,7 +240,7 @@ reifyCompileAndLoad :: ReifiableFun a b
                     -> (a -> b)
                     -> IO (CUModule, ExState)
 reifyCompileAndLoad ropts f =
-    reify ropts f >>= compileTopFun fname >>= compileAndLoad
+    reify' ropts f >>= compileTopFun fname >>= compileAndLoad
   where
     fname = "f"
 
@@ -329,7 +325,7 @@ reifyCompileAndLoadTH :: ReifiableFun a b
                       -> (a -> b)
                       -> ExpQ
 reifyCompileAndLoadTH ropts f = do
-    cfun <- liftIO $ reify ropts f >>= compileTopFun fname
+    cfun <- liftIO $ reify' ropts f >>= compileTopFun fname
     compileAndLoadTH cfun
   where
     fname :: String
