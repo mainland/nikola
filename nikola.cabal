@@ -36,9 +36,6 @@ library
     Nikola.Check
     Nikola.Compile
     Nikola.Embeddable
-    Nikola.Embeddable.Base
-    Nikola.Embeddable.Class
-    Nikola.Embeddable.Vector
     Nikola.Exec
     Nikola.Nvcc
     Nikola.Reify
@@ -74,9 +71,6 @@ library
       template-haskell >=2.7 && <2.8
 
   if flag(hmatrix)
-    exposed-modules:
-      Nikola.Embeddable.Hmatrix
-
     build-depends:
       hmatrix >=0.14 && <0.15
 
