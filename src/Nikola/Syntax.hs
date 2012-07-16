@@ -51,6 +51,7 @@ module Nikola.Syntax (
     MonadUniqueVar(..),
     MonadStableExp(..),
 
+    unScalarT,
     vectorT,
     matrixT,
     freeVars
@@ -154,6 +155,10 @@ data Rho = ScalarT Tau
          | MatrixT Tau N N N
          | FunT [Rho] Rho
   deriving (Eq, Ord, Data, Typeable)
+
+unScalarT :: Rho -> Tau
+unScalarT (ScalarT tau) = tau
+unScalarT rho           = error $ "Not a scalar type: " ++ show rho
 
 vectorT :: Tau -> Int -> Rho
 vectorT tau n = VectorT tau (NVecLength n)

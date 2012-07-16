@@ -57,7 +57,7 @@ import System.Mem.StableName
 import Text.PrettyPrint.Mainland
 
 import Nikola.Check
-import Nikola.Embeddable
+import Nikola.Representable
 import Nikola.Syntax
 
 type StableNameHash = Int
@@ -329,7 +329,7 @@ class (Typeable a, Typeable b)
 
     reifyfunk :: [(Var, Rho)] -> (a -> b) -> R DExp
 
-instance (Embeddable a, Embeddable b)
+instance (Representable a, Representable b)
   => ReifiableFun (Exp a) (Exp b) where
     reifyfunk xrhos f = do
         x          <- gensym
@@ -346,7 +346,7 @@ instance (Embeddable a, Embeddable b)
           LetE v _ e (VarE v') | v' == v ->  return $ LamE xrhos' e
           _ ->                               return $ LamE xrhos' body
 
-instance (Embeddable a, Embeddable b)
+instance (Representable a, Representable b)
   => ReifiableFun (Exp a) (IO (Exp b)) where
     reifyfunk xrhos f = do
         x          <- gensym
@@ -364,7 +364,7 @@ instance (Embeddable a, Embeddable b)
           LetE v _ e (VarE v') | v' == v ->  return $ LamE xrhos' e
           _ ->                               return $ LamE xrhos' body
 
-instance (Embeddable a, ReifiableFun b c)
+instance (Representable a, ReifiableFun b c)
   => ReifiableFun (Exp a) (b -> c) where
     reifyfunk xrhos f = do
         x       <- gensym
@@ -406,10 +406,10 @@ class (ReifiableFun a b) => VApply a b c d |  a -> c,
 
     vapplyk :: DExp -> [DExp] -> c -> d
 
-instance (Embeddable a, Embeddable b)
+instance (Representable a, Representable b)
   => VApply (Exp a) (Exp b) (Exp a) (Exp b) where
     vapplyk f es = \e -> E $ AppE f (reverse (unE e : es))
 
-instance (Embeddable a, VApply b c d e)
+instance (Representable a, VApply b c d e)
   => VApply (Exp a) (b -> c) (Exp a) (d -> e) where
     vapplyk f es = \e -> vapplyk f (unE e : es)

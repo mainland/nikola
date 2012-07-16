@@ -5,7 +5,7 @@ module BlackScholes.CUDA (
     blackscholes
   ) where
 
-import Data.Vector.Storable
+import qualified Data.Vector.Storable as V
 import Language.C.Quote.CUDA
 import qualified Language.C.Syntax as C
 
@@ -17,12 +17,12 @@ import qualified Language.C.Syntax
 
 import Nikola
 
-blackscholes :: CFun (   Exp (Vector Float)
-                      -> Exp (Vector Float)
-                      -> Exp (Vector Float)
+blackscholes :: CFun (   Exp (V.Vector Float)
+                      -> Exp (V.Vector Float)
+                      -> Exp (V.Vector Float)
                       -> Exp Float
                       -> Exp Float
-                      -> Exp (Vector Float)
+                      -> Exp (V.Vector Float)
                      )
 blackscholes = CFun { cfunName = "blackscholes"
                     , cfunDefs = defs

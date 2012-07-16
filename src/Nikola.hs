@@ -31,13 +31,10 @@ module Nikola (
     module Nikola.Compile,
     module Nikola.Exec,
     module Nikola.Reify,
+    module Nikola.Representable,
     module Nikola.Smart,
     module Nikola.Syntax,
     module Nikola.ToC,
-
-    CUVector(..),
-    unsafeWithNewVector,
-    unsafeFreeVector,
 
     withNewContext
  ) where
@@ -48,9 +45,9 @@ import Control.Exception
 import qualified Foreign.CUDA.Driver as CU
 
 import Nikola.Compile
-import Nikola.Embeddable
 import Nikola.Exec
 import Nikola.Reify
+import Nikola.Representable
 import Nikola.Smart
 import Nikola.Syntax
 import Nikola.ToC

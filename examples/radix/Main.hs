@@ -60,7 +60,6 @@ import System.Environment
 import Text.Printf
 
 import Nikola
-import Nikola.Embeddable
 import Nikola.Util
 
 main :: IO ()
@@ -98,25 +97,25 @@ benchmarkIO f n = do
 radixNikola :: V.Vector Int
             -> IO (V.Vector Int)
 radixNikola xs = do
-    v <- toCUVector xs
+    v <- toRep xs
     radixM v
-    fromCUVector v
+    fromRep v
 
-radixM :: CUVector Int
+radixM :: Vector Int
        -> IO ()
-radixM xs@(CUVector n _) =
+radixM xs@(Vector n _) =
     unsafeWithNewVector n $ \bits -> do
     forM_ [0..31] $ \bit -> do
         bitM (1 `shiftL` bit) xs bits
         splitM xs bits
 
-splitM :: CUVector Int
-       -> CUVector Int
+splitM :: Vector Int
+       -> Vector Int
        -> IO ()
-splitM a@(CUVector n _) flags@(CUVector _ _) =
-    unsafeWithNewVector n $ \(nflags :: CUVector Int) ->
-    unsafeWithNewVector n $ \(up :: CUVector Int) ->
-    unsafeWithNewVector n $ \(index :: CUVector Int) -> do
+splitM a@(Vector n _) flags@(Vector _ _) =
+    unsafeWithNewVector n $ \(nflags :: Vector Int) ->
+    unsafeWithNewVector n $ \(up :: Vector Int) ->
+    unsafeWithNewVector n $ \(index :: Vector Int) -> do
     let down = nflags
     copyM flags up
     notM flags nflags
@@ -133,69 +132,69 @@ splitM a@(CUVector n _) flags@(CUVector _ _) =
     permuteIntM a index a
 
 bitM :: Int
-     -> CUVector Int
-     -> CUVector Int
+     -> Vector Int
+     -> Vector Int
      -> IO ()
 bitM = compile (\b -> mapM (\x -> ((x .&. b) ./=. 0) ? (1, 0)))
 
-permuteIntM :: CUVector Int
-            -> CUVector Int
-            -> CUVector Int
+permuteIntM :: Vector Int
+            -> Vector Int
+            -> Vector Int
             -> IO ()
 permuteIntM = compile permuteM
 
-plusScanM :: CUVector Int
+plusScanM :: Vector Int
           -> IO ()
 plusScanM xs = do
     scan' xs
   where
-    scan' :: CUVector Int -> IO ()
-    scan'  (CUVector 0 _)  = return ()
-    scan'  xs              = do  sums <- plusBlockedScanM xs
-                                 scan' sums
-                                 blockedSumM xs sums
-                                 unsafeFreeVector sums
+    scan' :: Vector Int -> IO ()
+    scan'  (Vector 0 _)  = return ()
+    scan'  xs            = do  sums <- plusBlockedScanM xs
+                               scan' sums
+                               blockedSumM xs sums
+                               unsafeFreeVector sums
 
-plusNacsM :: CUVector Int
+plusNacsM :: Vector Int
           -> IO ()
 plusNacsM xs = do
     nacs' xs
   where
-    nacs' :: CUVector Int -> IO ()
-    nacs'  (CUVector 0 _)  = return ()
-    nacs'  xs              = do  sums <- plusBlockedNacsM xs
-                                 nacs' sums
-                                 blockedSumM xs sums
-                                 unsafeFreeVector sums
+    nacs' :: Vector Int -> IO ()
+    nacs'  (Vector 0 _)  = return ()
+    nacs'  xs            = do  sums <- plusBlockedNacsM xs
+                               nacs' sums
+                               blockedSumM xs sums
+                               unsafeFreeVector sums
 
-plusBlockedScanM :: CUVector Int -> IO (CUVector Int)
+plusBlockedScanM :: Vector Int -> IO (Vector Int)
 plusBlockedScanM = compile (blockedScanM (+) 0)
 
-plusBlockedNacsM :: CUVector Int -> IO (CUVector Int)
+plusBlockedNacsM :: Vector Int -> IO (Vector Int)
 plusBlockedNacsM = compile (blockedNacsM (+) 0)
 
-blockedSumM :: CUVector Int -> CUVector Int -> IO ()
+blockedSumM :: Vector Int -> Vector Int -> IO ()
 blockedSumM = compile blockedAddM
 
-copyM :: CUVector Int -> CUVector Int -> IO ()
+copyM :: Vector Int -> Vector Int -> IO ()
 copyM = compile (mapM id)
 
-notM :: CUVector Int -> CUVector Int -> IO ()
+notM :: Vector Int -> Vector Int -> IO ()
 notM = compile (mapM (\x -> (x .==. 0) ? (1, 0)))
 
-flipM :: Int -> CUVector Int -> CUVector Int -> IO ()
+flipM :: Int -> Vector Int -> Vector Int -> IO ()
 flipM = compile (\n -> mapM (\x -> n - 1 - x))
 
-chooseM :: CUVector Int
-        -> CUVector Int
-        -> CUVector Int
-        -> CUVector Int
+chooseM :: Vector Int
+        -> Vector Int
+        -> Vector Int
+        -> Vector Int
         -> IO ()
 chooseM = compile (zipWith3M (\ x y z -> (x ./=. 0) ? (y, z)))
 
-dbg :: String -> CUVector Int -> IO ()
+dbg :: String -> Vector Int -> IO ()
 dbg msg xs = do
-    xs' :: [Int] <- fromCUVector xs
+    xs' :: [Int] <- fromRep xs
     putStrLn $ msg ++ ": " ++ show xs'
 
 radixVector :: V.Vector Int

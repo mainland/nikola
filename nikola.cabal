@@ -35,10 +35,10 @@ library
     Nikola.CGen
     Nikola.Check
     Nikola.Compile
-    Nikola.Embeddable
     Nikola.Exec
     Nikola.Nvcc
     Nikola.Reify
+    Nikola.Representable
     Nikola.Smart
     Nikola.Syntax
     Nikola.ToC

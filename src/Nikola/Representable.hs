@@ -12,7 +12,7 @@
 -- 3. Neither the name of the University nor the names of its contributors
 --    may be used to endorse or promote products derived from this software
 --    without specific prior written permission.
-
+--
 -- THIS SOFTWARE IS PROVIDED BY THE UNIVERSITY AND CONTRIBUTORS ``AS IS'' AND
 -- ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 -- IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -36,21 +36,18 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Nikola.Embeddable (
-    CUVector(..),
-    unsafeWithNewVector,
-    unsafeFreeVector,
+module Nikola.Representable (
+    Representable(..),
+    Elt,
 
-    Embeddable(..),
-    IsScalar(..),
-    IsVector(..),
-    IsMatrix(..)
+    Vector(..),
+    unsafeWithNewVector,
+    unsafeFreeVector
   ) where
 
 import Control.Applicative
-import Control.Monad (liftM)
-import Control.Monad.Trans (liftIO)
 import Control.Exception
+import Control.Monad.Trans (liftIO)
 #if defined(HMATRIX)
 import Data.Packed.Development
 import Data.Packed.Matrix
@@ -58,38 +55,63 @@ import Data.Packed.Matrix
 import Data.Typeable
 import qualified Data.Vector.Storable as V
 import qualified Foreign.CUDA.Driver as CU
-import Foreign
 import Foreign.C.Types
+import Foreign.ForeignPtr
+import Foreign.Marshal.Alloc
+import Foreign.Marshal.Array
+import Foreign.Ptr
+import Foreign.Storable
 
 import Nikola.Exec
 import Nikola.Syntax
 
-data CUVector a = CUVector !Int !(CU.DevicePtr (Rep a))
-  deriving (Typeable)
+-- | Vectors whose contents exist in GPU memory
+data Vector a = Vector {-# UNPACK #-} !Int
+                       {-# UNPACK #-} !(CU.DevicePtr (Rep a))
+  deriving (Eq, Ord, Typeable)
 
-unsafeWithNewVector :: forall a b . Storable (Rep a)
+instance Show (Vector a) where
+  showsPrec n (Vector _ p) = showsPrec n p
+
+instance Storable (Vector a) where
+  sizeOf _            = sizeOf    (undefined :: Ptr a)
+  alignment _         = alignment (undefined :: Ptr a)
+  peek p              = Vector 1 `fmap` peek (castPtr p)
+  poke p (Vector _ d) = poke (castPtr p) (CU.useDevicePtr d)
+
+unsafeWithNewVector :: Storable (Rep a)
                     => Int
-                    -> (CUVector a -> IO b)
+                    -> (Vector a -> IO b)
                     -> IO b
 unsafeWithNewVector n =
     bracket alloc free
   where
-    alloc = CUVector n <$> CU.mallocArray n
+    alloc = Vector n <$> CU.mallocArray n
 
-    free (CUVector _ ptr) = CU.free ptr
+    free (Vector _ ptr) = CU.free ptr
 
-unsafeFreeVector :: CUVector a -> IO ()
-unsafeFreeVector (CUVector _ devPtr) =
+unsafeFreeVector :: Vector a -> IO ()
+unsafeFreeVector (Vector _ devPtr) =
     CU.free devPtr
 
+embeddedScalarType :: Representable a => a -> Tau
+embeddedScalarType dummy =
+    unScalarT (embeddedType dummy 0)
+
 -- | A type that can be used in a GPU embedding.
-class (Typeable a, Storable (Rep a)) => Embeddable a where
+class (Typeable a, Storable (Rep a)) => Representable a where
     -- | The /representation/ type for @a@ when a value of type @a@ is
     -- tranferred to the GPU.
     type Rep a :: *
 
+    -- | Convert to representation type.
+    toRep :: a -> IO (Rep a)
+
+    -- | Convert from representation type.
+    fromRep :: Rep a -> IO a
+
     -- | The embedded type that corresponds to 'a'.
-    embeddedType :: a -> Int -> Rho
+    embeddedType :: a -> ParamIdx -> Rho
 
     -- | Extend the current execution context with an argument of type 'a' and
     -- then continue by performing an 'Ex' action..
@@ -100,33 +122,14 @@ class (Typeable a, Storable (Rep a)) => Embeddable a where
 
 -- | A scalar type that can be used in GPU code. This is used to constrain the
 -- set of legal types that can appear in containers, e.g., vectors and matrices.
-class Embeddable a => IsScalar a where
-    -- | Convert to representation type.
-    toRep :: a -> Rep a
+class Representable a => Elt a where
 
-    -- | Convert from representation type.
-    fromRep :: Rep a -> a
-
-    embeddedBaseType :: a -> Tau
-
--- | A vector type that can be used in GPU code
-class Embeddable a => IsVector f a where
-    fromList :: [a] -> f a
-    toList :: f a -> [a]
-
-    -- |Create an @f a@ of the specified length from a device pointer.
-    fromCUVector :: CUVector a -> IO (f a)
-
-    -- |Create a device pointer from a @f a@.
-    toCUVector :: f a -> IO (CUVector a)
-
--- | A matrix type that can be used in GPU code
-class Embeddable a => IsMatrix f a where
-    fromLists :: [[a]] -> f a
-    toLists :: f a -> [[a]]
-
-instance Embeddable () where
+instance Representable () where
     type Rep () = CInt
+
+    toRep () = return  0
+
+    fromRep _ = return ()
 
     embeddedType _ _ = ScalarT UnitT
 
@@ -137,14 +140,14 @@ instance Embeddable () where
     returnResult =
         return ()
 
-instance IsScalar () where
-    toRep = undefined
-    fromRep = undefined
+instance Elt () where
 
-    embeddedBaseType _ = UnitT
-
-instance Embeddable Int where
+instance Representable Int where
     type Rep Int = CInt
+
+    toRep = return . fromIntegral
+
+    fromRep = return . fromIntegral
 
     embeddedType _ _ = ScalarT IntT
 
@@ -153,21 +156,21 @@ instance Embeddable Int where
         act
 
     returnResult = do
-        devPtr :: CU.DevicePtr (Rep Int) <- liftM (CU.castDevPtr . allocPtr) $ popAlloc
+        devPtr :: CU.DevicePtr (Rep Int) <- (CU.castDevPtr . allocPtr) <$> popAlloc
         x <- liftIO $ alloca $ \hostPtr -> do
              CU.peekArray 1 devPtr hostPtr
              peek hostPtr
         liftIO $ CU.free devPtr
         return (fromIntegral x)
 
-instance IsScalar Int where
-    toRep = fromIntegral
-    fromRep = fromIntegral
+instance Elt Int where
 
-    embeddedBaseType _ = IntT
-
-instance Embeddable Float where
+instance Representable Float where
     type Rep Float = CFloat
+
+    toRep = return . realToFrac
+
+    fromRep = return . realToFrac
 
     embeddedType _ _ = ScalarT FloatT
 
@@ -176,30 +179,42 @@ instance Embeddable Float where
         act
 
     returnResult = do
-        devPtr :: CU.DevicePtr Float <- liftM (CU.castDevPtr . allocPtr) $ popAlloc
+        devPtr :: CU.DevicePtr Float <- (CU.castDevPtr . allocPtr) <$> popAlloc
         x <- liftIO $ alloca $ \hostPtr -> do
              CU.peekArray 1 devPtr hostPtr
              peek hostPtr
         liftIO $ CU.free devPtr
         return (realToFrac x)
 
-instance IsScalar Float where
-    toRep = realToFrac
-    fromRep = realToFrac
+instance Elt Float where
 
-    embeddedBaseType _ = FloatT
+instance (Elt a, Storable a, Storable (Rep a))
+    => Representable [a] where
+    type Rep [a] = Vector a
 
-instance (IsScalar a, Storable a, Foreign.Storable (Rep a))
-    => Embeddable [a] where
-    type Rep [a] = CU.DevicePtr (Rep a)
+    toRep xs = do
+        devPtr <- liftIO $ CU.mallocArray n
+        allocaArray n $ \(ptr :: Ptr (Rep a)) -> do
+            mapM toRep xs >>= pokeArray ptr
+            CU.pokeArray n ptr devPtr
+        return (Vector n devPtr)
+      where
+        n :: Int
+        n = length xs
+
+    fromRep (Vector n devPtr) = do
+        xs <- allocaArray n $ \(ptr :: Ptr (Rep a)) -> do
+              CU.peekArray n (CU.castDevPtr devPtr) ptr
+              peekArray n ptr
+        mapM fromRep xs
 
     embeddedType _ n =
         vectorT tau n
       where
-        tau = embeddedBaseType (undefined :: a)
+        tau = embeddedScalarType (undefined :: a)
 
     withArg xs act = do
-        CUVector n devPtr <- liftIO $ toCUVector xs
+        Vector n devPtr <- liftIO $ toRep xs
         pushArg (VectorArg n (CU.castDevPtr devPtr))
 
         result <- act
@@ -209,71 +224,58 @@ instance (IsScalar a, Storable a, Foreign.Storable (Rep a))
     returnResult = do
         count :: Int          <- returnResult
         VectorAlloc _ devPtr  <- popAlloc
-        xs <- liftIO $ fromCUVector (CUVector count (CU.castDevPtr devPtr))
+        xs <- liftIO $ fromRep (Vector count (CU.castDevPtr devPtr))
         liftIO $ CU.free devPtr
         return xs
 
-instance (IsScalar a, Storable a, Foreign.Storable (Rep a))
-    => IsVector [] a where
-    fromList = id
-    toList = id
+instance (Elt a, Storable a)
+    => Representable (Vector a) where
+    type Rep (Vector a) = Vector a
 
-    fromCUVector (CUVector 0 _) =
-        return []
+    fromRep = return
 
-    fromCUVector (CUVector count devPtr) = do
-        xs <- allocaArray count $ \(ptr :: Ptr (Rep a)) -> do
-              CU.peekArray count (CU.castDevPtr devPtr) ptr
-              peekArray count ptr
-        return (map fromRep xs)
-
-    toCUVector xs = do
-        devPtr <- liftIO $ CU.mallocArray count
-        allocaArray count $ \(ptr :: Ptr (Rep a)) -> do
-            pokeArray ptr (map toRep xs)
-            CU.pokeArray count ptr devPtr
-        return (CUVector count devPtr)
-      where
-        count :: Int
-        count = length xs
-
-instance (IsScalar a, Storable a, Foreign.Storable (Rep a))
-    => Embeddable (CUVector a) where
-    type Rep (CUVector a) = CU.DevicePtr (Rep a)
+    toRep = return
 
     embeddedType _ n =
         vectorT tau n
       where
-        tau = embeddedBaseType (undefined :: a)
+        tau = embeddedScalarType (undefined :: a)
 
-    withArg (CUVector n devPtr) act = do
+    withArg (Vector n devPtr) act = do
         pushArg (VectorArg n (CU.castDevPtr devPtr))
         act
 
     returnResult = do
         count :: Int         <- returnResult
         VectorAlloc _ devPtr <- popAlloc
-        return $ CUVector count (CU.castDevPtr devPtr)
+        return $ Vector count (CU.castDevPtr devPtr)
 
-instance (IsScalar a, Storable a, Foreign.Storable (Rep a))
-    => IsVector CUVector a where
-    fromList = error ""
-    toList = error ""
+instance (Elt a, Storable a)
+    => Representable (V.Vector a) where
+    type Rep (V.Vector a) = Vector a
 
-    fromCUVector = fail ""
-    toCUVector = fail ""
+    toRep v = do
+        devPtr <- liftIO $ CU.mallocArray n
+        liftIO $ V.unsafeWith v $ \ptr ->
+                 CU.pokeArray n ptr devPtr
+        return (Vector n (CU.castDevPtr devPtr))
+      where
+        n :: Int
+        n = V.length v
 
-instance (IsScalar a, Storable a, Storable (Rep a))
-    => Embeddable (V.Vector a) where
-    type Rep (V.Vector a) = CU.DevicePtr (Rep a)
+    fromRep (Vector n devPtr) = do
+        fptr <- mallocForeignPtrArray n
+        withForeignPtr fptr $ \ptr ->
+            CU.peekArray n (CU.castDevPtr devPtr) ptr
+        return $ V.unsafeFromForeignPtr fptr 0 n
 
     embeddedType _ n =
         vectorT tau n
       where
-        tau = embeddedBaseType (undefined :: a)
+        tau = embeddedScalarType (undefined :: a)
 
     withArg v act = do
-        CUVector n devPtr <- liftIO $ toCUVector v
+        Vector n devPtr <- liftIO $ toRep v
 
         pushArg (VectorArg n (CU.castDevPtr devPtr))
 
@@ -284,32 +286,9 @@ instance (IsScalar a, Storable a, Storable (Rep a))
     returnResult = do
         count :: Int         <- returnResult
         VectorAlloc _ devPtr <- popAlloc
-        xs <- liftIO $ fromCUVector (CUVector count (CU.castDevPtr devPtr))
+        xs <- liftIO $ fromRep (Vector count (CU.castDevPtr devPtr))
         liftIO $ CU.free devPtr
         return xs
-
-instance (IsScalar a, Storable a, Storable (Rep a))
-    => IsVector V.Vector a where
-    fromList = V.fromList
-    toList = V.toList
-
-    fromCUVector (CUVector 0 _) =
-        return V.empty
-
-    fromCUVector (CUVector count devPtr) = do
-        fptr <- mallocForeignPtrArray count
-        withForeignPtr fptr $ \ptr ->
-            CU.peekArray count (CU.castDevPtr devPtr) ptr
-        return $ V.unsafeFromForeignPtr fptr 0 count
-
-    toCUVector v = do
-        devPtr <- liftIO $ CU.mallocArray n
-        liftIO $ V.unsafeWith v $ \ptr ->
-                 CU.pokeArray n ptr devPtr
-        return (CUVector n (CU.castDevPtr devPtr))
-      where
-        n :: Int
-        n = V.length v
 
 #if defined(HMATRIX)
 deriving instance Typeable1 Matrix
@@ -323,14 +302,18 @@ withMatrix  ::  Storable t
             ->  IO ()
 withMatrix m f = mat m $ \g -> g f
 
-instance (Element a, IsScalar a, Storable a)
-    => Embeddable (Matrix a) where
+instance (Element a, Elt a, Storable a)
+    => Representable (Matrix a) where
     type Rep (Matrix a) = CU.DevicePtr (Rep a)
+
+    toRep _ = fail "toRep undefined for Matrix"
+
+    fromRep _ = fail "fromRep undefined for Matrix"
 
     embeddedType _ n =
         matrixT tau n n n
       where
-        tau = embeddedBaseType (undefined :: a)
+        tau = embeddedScalarType (undefined :: a)
 
     withArg m act = do
         devPtr <- liftIO $ CU.mallocArray n

@@ -59,10 +59,10 @@ import Language.Haskell.TH hiding (Exp, reify)
 import Language.Haskell.TH.Syntax hiding (Exp, reify)
 import System.IO.Unsafe (unsafePerformIO)
 
-import Nikola.Embeddable
 import Nikola.Exec
 import Nikola.Nvcc
 import Nikola.Reify
+import Nikola.Representable
 import Nikola.Syntax (Exp)
 import Nikola.ToC
 
@@ -132,7 +132,7 @@ class CompilableIO a b c | a b -> c where
 
     compilekIO :: IO (F (a -> b)) -> (forall a . Ex a -> Ex a) -> c
 
-instance (Embeddable a, Embeddable b) =>
+instance (Representable a, Representable b) =>
   CompilableIO (Exp a) (Exp b) (a -> IO b) where
     compileIO f = compilekIO sigma id
       where
@@ -148,7 +148,7 @@ instance (Embeddable a, Embeddable b) =>
             launchKernel $
             returnResult
 
-instance (Embeddable a, Embeddable b) =>
+instance (Representable a, Representable b) =>
   CompilableIO (Exp a) (IO (Exp b)) (a -> IO b) where
     compileIO f = compilekIO sigma id
       where
@@ -164,7 +164,7 @@ instance (Embeddable a, Embeddable b) =>
             launchKernel $
             returnResult
 
-instance (Embeddable a, ReifiableFun (Exp a) (b -> c), CompilableIO b c d) =>
+instance (Representable a, ReifiableFun (Exp a) (b -> c), CompilableIO b c d) =>
   CompilableIO (Exp a) (b -> c) (a -> d) where
     compileIO f = compilekIO sigma id
       where
@@ -197,7 +197,7 @@ class CompilablePure a b c | a b -> c where
 
     compilekPure :: F (a -> b) -> (forall a . Ex a -> Ex a) -> c
 
-instance (Embeddable a, Embeddable b) =>
+instance (Representable a, Representable b) =>
   CompilablePure (Exp a) (Exp b) (a -> b) where
     compilePure f = compilekPure sigma id
       where
@@ -212,7 +212,7 @@ instance (Embeddable a, Embeddable b) =>
         launchKernel $
         returnResult
 
-instance (Embeddable a, Embeddable b) =>
+instance (Representable a, Representable b) =>
   CompilablePure (Exp a) (IO (Exp b)) (a -> IO b) where
     compilePure f = compilekPure sigma id
       where
@@ -226,7 +226,7 @@ instance (Embeddable a, Embeddable b) =>
         launchKernel $
         returnResult
 
-instance (Embeddable a, ReifiableFun (Exp a) (b -> c), CompilablePure b c d) =>
+instance (Representable a, ReifiableFun (Exp a) (b -> c), CompilablePure b c d) =>
   CompilablePure (Exp a) (b -> c) (a -> d) where
     compilePure f = compilekPure sigma id
       where
@@ -266,7 +266,7 @@ class CompilablePureTH a b c | a b -> c where
                    -> QExp (forall a . Ex a -> Ex a)
                    -> QExp c
 
-instance (Embeddable a, Embeddable b) =>
+instance (Representable a, Representable b) =>
   CompilablePureTH (Exp a) (Exp b) (a -> b) where
     compilePureTH ropts f = compilekPureTH sigma (QExp [|id|])
       where
@@ -281,7 +281,7 @@ instance (Embeddable a, Embeddable b) =>
         launchKernel $ do
         returnResult|]
 
-instance (Embeddable a, Embeddable b) =>
+instance (Representable a, Representable b) =>
   CompilablePureTH (Exp a) (IO (Exp b)) (a -> IO b) where
     compilePureTH ropts f = compilekPureTH sigma (QExp [|id|])
       where
@@ -295,7 +295,7 @@ instance (Embeddable a, Embeddable b) =>
         launchKernel $ do
         returnResult|]
 
-instance (Embeddable a, ReifiableFun (Exp a) (b -> c), CompilablePureTH b c d) =>
+instance (Representable a, ReifiableFun (Exp a) (b -> c), CompilablePureTH b c d) =>
   CompilablePureTH (Exp a) (b -> c) (a -> d) where
     compilePureTH ropts f = compilekPureTH sigma (QExp [|id|])
       where

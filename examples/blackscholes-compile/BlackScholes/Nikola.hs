@@ -4,8 +4,6 @@ module BlackScholes.Nikola (
 
 import Prelude hiding (zipWith3)
 
-import Data.Vector.Storable hiding (foldr1, zipWith3)
-
 import Nikola
 
 blackscholes :: Exp (Vector Float)

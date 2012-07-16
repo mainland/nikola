@@ -4,16 +4,16 @@ module BlackScholes.Nikola2 (
 
 import Prelude hiding (zipWith3)
 
-import Data.Vector.Storable hiding (foldr1, zipWith3)
+import qualified Data.Vector.Storable as V
 
 import Nikola
 
-blackscholes :: Exp (Vector Float)
-             -> Exp (Vector Float)
-             -> Exp (Vector Float)
+blackscholes :: Exp (V.Vector Float)
+             -> Exp (V.Vector Float)
+             -> Exp (V.Vector Float)
              -> Exp Float
              -> Exp Float
-             -> Exp (Vector Float)
+             -> Exp (V.Vector Float)
 blackscholes ss xs ts r v =
     zipWith3 (\s x t -> blackscholes' True s x t r v) ss xs ts
 

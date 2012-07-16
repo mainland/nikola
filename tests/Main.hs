@@ -6,7 +6,7 @@ module Main where
 
 import Prelude hiding (map)
 
-import Data.Vector.Storable (Vector)
+import qualified Data.Vector.Storable as V
 import Language.C.Quote.CUDA
 import qualified Language.C.Syntax as C
 
@@ -17,7 +17,6 @@ import qualified Language.C.Syntax
 #endif /* !MIN_VERSION_template_haskell(2,7,0) */
 
 import Nikola
-import Nikola.Embeddable
 
 main :: IO ()
 main = withNewContext $ \_ -> do
@@ -27,19 +26,19 @@ test :: IO ()
 test = do
     print (g v)
   where
-    g :: Vector Float -> Vector Float
+    g :: V.Vector Float -> V.Vector Float
     g = compile f2
 
-    v :: Vector Float
-    v = fromList [0..10]
+    v :: V.Vector Float
+    v = V.fromList [0..31]
 
-f :: Exp (Vector Float) -> Exp (Vector Float)
+f :: Exp (V.Vector Float) -> Exp (V.Vector Float)
 f = map inc
 
 inc :: Exp Float -> Exp Float
 inc = vapply $ \x -> x + 1
 
-f2 :: CFun (Exp (Vector Float) -> Exp (Vector Float))
+f2 :: CFun (Exp (V.Vector Float) -> Exp (V.Vector Float))
 f2 = CFun { cfunName = "f2"
           , cfunDefs = defs
           , cfunAllocs = [VectorT FloatT nmin]

@@ -63,7 +63,6 @@ import System.Random.Mersenne.Pure64
 import Text.Printf
 
 import Nikola
-import Nikola.Embeddable
 import Nikola.Util
 
 main :: IO ()
@@ -101,20 +100,20 @@ benchmarkIO f n = do
 scanNikola :: V.Vector Int
            -> IO (V.Vector Int)
 scanNikola flags = do
-    v <- toCUVector flags
+    v <- toRep flags
     scan' v
-    fromCUVector v
+    fromRep v
   where
-    scan' :: CUVector Int -> IO ()
-    scan'  (CUVector 0 _)  = return ()
-    scan'  xs              = do  sums <- bscan xs
-                                 scan' sums
-                                 badd xs sums
+    scan' :: Vector Int -> IO ()
+    scan'  (Vector 0 _)  = return ()
+    scan'  xs            = do  sums <- bscan xs
+                               scan' sums
+                               badd xs sums
 
-    bscan :: CUVector Int -> IO (CUVector Int)
+    bscan :: Vector Int -> IO (Vector Int)
     bscan = compile (blockedScanM (+) 0)
 
-    badd :: CUVector Int -> CUVector Int -> IO ()
+    badd :: Vector Int -> Vector Int -> IO ()
     badd = compile blockedAddM
 
 scanVector :: V.Vector Int

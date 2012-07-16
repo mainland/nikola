@@ -48,8 +48,8 @@ module Nikola.Smart (
 
 import Prelude hiding (map, mapM, zipWith, zipWith3)
 
-import Nikola.Embeddable
 import Nikola.Reify
+import Nikola.Representable
 import Nikola.Syntax
 
 instance Eq (Exp a) where
@@ -152,42 +152,42 @@ e1 .&. e2 = binop Band e1 e2
 test ? (thene, elsee) = E $
     IfteE (unE test) (unE thene) (unE elsee)
 
-map :: (IsVector f a, IsVector g b)
-    => (Exp a -> Exp b) -> Exp (f a) -> Exp (g b)
+map :: (Elt a, Elt b)
+    => (Exp a -> Exp b)
+    -> Exp (f a)
+    -> Exp (g b)
 map f v =
     E $ MapE (delayFun f) (unE v)
 
-mapM :: (Embeddable a, Embeddable b)
+mapM :: (Elt a, Elt b)
      => (Exp a -> Exp b)
-     -> Exp (CUVector a)
-     -> Exp (CUVector b)
+     -> Exp (Vector a)
+     -> Exp (Vector b)
      -> IO (Exp ())
 mapM f xs ys =
     return $ E $ MapME (delayFun f) (unE xs) (unE ys)
 
-permute :: (IsVector f a, IsVector g Int, IsVector h a)
-        => Exp (f a) -> Exp (g Int) -> Exp (h a)
+permute :: Exp (f a) -> Exp (g Int) -> Exp (h a)
 permute xs is =
     E $ PermuteE (unE xs) (unE is)
 
-permuteM :: Exp (CUVector a)
-         -> Exp (CUVector Int)
-         -> Exp (CUVector a)
+permuteM :: Elt a
+         => Exp (Vector a)
+         -> Exp (Vector Int)
+         -> Exp (Vector a)
          -> IO (Exp ())
 permuteM xs is ys =
     return $ E $ PermuteME (unE xs) (unE is) (unE ys)
 
-zipWith :: (IsVector f a,
-            IsVector g b,
-            IsVector h c)
-        => (Exp a -> Exp b -> Exp c) -> Exp (f a) -> Exp (g b) -> Exp (h c)
+zipWith :: (Elt a, Elt b, Elt c)
+        => (Exp a -> Exp b -> Exp c)
+        -> Exp (f a)
+        -> Exp (g b)
+        -> Exp (h c)
 zipWith f v1 v2 =
     E $ ZipWithE (delayFun f) (unE v1) (unE v2)
 
-zipWith3 :: (IsVector f a,
-             IsVector g b,
-             IsVector h c,
-             IsVector i d)
+zipWith3 :: (Elt a, Elt b, Elt c, Elt d)
          => (Exp a -> Exp b -> Exp c -> Exp d)
          -> Exp (f a)
          -> Exp (g b)
@@ -196,35 +196,35 @@ zipWith3 :: (IsVector f a,
 zipWith3 f v1 v2 v3 =
     E $ ZipWith3E (delayFun f) (unE v1) (unE v2) (unE v3)
 
-zipWith3M :: (IsScalar a, IsScalar b, IsScalar c, IsScalar d)
+zipWith3M :: (Elt a, Elt b, Elt c, Elt d)
           => (Exp a -> Exp b -> Exp c -> Exp d)
-          -> Exp (CUVector a)
-          -> Exp (CUVector b)
-          -> Exp (CUVector c)
-          -> Exp (CUVector d)
+          -> Exp (Vector a)
+          -> Exp (Vector b)
+          -> Exp (Vector c)
+          -> Exp (Vector d)
           -> IO (Exp ())
 zipWith3M f xs ys zs results =
     return $ E $ ZipWith3ME (delayFun f) (unE xs) (unE ys) (unE zs) (unE results)
 
-blockedScanM :: (IsScalar a)
+blockedScanM :: (Elt a)
              => (Exp a -> Exp a -> Exp a)
              -> Exp a
-             -> Exp (CUVector a)
-             -> IO (Exp (CUVector a))
+             -> Exp (Vector a)
+             -> IO (Exp (Vector a))
 blockedScanM f z xs =
     return $ E $ BlockedScanME (delayFun f) (unE z) (unE xs)
 
-blockedNacsM :: (IsScalar a)
+blockedNacsM :: (Elt a)
              => (Exp a -> Exp a -> Exp a)
              -> Exp a
-             -> Exp (CUVector a)
-             -> IO (Exp (CUVector a))
+             -> Exp (Vector a)
+             -> IO (Exp (Vector a))
 blockedNacsM f z xs =
     return $ E $ BlockedNacsME (delayFun f) (unE z) (unE xs)
 
-blockedAddM :: (IsScalar a)
-            => Exp (CUVector a)
-            -> Exp (CUVector a)
+blockedAddM :: (Elt a)
+            => Exp (Vector a)
+            -> Exp (Vector a)
             -> IO (Exp ())
 blockedAddM xs sums =
     return $ E $ BlockedAddME (unE xs) (unE sums)

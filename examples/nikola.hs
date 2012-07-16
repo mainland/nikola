@@ -38,7 +38,7 @@ import Prelude hiding (map, zipWith)
 import qualified Prelude as P
 
 import Control.Monad.Trans
-import Data.Packed.Vector
+import qualified Data.Packed.Vector as V
 import Text.PrettyPrint.Mainland
 
 import Nikola
@@ -83,9 +83,9 @@ test2 = do
     print $ stack (P.map ppr (cfunDefs cfun))
 
     withCompiledFunction f $ \f -> do
-        call f (fromList [1..10]) >>= print . toList
+        call f (V.fromList [1..10]) >>= print . V.toList
   where
-    f :: Exp (Vector Int) -> Exp (Vector Int)
+    f :: Exp (V.Vector Int) -> Exp (V.Vector Int)
     f v = map (\x -> x) v
 
 test3 :: IO ()
@@ -107,9 +107,9 @@ test4 = do
     print $ stack (P.map ppr (cfunDefs cfun))
 
     withCompiledFunction f $ \f -> do
-        call f (fromList [1..32]) >>= print
+        call f (V.fromList [1..32]) >>= print
   where
-    f :: Exp (Vector Int) -> Exp [Float]
+    f :: Exp (V.Vector Int) -> Exp [Float]
     f v = map (\_ -> 1) v
 
 test5 :: IO ()
