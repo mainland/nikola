@@ -111,7 +111,7 @@ check (PermuteE xs is) = do
     (tau1, n1) <- checkVector xs
     (tau2, n2) <- checkVector is
     checkEqual tau2 IntT
-    return $ VectorT tau1 (NMin [n1, n2])
+    return $ VectorT tau1 (nmin n1 n2)
 
 check (PermuteME xs is xs') = do
     (tau1, _) <- checkVector xs
@@ -126,7 +126,7 @@ check (ZipWithE f e1 e2) = do
     (tau2, n2) <- checkVector e2
     tau3       <- checkFunType f [tau1, tau2] >>=
                   checkScalarType
-    return $ VectorT tau3 (NMin [n1, n2])
+    return $ VectorT tau3 (nmin n1 n2)
 
 check (ZipWith3E f e1 e2 e3) = do
     (tau1, n1) <- checkVector e1
@@ -134,7 +134,7 @@ check (ZipWith3E f e1 e2 e3) = do
     (tau3, n3) <- checkVector e3
     tau4       <- checkFunType f [tau1, tau2, tau3] >>=
                   checkScalarType
-    return $ VectorT tau4 (NMin [n1, n2, n3])
+    return $ VectorT tau4 (nminimum [n1, n2, n3])
 
 check (ZipWith3ME f xs ys zs results) = do
     (tau1, _) <- checkVector xs

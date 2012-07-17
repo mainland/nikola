@@ -620,7 +620,7 @@ compileExp _ (MapE {}) =
 compileExp ctx (MapME (LamE [(x, tau)] body) xs ys) = do
     (VectorT _ n1) <- check xs
     (VectorT _ n2) <- check ys
-    let n          =  NMin [n1, n2]
+    let n          =  nmin n1 n2
     cxs            <- compileExp (nestCtx ctx) xs
     cys            <- compileExp (nestCtx ctx) ys
     (fapp, items) <-
@@ -655,7 +655,7 @@ compileExp ctx (PermuteME xs is ys) = do
     (VectorT _ n1) <- check xs
     (VectorT _ n2) <- check is
     (VectorT _ n3) <- check ys
-    let n          =  NMin [n1, n2, n3]
+    let n          =  nminimum [n1, n2, n3]
     cxs            <- compileExp (nestCtx ctx) xs
     cis            <- compileExp (nestCtx ctx) is
     cys            <- compileExp (nestCtx ctx) ys
@@ -723,7 +723,7 @@ compileExp ctx (ZipWith3ME (LamE [(x, _), (y, _), (z, _)] body) xs ys zs results
     (VectorT tau2 n2) <- check ys
     (VectorT tau3 n3) <- check zs
     (VectorT _ n4)    <- check results
-    let n             =  NMin [n1, n2, n3, n4]
+    let n             =  nminimum [n1, n2, n3, n4]
     cxs               <- compileExp (nestCtx ctx) xs
     cys               <- compileExp (nestCtx ctx) ys
     czs               <- compileExp (nestCtx ctx) zs

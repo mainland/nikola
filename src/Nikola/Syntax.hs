@@ -32,6 +32,11 @@
 module Nikola.Syntax (
     ParamIdx(..),
     N(..),
+    nmin,
+    nminimum,
+    nmax,
+    nmaximum,
+
     ExecConfig(..),
     nGridDimX,
     nGridDimY,
@@ -119,6 +124,18 @@ instance Integral N where
     rem = error "rem not implemented for N"
     quotRem = error "quotRem not implemented for N"
     toInteger = error "toInteger not implemented for N"
+
+nmin :: N -> N -> N
+nmin n1 n2 = NMin [n1, n2]
+
+nminimum :: [N] -> N
+nminimum = NMin
+
+nmax :: N -> N -> N
+nmax n1 n2 = NMax [n1, n2]
+
+nmaximum :: [N] -> N
+nmaximum = NMax
 
 -- | An execution configuration.
 data ExecConfig = ExecConfig
