@@ -72,13 +72,16 @@ data ROpts = ROpts { roptObserveSharing :: Bool }
 defaultROpts = ROpts { roptObserveSharing = True }
 
 data REnv = REnv
-    {  uniq      :: Int
-    ,  ropts     :: ROpts
-    ,  vars      :: Map.Map Var Rho
-    ,  names     :: IntMap.IntMap [(Dynamic, DExp)]
-    ,  bindings  :: [Binding]
+    {  rUniq         :: Int
+    ,  rOpts         :: ROpts
+    ,  rVars         :: Map.Map Var Rho
+    ,  rStableNames  :: IntMap.IntMap [(Dynamic, DExp)]
+    ,  rBindings     :: [Binding]
     }
   deriving (Show)
+
+instance Show (StableName DExp) where
+    show _ = "StableName DExp"
 
 newtype R a = R { unR :: StateT REnv IO a }
   deriving (Applicative, Functor, Monad, MonadIO, MonadState REnv)
@@ -90,17 +93,17 @@ runR opts m = evalStateT (unR m) emptyREnv
   where
     emptyREnv :: REnv
     emptyREnv = REnv
-        {  uniq      = 0
-        ,  ropts     = opts
-        ,  vars      = Map.empty
-        ,  names     = IntMap.empty
-        ,  bindings  = []
+        {  rUniq         = 0
+        ,  rOpts         = opts
+        ,  rVars         = Map.empty
+        ,  rStableNames  = IntMap.empty
+        ,  rBindings     = []
         }
 
 newUniqueVar :: String -> R Var
 newUniqueVar v = do
-    u <- gets uniq
-    modify $ \s -> s { uniq = u + 1 }
+    u <- gets rUniq
+    modify $ \s -> s { rUniq = u + 1 }
     return $ Var (v ++ show u)
 
 gensym :: R Var
@@ -108,11 +111,11 @@ gensym = newUniqueVar "x"
 
 getObserveSharing :: R Bool
 getObserveSharing =
-    gets (roptObserveSharing . ropts)
+    gets (roptObserveSharing . rOpts)
 
 lookupStableName :: Typeable a => StableName a -> R (Maybe DExp)
 lookupStableName sn = gets $ \s ->
-    case IntMap.lookup hash (names s) of
+    case IntMap.lookup hash (rStableNames s) of
       Just m' -> Prelude.lookup (Just sn)
                  [(fromDynamic d,e) | (d,e) <- m']
       Nothing -> Nothing
@@ -122,7 +125,7 @@ lookupStableName sn = gets $ \s ->
 
 insertStableName :: Typeable a => StableName a -> DExp -> R ()
 insertStableName sn e = modify $ \s ->
-    s { names = IntMap.alter add (hashStableName sn) (names s) }
+    s { rStableNames = IntMap.alter add (hashStableName sn) (rStableNames s) }
   where
     add :: Maybe [(Dynamic, DExp)] -> Maybe [(Dynamic, DExp)]
     add Nothing   = Just [(toDyn sn, e)]
@@ -130,17 +133,17 @@ insertStableName sn e = modify $ \s ->
 
 instance  MonadCheck R where
     lookupVar v = do
-        maybe_tau <- gets $ \s -> Map.lookup v (vars s)
+        maybe_tau <- gets $ \s -> Map.lookup v (rVars s)
         case maybe_tau of
           Just tau -> return tau
           Nothing ->  faildoc $ text "Variable" <+> ppr v <+>
                                 text "not in scope"
 
     extendVars vtaus act = do
-        old_vars <- gets vars
-        modify $ \s -> s { vars = foldl' insert (vars s) vtaus }
+        old_vars <- gets rVars
+        modify $ \s -> s { rVars = foldl' insert (rVars s) vtaus }
         x  <- act
-        modify $ \s -> s { vars = old_vars }
+        modify $ \s -> s { rVars = old_vars }
         return x
       where
         insert m (k, v) = Map.insert k v m

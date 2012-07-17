@@ -59,17 +59,17 @@ type Binding = (Var, Rho, DExp)
 
 insertBinding :: Var -> DExp -> R ()
 insertBinding v e = do
-    bs  <- gets bindings
+    bs  <- gets rBindings
     tau <- extendVars [(v,tau) | (v,tau,_) <- bs] $ check e
-    modify $ \s -> s { bindings = (v,tau,e) : bs }
+    modify $ \s -> s { rBindings = (v,tau,e) : bs }
 
 collectBindings :: R a -> R ([Binding], a)
 collectBindings act = do
-    bs <- gets bindings
-    modify $ \s -> s { bindings = []}
+    bs <- gets rBindings
+    modify $ \s -> s { rBindings = []}
     x   <- extendVars [(v,tau) | (v,tau,_) <- bs] $ act
-    bs' <- gets bindings
-    modify $ \s -> s { bindings = bs }
+    bs' <- gets rBindings
+    modify $ \s -> s { rBindings = bs }
     return (bs', x)
 
 flushBindings :: R DExp -> R DExp
@@ -94,7 +94,7 @@ maximizeSharing f es = do
     -- expressions without duplicating works, and the rest. Throw the shared
     -- bindings back into the pool.
     let (shared, unshared) = split (\(v, _, _) -> Set.member v vshared) bs
-    modify $ \s -> s { bindings = shared ++ bindings s }
+    modify $ \s -> s { rBindings = shared ++ rBindings s }
     -- For each expression, determine which of the remaining bindings are needed
     -- for the expression, and bind them.
     return $ map (bind unshared) (used `zip` es')
