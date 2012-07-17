@@ -45,10 +45,10 @@ import Text.PrettyPrint.Mainland
 import Nikola.Syntax
 
 class (Functor m, Applicative m, Monad m) => MonadCheck m where
-    lookupVar  :: Var -> m Rho
-    extendVars :: [(Var, Rho)] -> m a -> m a
+    lookupVar  :: Var -> m Tau
+    extendVars :: [(Var, Tau)] -> m a -> m a
 
-check :: forall m . MonadCheck m => DExp -> m Rho
+check :: forall m . MonadCheck m => DExp -> m Tau
 check (VarE v) = lookupVar v
 
 check (DelayedE _) =
@@ -75,16 +75,16 @@ check (AppE f es) = do
     mapM_ (uncurry checkEqual) (map phi rhos1 `zip` rhos2)
     return (phi rho)
 
-check (BoolE _)  = return (ScalarT BoolT)
-check (IntE _)   = return (ScalarT IntT)
-check (FloatE _) = return (ScalarT FloatT)
+check (BoolE _)  = return BoolT
+check (IntE _)   = return IntT
+check (FloatE _) = return FloatT
 
 check (UnopE op e)      = checkUnop op e
 check (BinopE op e1 e2) = checkBinop op e1 e2
 
 check (IfteE teste thene elsee) = do
     tau_test <- check teste
-    when (tau_test /= ScalarT BoolT) $ do
+    when (tau_test /= BoolT) $ do
         faildoc $ text "Expected boolean type but got" <+> ppr tau_test
     tau_thene <- check thene
     tau_elsee <- check elsee
@@ -95,36 +95,36 @@ check (IfteE teste thene elsee) = do
 
 check (MapE f e) = do
     (tau1, n) <- checkVector e
-    tau2      <- checkFunType f [ScalarT tau1] >>=
+    tau2      <- checkFunType f [tau1] >>=
                  checkScalarType
     return $ VectorT tau2 n
 
 check (MapME f v1 v2) = do
     (tau1, _) <- checkVector v1
     (tau2, _) <- checkVector v2
-    tau3      <- checkFunType f [ScalarT tau1] >>=
+    tau3      <- checkFunType f [tau1] >>=
                  checkScalarType
-    checkEqual (ScalarT tau3) (ScalarT tau2)
-    return $ ScalarT UnitT
+    checkEqual tau3 tau2
+    return UnitT
 
 check (PermuteE xs is) = do
     (tau1, n1) <- checkVector xs
     (tau2, n2) <- checkVector is
-    checkEqual (ScalarT tau2) (ScalarT IntT)
+    checkEqual tau2 IntT
     return $ VectorT tau1 (NMin [n1, n2])
 
 check (PermuteME xs is xs') = do
     (tau1, _) <- checkVector xs
     (tau2, _) <- checkVector is
     (tau3, _) <- checkVector xs'
-    checkEqual (ScalarT tau2) (ScalarT IntT)
-    checkEqual (ScalarT tau3) (ScalarT tau1)
-    return $ ScalarT UnitT
+    checkEqual tau2 IntT
+    checkEqual tau3 tau1
+    return UnitT
 
 check (ZipWithE f e1 e2) = do
     (tau1, n1) <- checkVector e1
     (tau2, n2) <- checkVector e2
-    tau3       <- checkFunType f [ScalarT tau1, ScalarT tau2] >>=
+    tau3       <- checkFunType f [tau1, tau2] >>=
                   checkScalarType
     return $ VectorT tau3 (NMin [n1, n2])
 
@@ -132,7 +132,7 @@ check (ZipWith3E f e1 e2 e3) = do
     (tau1, n1) <- checkVector e1
     (tau2, n2) <- checkVector e2
     (tau3, n3) <- checkVector e3
-    tau4       <- checkFunType f [ScalarT tau1, ScalarT tau2, ScalarT tau3] >>=
+    tau4       <- checkFunType f [tau1, tau2, tau3] >>=
                   checkScalarType
     return $ VectorT tau4 (NMin [n1, n2, n3])
 
@@ -141,55 +141,55 @@ check (ZipWith3ME f xs ys zs results) = do
     (tau2, _) <- checkVector ys
     (tau3, _) <- checkVector zs
     (tau4, _) <- checkVector results
-    tau5      <- checkFunType f [ScalarT tau1, ScalarT tau2, ScalarT tau3] >>=
+    tau5      <- checkFunType f [tau1, tau2, tau3] >>=
                  checkScalarType
-    checkEqual (ScalarT tau4) (ScalarT tau5)
-    return $ ScalarT UnitT
+    checkEqual tau4 tau5
+    return UnitT
 
 check (ScanE f z e) = do
     tau1      <- checkScalar z
     (tau2, n) <- checkVector e
-    checkEqual (ScalarT tau1) (ScalarT tau2)
-    tau3      <- checkFunType f [ScalarT tau1, ScalarT tau1] >>=
+    checkEqual tau1 tau2
+    tau3      <- checkFunType f [tau1, tau1] >>=
                  checkScalarType
-    checkEqual (ScalarT tau1) (ScalarT tau3)
+    checkEqual tau1 tau3
     return $ VectorT tau1 n
 
 check (BlockedScanME f z xs) = do
     tau1      <- checkScalar z
     (tau2, n) <- checkVector xs
-    checkEqual (ScalarT tau1) (ScalarT tau2)
-    tau3      <- checkFunType f [ScalarT tau1, ScalarT tau1] >>=
+    checkEqual tau1 tau2
+    tau3      <- checkFunType f [tau1, tau1] >>=
                  checkScalarType
-    checkEqual (ScalarT tau1) (ScalarT tau3)
+    checkEqual tau1 tau3
     return $ VectorT tau1 (n `div` (2*fromInteger threadBlockWidth))
 
 check (BlockedNacsME f z xs) = do
     tau1      <- checkScalar z
     (tau2, n) <- checkVector xs
-    checkEqual (ScalarT tau1) (ScalarT tau2)
-    tau3      <- checkFunType f [ScalarT tau1, ScalarT tau1] >>=
+    checkEqual tau1 tau2
+    tau3      <- checkFunType f [tau1, tau1] >>=
                  checkScalarType
-    checkEqual (ScalarT tau1) (ScalarT tau3)
+    checkEqual tau1 tau3
     return $ VectorT tau1 (n `div` (2*fromInteger threadBlockWidth))
 
 check (BlockedAddME xs sums) = do
     (tau1, _) <- checkVector xs
     (tau2, _) <- checkVector sums
-    checkEqual (ScalarT tau1) (ScalarT tau2)
-    return $ ScalarT UnitT
+    checkEqual tau1 tau2
+    return UnitT
 
-checkUnop :: MonadCheck m => Unop -> DExp -> m Rho
-checkUnop _ e = ScalarT <$> checkScalar e
+checkUnop :: MonadCheck m => Unop -> DExp -> m Tau
+checkUnop _ e = checkScalar e
 
 checkBinop :: forall m . MonadCheck m
            => Binop
            -> DExp
            -> DExp
-           -> m Rho
+           -> m Tau
 checkBinop op e1 e2 = go op
   where
-    go :: Binop -> m Rho
+    go :: Binop -> m Tau
     go Leq = checkEqOp
     go Lne = checkEqOp
     go Lgt = checkEqOp
@@ -198,10 +198,10 @@ checkBinop op e1 e2 = go op
     go Lle = checkEqOp
     go _   = checkMatch e1 e2
 
-    checkEqOp :: m Rho
+    checkEqOp :: m Tau
     checkEqOp = do
         checkMatch e1 e2
-        return (ScalarT BoolT)
+        return BoolT
 
 checkScalar :: MonadCheck m => DExp -> m Tau
 checkScalar e = check e >>= checkScalarType
@@ -209,7 +209,7 @@ checkScalar e = check e >>= checkScalarType
 checkVector :: MonadCheck m => DExp -> m (Tau, N)
 checkVector e = check e >>= checkVectorType
 
-checkMatch :: MonadCheck m => DExp -> DExp -> m Rho
+checkMatch :: MonadCheck m => DExp -> DExp -> m Tau
 checkMatch e1 e2 = do
     rho1 <- check e1
     rho2 <- check e2
@@ -218,7 +218,7 @@ checkMatch e1 e2 = do
 
 checkFun :: MonadCheck m
          => DExp
-         -> m ([Rho], Rho)
+         -> m ([Tau], Tau)
 checkFun f = do
     ftau <- check f
     case ftau of
@@ -227,28 +227,31 @@ checkFun f = do
            text "Expected function type but got" <+>
            ppr ftau
 
-checkEqual :: MonadCheck m => Rho -> Rho -> m ()
+checkEqual :: MonadCheck m => Tau -> Tau -> m ()
 checkEqual rho1 rho2 =
     when (rho1 /= rho2) $
         faildoc $ text "Expected type" <+> ppr rho1 <+>
                   text "but got" <+> ppr rho2
 
-checkScalarType :: MonadCheck m => Rho -> m Tau
-checkScalarType (ScalarT tau) = return tau
-checkScalarType rho           = faildoc $
-                                text "Expected scalar type but got" <+>
-                                ppr rho
+checkScalarType :: MonadCheck m => Tau -> m Tau
+checkScalarType UnitT    = return UnitT
+checkScalarType BoolT    = return BoolT
+checkScalarType IntT     = return IntT
+checkScalarType FloatT   = return FloatT
+checkScalarType rho      = faildoc $
+                           text "Expected scalar type but got" <+>
+                           ppr rho
 
-checkVectorType :: MonadCheck m => Rho -> m (Tau, N)
+checkVectorType :: MonadCheck m => Tau -> m (Tau, N)
 checkVectorType (VectorT tau n) = return (tau, n)
 checkVectorType rho             = faildoc $
-                                  text "Expected scalar type but got" <+>
+                                  text "Expected vector type but got" <+>
                                   ppr rho
 
 checkFunType :: MonadCheck m
              => DExp
-             -> [Rho]
-             -> m Rho
+             -> [Tau]
+             -> m Tau
 checkFunType e taus' = do
     (taus, tau) <- checkFun e
     when (length taus /= length taus' || not (all (uncurry (==)) (taus `zip` taus'))) $
@@ -263,13 +266,10 @@ checkFunType e taus' = do
 -- function's context to type-level numbers in the context in which the function
 -- is applied. @match@ produces the phi function that does this translation, as
 -- described in the paper.
-match :: [Rho] -> Rho -> Rho
+match :: [Tau] -> Tau -> Tau
 match taus = phi
   where
-    phi :: Rho -> Rho
-    phi rho@(ScalarT _) =
-        rho
-
+    phi :: Tau -> Tau
     phi (VectorT tau n) =
         VectorT tau (phiN n)
 
@@ -278,6 +278,9 @@ match taus = phi
 
     phi (FunT rhos rho) =
         FunT (map phi rhos) (phi rho)
+
+    phi rho =
+        rho
 
     phiN :: N -> N
     phiN (NMin ns) =
@@ -291,12 +294,9 @@ match taus = phi
     nmap :: Map.Map N N
     nmap = go Map.empty 0 taus
 
-    go :: Map.Map N N -> Int -> [Rho] -> Map.Map N N
+    go :: Map.Map N N -> Int -> [Tau] -> Map.Map N N
     go m _ [] =
         m
-
-    go m i (ScalarT _ : taus) =
-        go m (i+1) taus
 
     go m i (VectorT _ n : taus) =
         go (foldl' insert m kvs) (i+1) taus
@@ -312,6 +312,9 @@ match taus = phi
 
     go _ _ (FunT {} : _) =
         error "The impossible happened: an embedded higher-order function!"
+
+    go m i (_ : taus) =
+        go m (i+1) taus
 
     insert :: Ord k => Map.Map k v -> (k, v) -> Map.Map k v
     insert m (k, v) = Map.insert k v m

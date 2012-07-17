@@ -94,7 +94,7 @@ import Nikola.Syntax
 data CExp = ScalarCExp C.Exp
           | VectorCExp C.Exp C.Exp
           | MatrixCExp C.Exp N N N
-          | FunCExp String Rho [DevAlloc] [DevAlloc]
+          | FunCExp String Tau [DevAlloc] [DevAlloc]
 
 instance Pretty CExp where
     ppr (ScalarCExp e)       = ppr e
@@ -145,12 +145,12 @@ instance ToExp GridVar where
 data DevAlloc = DevAlloc
     {  devAllocVar    :: String
     ,  devAllocParams :: [C.Param]
-    ,  devAllocType   :: Rho
+    ,  devAllocType   :: Tau
     }
 
 -- The state used by the CUDA code generation monad
 data CEnv = CEnv
-  {  cVarTypes :: Map.Map Var Rho
+  {  cVarTypes :: Map.Map Var Tau
   ,  cVarTrans :: Map.Map Var CExp
 
   ,  cNTrans   :: Map.Map N C.Exp

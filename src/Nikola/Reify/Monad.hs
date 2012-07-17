@@ -64,7 +64,7 @@ import Nikola.Syntax
 
 type StableNameHash = Int
 
-type Binding = (Var, Rho, DExp)
+type Binding = (Var, Tau, DExp)
 
 data ROpts = ROpts { roptObserveSharing :: Bool }
   deriving (Show)
@@ -74,7 +74,7 @@ defaultROpts = ROpts { roptObserveSharing = True }
 data REnv = REnv
     {  rUniq         :: Int
     ,  rOpts         :: ROpts
-    ,  rVars         :: Map.Map Var Rho
+    ,  rVars         :: Map.Map Var Tau
     ,  rStableNames  :: IntMap.IntMap [(Dynamic, DExp)]
     ,  rBindings     :: [Binding]
     }

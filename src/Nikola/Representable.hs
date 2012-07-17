@@ -94,10 +94,6 @@ unsafeFreeVector :: Vector a -> IO ()
 unsafeFreeVector (Vector _ devPtr) =
     CU.free devPtr
 
-embeddedScalarType :: Representable a => a -> Tau
-embeddedScalarType dummy =
-    unScalarT (embeddedType dummy (ParamIdx 0))
-
 -- | A type that can be used in a GPU embedding.
 class (Typeable a, Storable (Rep a)) => Representable a where
     -- | The /representation/ type for @a@ when a value of type @a@ is
@@ -111,7 +107,7 @@ class (Typeable a, Storable (Rep a)) => Representable a where
     fromRep :: Rep a -> IO a
 
     -- | The embedded type that corresponds to 'a'.
-    embeddedType :: a -> ParamIdx -> Rho
+    embeddedType :: a -> ParamIdx -> Tau
 
     -- | Extend the current execution context with an argument of type 'a' and
     -- then continue by performing an 'Ex' action..
@@ -131,7 +127,7 @@ instance Representable () where
 
     fromRep _ = return ()
 
-    embeddedType _ _ = ScalarT UnitT
+    embeddedType _ _ = UnitT
 
     withArg _ act = do
         pushArg (IntArg 0)
@@ -149,7 +145,7 @@ instance Representable Int where
 
     fromRep = return . fromIntegral
 
-    embeddedType _ _ = ScalarT IntT
+    embeddedType _ _ = IntT
 
     withArg n act = do
         pushArg (IntArg n)
@@ -172,7 +168,7 @@ instance Representable Float where
 
     fromRep = return . realToFrac
 
-    embeddedType _ _ = ScalarT FloatT
+    embeddedType _ _ = FloatT
 
     withArg n act = do
         pushArg (FloatArg n)
@@ -209,9 +205,7 @@ instance (Elt a, Storable a, Storable (Rep a))
         mapM fromRep xs
 
     embeddedType _ n =
-        vectorT tau n
-      where
-        tau = embeddedScalarType (undefined :: a)
+        vectorT (embeddedType (undefined :: a) n) n
 
     withArg xs act = do
         Vector n devPtr <- liftIO $ toRep xs
@@ -237,9 +231,7 @@ instance (Elt a, Storable a)
     toRep = return
 
     embeddedType _ n =
-        vectorT tau n
-      where
-        tau = embeddedScalarType (undefined :: a)
+        vectorT (embeddedType (undefined :: a) n) n
 
     withArg (Vector n devPtr) act = do
         pushArg (VectorArg n (CU.castDevPtr devPtr))
@@ -270,9 +262,7 @@ instance (Elt a, Storable a)
         return $ V.unsafeFromForeignPtr fptr 0 n
 
     embeddedType _ n =
-        vectorT tau n
-      where
-        tau = embeddedScalarType (undefined :: a)
+        vectorT (embeddedType (undefined :: a) n) n
 
     withArg v act = do
         Vector n devPtr <- liftIO $ toRep v
@@ -311,9 +301,7 @@ instance (Element a, Elt a, Storable a)
     fromRep _ = fail "fromRep undefined for Matrix"
 
     embeddedType _ n =
-        matrixT tau n n n
-      where
-        tau = embeddedScalarType (undefined :: a)
+        matrixT (embeddedType (undefined :: a) n) n n n
 
     withArg m act = do
         devPtr <- liftIO $ CU.mallocArray n

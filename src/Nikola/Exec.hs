@@ -207,26 +207,25 @@ launchKernel act = do
     l <- gets exLaunch
     l act
 
-allocScalar :: Tau -> Ex ()
-allocScalar UnitT =
+alloc :: Tau -> Ex ()
+alloc UnitT =
     faildoc $ text "Cannot allocate type" <+> ppr UnitT
 
-allocScalar BoolT = do
+alloc BoolT = do
     devPtr :: CU.DevicePtr Int <- liftIO $ CU.mallocArray 1
     pushAlloc (IntAlloc (CU.castDevPtr devPtr))
     pushArg (PtrArg (CU.castDevPtr devPtr))
 
-allocScalar IntT = do
+alloc IntT = do
     devPtr :: CU.DevicePtr Int <- liftIO $ CU.mallocArray 1
     pushAlloc (IntAlloc (CU.castDevPtr devPtr))
     pushArg (PtrArg (CU.castDevPtr devPtr))
 
-allocScalar FloatT = do
+alloc FloatT = do
     devPtr :: CU.DevicePtr Float <- liftIO $ CU.mallocArray 1
     pushAlloc (FloatAlloc (CU.castDevPtr devPtr))
     pushArg (PtrArg (CU.castDevPtr devPtr))
 
-alloc :: Rho -> Ex ()
 alloc (VectorT IntT n) = do
     count       <-  evalN n
     let count'  =   max 1 count
@@ -235,7 +234,7 @@ alloc (VectorT IntT n) = do
     pushAlloc (VectorAlloc n (CU.castDevPtr devPtr))
     pushArg (PtrArg (CU.castDevPtr devPtr))
     -- Push vector size
-    allocScalar IntT
+    alloc IntT
 
 alloc (VectorT FloatT n) = do
     count       <-  evalN n
@@ -245,7 +244,7 @@ alloc (VectorT FloatT n) = do
     pushAlloc (VectorAlloc n (CU.castDevPtr devPtr))
     pushArg (PtrArg (CU.castDevPtr devPtr))
     -- Push vector size
-    allocScalar IntT
+    alloc IntT
 
 alloc (MatrixT IntT s r c) = do
     count <- (*) <$> evalN s <*> evalN c
@@ -260,9 +259,6 @@ alloc (MatrixT FloatT s r c) = do
     devPtr :: CU.DevicePtr Float <- liftIO $ CU.mallocArray count
     pushAlloc (MatrixAlloc s r c (CU.castDevPtr devPtr))
     pushArg (PtrArg (CU.castDevPtr devPtr))
-
-alloc (ScalarT tau) =
-    allocScalar tau
 
 alloc rho =
     faildoc $ text "Cannot allocate type" <+> ppr rho

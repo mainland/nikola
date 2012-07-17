@@ -55,7 +55,7 @@ import Nikola.Representable
 import Nikola.Reify.Monad
 import Nikola.Syntax
 
-type Binding = (Var, Rho, DExp)
+type Binding = (Var, Tau, DExp)
 
 insertBinding :: Var -> DExp -> R ()
 insertBinding v e = do
@@ -237,7 +237,7 @@ class (Typeable a, Typeable b)
     reifyfun :: (a -> b) -> R DExp
     reifyfun = reifyfunk []
 
-    reifyfunk :: [(Var, Rho)] -> (a -> b) -> R DExp
+    reifyfunk :: [(Var, Tau)] -> (a -> b) -> R DExp
 
 instance (Representable a, Representable b)
   => ReifiableFun (Exp a) (Exp b) where

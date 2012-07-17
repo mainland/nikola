@@ -113,7 +113,7 @@ configToLaunchParams config = do
 data CFun a = CFun
     {  cfunName       :: String
     ,  cfunDefs       :: [C.Definition]
-    ,  cfunAllocs     :: [Rho]
+    ,  cfunAllocs     :: [Tau]
     ,  cfunExecConfig :: ExecConfig
     }
 
@@ -219,35 +219,31 @@ runCFun comp = do
                 , cfunExecConfig = config
                 }
 
--- | Translate a base type to its C equivalent
-baseTypeToC :: Tau -> C.Type
-baseTypeToC UnitT  = [cty|void|]
-baseTypeToC BoolT  = [cty|unsigned char|]
-baseTypeToC IntT   = [cty|int|]
-baseTypeToC FloatT = [cty|float|]
-
 -- | Translate a type to its C equivalent
-typeToC :: Rho -> C.Type
-typeToC (ScalarT tau)       = baseTypeToC tau
-typeToC (VectorT tau _)     = [cty|$ty:(baseTypeToC tau) *|]
-typeToC (MatrixT tau _ _ _) = [cty|$ty:(baseTypeToC tau) *|]
-typeToC (FunT rhos rho)     = [cty|$ty:(typeToC rho) (*)($params:params)|]
+typeToC :: Tau -> C.Type
+typeToC UnitT               = [cty|void|]
+typeToC BoolT               = [cty|unsigned char|]
+typeToC IntT                = [cty|int|]
+typeToC FloatT              = [cty|float|]
+typeToC (VectorT tau _)     = [cty|$ty:(typeToC tau) *|]
+typeToC (MatrixT tau _ _ _) = [cty|$ty:(typeToC tau) *|]
+typeToC (FunT taus tau)     = [cty|$ty:(typeToC tau) (*)($params:params)|]
   where
     params :: [C.Param]
-    params = map (\rho -> [cparam|$ty:(typeToC rho)|]) rhos
+    params = map (\tau -> [cparam|$ty:(typeToC tau)|]) taus
 
 -- | Allocate space for a function argument
-allocArgs :: [(Var, Rho)] -> C [CExp]
+allocArgs :: [(Var, Tau)] -> C [CExp]
 allocArgs vtaus =
     mapM allocArg (vtaus `zip` map ParamIdx [0..])
   where
-    allocArg :: ((Var, Rho), ParamIdx) -> C CExp
-    allocArg ((Var v, ScalarT tau), _) = do
+    allocArg :: ((Var, Tau), ParamIdx) -> C CExp
+    allocArg ((Var v, tau), _) | isScalarT tau = do
         addParam [cparam|$ty:cty $id:v|]
         return $ ScalarCExp [cexp|$id:v|]
       where
         cty :: C.Type
-        cty = baseTypeToC tau
+        cty = typeToC tau
 
     allocArg ((Var v, VectorT tau _), pi) = do
         addParam [cparam|$ty:cty* $id:v|]
@@ -257,7 +253,7 @@ allocArgs vtaus =
         return $ VectorCExp [cexp|$id:v|] [cexp|$id:vn|]
       where
         cty :: C.Type
-        cty = baseTypeToC tau
+        cty = typeToC tau
 
         vn :: String
         vn = v ++ "n"
@@ -276,7 +272,7 @@ allocArgs vtaus =
         return $ MatrixCExp [cexp|$id:v|] s r c
       where
         cty :: C.Type
-        cty = baseTypeToC tau
+        cty = typeToC tau
 
         vs, vr, vc :: String
         vs = v ++ "s"
@@ -287,15 +283,7 @@ allocArgs vtaus =
         faildoc $ text "Cannot allocate argument of type" <+> ppr tau
 
 -- | Allocate space for a temporary value
-allocTemp :: Rho -> C CExp
-allocTemp (ScalarT tau) = do
-    v <- gensym "temp"
-    addLocal [cdecl|$ty:cty $id:v;|]
-    return $ ScalarCExp [cexp|$id:v|]
-  where
-    cty :: C.Type
-    cty = baseTypeToC tau
-
+allocTemp :: Tau -> C CExp
 allocTemp (VectorT tau n) = do
     v  <- gensym "temp"
     vn <- gensym "tempn"
@@ -307,7 +295,7 @@ allocTemp (VectorT tau n) = do
     return $ VectorCExp [cexp|$id:v|] [cexp|*$id:vn|]
   where
     cty :: C.Type
-    cty = baseTypeToC tau
+    cty = typeToC tau
 
 allocTemp (MatrixT tau s r c) = do
     v <- gensym "temp"
@@ -318,30 +306,35 @@ allocTemp (MatrixT tau s r c) = do
     return $ MatrixCExp [cexp|$id:v|] s r c
   where
     cty :: C.Type
-    cty = baseTypeToC tau
+    cty = typeToC tau
 
-allocTemp tau =
-    faildoc $ text "Cannot allocate temporary of type" <+> ppr tau
+allocTemp tau = do
+    v <- gensym "temp"
+    addLocal [cdecl|$ty:cty $id:v;|]
+    return $ ScalarCExp [cexp|$id:v|]
+  where
+    cty :: C.Type
+    cty = typeToC tau
 
 -- | Allocate device memory for a function result (if needed) and return a list
 -- of variables that make up the result. For a scalar result, this actually
 -- forces the allocation of device memory. For other types, we collect the names
 -- of the already allocated temporaries that are part of the result.
-allocResult :: Rho -> CExp -> C [String]
-allocResult (ScalarT UnitT) _ =
+allocResult :: Tau -> CExp -> C [String]
+allocResult UnitT _ =
     return []
 
-allocResult (ScalarT tau) (ScalarCExp ce) = do
+allocResult tau (ScalarCExp ce) = do
     v <- gensym "result"
     addStm [cstm|*$id:v = $ce;|]
     addDevAlloc DevAlloc  {  devAllocVar    = v
                           ,  devAllocParams = [ [cparam|$ty:cty* $id:v|] ]
-                          ,  devAllocType   = ScalarT tau
+                          ,  devAllocType   = tau
                           }
     return [v]
   where
     cty :: C.Type
-    cty = baseTypeToC tau
+    cty = typeToC tau
 
 allocResult (VectorT {}) (VectorCExp (C.Var (C.Id v _) _) _) =
     return [v]
@@ -358,10 +351,10 @@ allocResult tau ce =
 -- the result is stored in allocated device memory, so we don't need to return
 -- anything. We return a pair consisting of the function's return type and the
 -- list of variables that make up the result.
-returnResult :: Rho -> CExp -> C (C.Type, [String])
-returnResult (ScalarT tau) (ScalarCExp ce) = do
+returnResult :: Tau -> CExp -> C (C.Type, [String])
+returnResult tau (ScalarCExp ce) = do
     addStm [cstm|return $ce;|]
-    return (baseTypeToC tau, [])
+    return (typeToC tau, [])
 
 returnResult (VectorT {}) (VectorCExp (C.Var (C.Id v _) _) _) =
     return ([cty|void|], [v])
@@ -431,17 +424,17 @@ compileExp ctx (LetE v@(Var vname) tau e1 e2) = do
     extendVarTrans [(v, cve)] $ do
     compileExp (nestCtx ctx) e2
   where
-    compileLet :: Rho -> CExp -> C CExp
-    compileLet (ScalarT _) ce@(ScalarCExp [cexp|$id:_|]) = do
+    compileLet :: Tau -> CExp -> C CExp
+    compileLet _ ce@(ScalarCExp [cexp|$id:_|]) = do
         return ce
 
-    compileLet (ScalarT tau) (ScalarCExp ce1) = do
+    compileLet tau (ScalarCExp ce1) = do
         addLocal [cdecl|$ty:cty $id:vname;|]
         addStm [cstm|$id:vname = $ce1;|]
         return $ ScalarCExp [cexp|$id:vname|]
       where
         cty :: C.Type
-        cty = baseTypeToC tau
+        cty = typeToC tau
 
     compileLet (VectorT {}) v@(VectorCExp {}) =
         return v
@@ -456,9 +449,9 @@ compileExp ctx (LetE v@(Var vname) tau e1 e2) = do
         text "let: type mismatch between expression" <+>
         ppr ce <+> text "and type" <+> ppr tau
 
-compileExp _ (LamE vrhos body) = do
+compileExp _ (LamE vtaus body) = do
     fname <- gensym "f"
-    ce    <- compileFun fname vrhos body
+    ce    <- compileFun fname vtaus body
     return ce
 
 compileExp ctx (AppE f es) = do
@@ -470,14 +463,14 @@ compileExp ctx (AppE f es) = do
                     mapM toTempArgs >>= return . concat
     results      <- mapM (allocTemp . phi . devAllocType) resultAllocs
     resultArgs   <- mapM toTempArgs results >>= return . concat
-    case tau of
-      ScalarT {} -> do  temp <- gensym "temp"
-                        addLocal [cdecl|$ty:(typeToC tau) $id:temp;|]
-                        addStm [cstm|$id:temp = $id:fname($args:explicitArgs,
-                                                           $args:tempArgs,
-                                                           $args:resultArgs);|]
-                        toCExp [cexp|$id:temp|] tau
-      _ -> do  let [ce] = results
+    if isScalarT tau
+      then do  temp <- gensym "temp"
+               addLocal [cdecl|$ty:(typeToC tau) $id:temp;|]
+               addStm [cstm|$id:temp = $id:fname($args:explicitArgs,
+                                                 $args:tempArgs,
+                                                 $args:resultArgs);|]
+               toCExp [cexp|$id:temp|] tau
+      else do  let [ce] = results
                addStm [cstm|$id:fname($args:explicitArgs,
                                        $args:tempArgs,
                                        $args:resultArgs);|]
@@ -490,11 +483,11 @@ compileExp ctx (AppE f es) = do
           FunCExp {} -> return cf
           _ -> fail "Cannot apply non-function"
 
-    toCExp :: C.Exp -> Rho -> C CExp
-    toCExp ce (ScalarT _)       = return $ ScalarCExp ce
+    toCExp :: C.Exp -> Tau -> C CExp
     toCExp ce (VectorT _ n)     = VectorCExp ce <$> evalN n
     toCExp ce (MatrixT _ s r c) = return $ MatrixCExp ce s r c
     toCExp _  (FunT {})         = fail "Function cannot return a function type"
+    toCExp ce _                 = return $ ScalarCExp ce
 
 compileExp _ (BoolE False) = return (ScalarCExp [cexp|0|])
 compileExp _ (BoolE True)  = return (ScalarCExp [cexp|1|])
@@ -605,13 +598,13 @@ compileExp ctx (IfteE teste thene elsee) = do
     return result
 
 compileExp ctx e@(MapE (LamE [(x, _)] body) e1) = do
-    rho@(VectorT _ n) <- check e
+    tau@(VectorT _ n) <- check e
     (tau1, _)         <- checkVector e1
-    result            <- allocTemp rho
+    result            <- allocTemp tau
     cn :: C.Exp       <- evalN n
     cx                <- compileExp (nestCtx ctx) e1
     (fapp, items) <-
-        extendVars     [(x, ScalarT tau1)] $
+        extendVars     [(x, tau1)] $
         extendVarTrans [(x, ScalarCExp [cexp|$cx[i]|])] $
         inNewBlock $
         compileExp (nestCtx ctx) body
@@ -624,14 +617,14 @@ compileExp ctx e@(MapE (LamE [(x, _)] body) e1) = do
 compileExp _ (MapE {}) =
     fail "Impossible: improperly reified map expression"
 
-compileExp ctx (MapME (LamE [(x, rho)] body) xs ys) = do
+compileExp ctx (MapME (LamE [(x, tau)] body) xs ys) = do
     (VectorT _ n1) <- check xs
     (VectorT _ n2) <- check ys
     let n          =  NMin [n1, n2]
     cxs            <- compileExp (nestCtx ctx) xs
     cys            <- compileExp (nestCtx ctx) ys
     (fapp, items) <-
-        extendVars     [(x, rho)] $
+        extendVars     [(x, tau)] $
         extendVarTrans [(x, ScalarCExp [cexp|$cxs[i]|])] $
         inNewBlock $
         compileExp (nestCtx ctx) body
@@ -644,8 +637,8 @@ compileExp _ (MapME {}) =
     fail "Impossible: improperly reified mapM expression"
 
 compileExp ctx e@(PermuteE xs is) = do
-    rho@(VectorT _ n) <- check e
-    cys               <- allocTemp rho
+    tau@(VectorT _ n) <- check e
+    cys               <- allocTemp tau
     cn :: C.Exp       <- evalN n
     cxs               <- compileExp (nestCtx ctx) xs
     cis               <- compileExp (nestCtx ctx) is
@@ -674,16 +667,16 @@ compileExp ctx (PermuteME xs is ys) = do
     return $ error "permuteM returns unit"
 
 compileExp ctx e@(ZipWithE (LamE [(x, _), (y, _)] body) e1 e2) = do
-    rho@(VectorT _ n) <- check e
+    tau@(VectorT _ n) <- check e
     (tau1, _)         <- checkVector e1
     (tau2, _)         <- checkVector e2
-    result            <- allocTemp rho
+    result            <- allocTemp tau
     cn :: C.Exp       <- evalN n
     cx                <- compileExp (nestCtx ctx) e1
     cy                <- compileExp (nestCtx ctx) e2
     (fapp, items) <-
-        extendVars     [(x, ScalarT tau1),
-                        (y, ScalarT tau2)] $
+        extendVars     [(x, tau1),
+                        (y, tau2)] $
         extendVarTrans [(x, ScalarCExp [cexp|$cx[i]|]),
                         (y, ScalarCExp [cexp|$cy[i]|])] $
         inNewBlock $
@@ -698,19 +691,19 @@ compileExp _ (ZipWithE {}) =
     fail "Impossible: improperly reified zipWith expression"
 
 compileExp ctx e@(ZipWith3E (LamE [(x, _), (y, _), (z, _)] body) e1 e2 e3) = do
-    rho@(VectorT _ n) <- check e
+    tau@(VectorT _ n) <- check e
     (tau1, _)         <- checkVector e1
     (tau2, _)         <- checkVector e2
     (tau3, _)         <- checkVector e3
-    result            <- allocTemp rho
+    result            <- allocTemp tau
     cn :: C.Exp       <- evalN n
     cx                <- compileExp (nestCtx ctx) e1
     cy                <- compileExp (nestCtx ctx) e2
     cz                <- compileExp (nestCtx ctx) e3
     (fapp, items) <-
-        extendVars     [(x, ScalarT tau1),
-                        (y, ScalarT tau2),
-                        (z, ScalarT tau3)] $
+        extendVars     [(x, tau1),
+                        (y, tau2),
+                        (z, tau3)] $
         extendVarTrans [(x, ScalarCExp [cexp|$cx[i]|]),
                         (y, ScalarCExp [cexp|$cy[i]|]),
                         (z, ScalarCExp [cexp|$cz[i]|])] $
@@ -736,9 +729,9 @@ compileExp ctx (ZipWith3ME (LamE [(x, _), (y, _), (z, _)] body) xs ys zs results
     czs               <- compileExp (nestCtx ctx) zs
     cresults          <- compileExp (nestCtx ctx) results
     (fapp, items) <-
-        extendVars     [(x, ScalarT tau1),
-                        (y, ScalarT tau2),
-                        (z, ScalarT tau3)] $
+        extendVars     [(x, tau1),
+                        (y, tau2),
+                        (z, tau3)] $
         extendVarTrans [(x, ScalarCExp [cexp|$cxs[i]|]),
                         (y, ScalarCExp [cexp|$cys[i]|]),
                         (z, ScalarCExp [cexp|$czs[i]|])] $
@@ -753,14 +746,14 @@ compileExp _ (ZipWith3ME {}) =
     fail "Impossible: improperly reified zipWith3M expression"
 
 compileExp ctx e@(ScanE (LamE [(x, _), (y, _)] body) z xs) = do
-    rho@(VectorT tau n) <- check e
-    result              <- allocTemp rho
-    let ctau            =  baseTypeToC tau
-    cn :: C.Exp         <- evalN n
-    cz                  <- compileExp (nestCtx ctx) z
-    cxs                 <- compileExp (nestCtx ctx) xs
-    temp                <- gensym "temp"
-    t                   <- gensym "t"
+    tau@(VectorT tau0 n) <- check e
+    result               <- allocTemp tau
+    let ctau             =  typeToC tau0
+    cn :: C.Exp          <- evalN n
+    cz                   <- compileExp (nestCtx ctx) z
+    cxs                  <- compileExp (nestCtx ctx) xs
+    temp                 <- gensym "temp"
+    t                    <- gensym "t"
     addLocal [cdecl|__shared__ $ty:ctau $id:temp[2*$int:threadBlockWidth];|]
     parfor ctx "i" ((n+1) `div` 2) $ \i -> do
         (sum1, items1) <- plus tau [cexp|$id:temp[ai]|] [cexp|$id:temp[bi]|]
@@ -818,8 +811,8 @@ compileExp ctx e@(ScanE (LamE [(x, _), (y, _)] body) z xs) = do
   where
     plus :: Tau -> C.Exp -> C.Exp -> C (CExp, [C.BlockItem])
     plus tau e1 e2 =
-        extendVars     [(x, ScalarT tau),
-                        (y, ScalarT tau)] $
+        extendVars     [(x, tau),
+                        (y, tau)] $
         extendVarTrans [(x, ScalarCExp e1),
                         (y, ScalarCExp e2)] $
         inNewBlock $
@@ -829,19 +822,19 @@ compileExp _ (ScanE {}) =
     fail "Impossible: improperly reified scan expression"
 
 compileExp ctx e@(BlockedScanME (LamE [(x, _), (y, _)] body) z xs) = do
-    (VectorT tau n)       <- check xs
-    rho@(VectorT _ sumsn) <- check e
-    sums                  <- allocTemp rho
-    let ctau              =  baseTypeToC tau
-    cn :: C.Exp           <- evalN n
-    csumsn :: C.Exp       <- evalN sumsn
-    cz                    <- compileExp (nestCtx ctx) z
-    cxs                   <- compileExp (nestCtx ctx) xs
-    temp                  <- gensym "temp"
+    (VectorT tau1 n)       <- check xs
+    tau2@(VectorT _ sumsn) <- check e
+    sums                   <- allocTemp tau2
+    let ctau               =  typeToC tau1
+    cn :: C.Exp            <- evalN n
+    csumsn :: C.Exp        <- evalN sumsn
+    cz                     <- compileExp (nestCtx ctx) z
+    cxs                    <- compileExp (nestCtx ctx) xs
+    temp                   <- gensym "temp"
     addLocal [cdecl|__shared__ $ty:ctau $id:temp[2*$int:threadBlockWidth];|]
     parfor ctx "i" ((n+1) `div` 2) $ \i -> do
-        (sum1, items1) <- plus tau [cexp|$id:temp[ai]|] [cexp|$id:temp[bi]|]
-        (sum2, items2) <- plus tau [cexp|$id:temp[bi]|] [cexp|t|]
+        (sum1, items1) <- plus tau1 [cexp|$id:temp[ai]|] [cexp|$id:temp[bi]|]
+        (sum2, items2) <- plus tau1 [cexp|$id:temp[bi]|] [cexp|t|]
         addStm [cstm|{
             int offset = 1;
             int block = 2*blockIdx.x*$int:threadBlockWidth;
@@ -907,8 +900,8 @@ compileExp ctx e@(BlockedScanME (LamE [(x, _), (y, _)] body) z xs) = do
   where
     plus :: Tau -> C.Exp -> C.Exp -> C (CExp, [C.BlockItem])
     plus tau e1 e2 =
-        extendVars     [(x, ScalarT tau),
-                        (y, ScalarT tau)] $
+        extendVars     [(x, tau),
+                        (y, tau)] $
         extendVarTrans [(x, ScalarCExp e1),
                         (y, ScalarCExp e2)] $
         inNewBlock $
@@ -918,19 +911,19 @@ compileExp _ (BlockedScanME {}) =
     fail "Impossible: improperly reified upsweep expression"
 
 compileExp ctx e@(BlockedNacsME (LamE [(x, _), (y, _)] body) z xs) = do
-    (VectorT tau n)       <- check xs
-    rho@(VectorT _ sumsn) <- check e
-    sums                  <- allocTemp rho
-    let ctau              =  baseTypeToC tau
-    cn :: C.Exp           <- evalN n
-    csumsn :: C.Exp       <- evalN sumsn
-    cz                    <- compileExp (nestCtx ctx) z
-    cxs                   <- compileExp (nestCtx ctx) xs
-    temp                  <- gensym "temp"
+    (VectorT tau1 n)       <- check xs
+    tau2@(VectorT _ sumsn) <- check e
+    sums                   <- allocTemp tau2
+    let ctau               =  typeToC tau1
+    cn :: C.Exp            <- evalN n
+    csumsn :: C.Exp        <- evalN sumsn
+    cz                     <- compileExp (nestCtx ctx) z
+    cxs                    <- compileExp (nestCtx ctx) xs
+    temp                   <- gensym "temp"
     addLocal [cdecl|__shared__ $ty:ctau $id:temp[2*$int:threadBlockWidth];|]
     parfor ctx "i" ((n+1) `div` 2) $ \i -> do
-        (sum1, items1) <- plus tau [cexp|$id:temp[ai]|] [cexp|$id:temp[bi]|]
-        (sum2, items2) <- plus tau [cexp|$id:temp[bi]|] [cexp|t|]
+        (sum1, items1) <- plus tau1 [cexp|$id:temp[ai]|] [cexp|$id:temp[bi]|]
+        (sum2, items2) <- plus tau1 [cexp|$id:temp[bi]|] [cexp|t|]
         addStm [cstm|{
             int offset = 1;
             int block = 2*blockIdx.x*$int:threadBlockWidth;
@@ -996,8 +989,8 @@ compileExp ctx e@(BlockedNacsME (LamE [(x, _), (y, _)] body) z xs) = do
   where
     plus :: Tau -> C.Exp -> C.Exp -> C (CExp, [C.BlockItem])
     plus tau e1 e2 =
-        extendVars     [(x, ScalarT tau),
-                        (y, ScalarT tau)] $
+        extendVars     [(x, tau),
+                        (y, tau)] $
         extendVarTrans [(x, ScalarCExp e1),
                         (y, ScalarCExp e2)] $
         inNewBlock $
@@ -1023,15 +1016,15 @@ compileExp ctx (BlockedAddME xs sums) = do
     return (error "blockedadd returns unit")
 
 compileFunBody :: Ctx
-               -> [(Var, Rho)]
+               -> [(Var, Tau)]
                -> DExp
-               -> ((Rho, CExp) -> C a)
+               -> ((Tau, CExp) -> C a)
                -> C (a, [C.Param], [C.BlockItem])
-compileFunBody ctx vrhos body cont =
+compileFunBody ctx vtaus body cont =
     inNewFunction $ do
     inNewCompiledFunction $ do
-    vexps <- allocArgs vrhos
-    (tau, ce) <- extendVars vrhos $ do
+    vexps <- allocArgs vtaus
+    (tau, ce) <- extendVars vtaus $ do
                  extendVarTrans (vs `zip` vexps) $ do
                  tau <- check body
                  ce  <- compileExp ctx body
@@ -1039,7 +1032,7 @@ compileFunBody ctx vrhos body cont =
     cont (tau, ce)
   where
     vs :: [Var]
-    vs = map fst vrhos
+    vs = map fst vtaus
 
 orderFunAllocs :: [String] -> C ([DevAlloc], [DevAlloc])
 orderFunAllocs results = do
@@ -1063,10 +1056,10 @@ orderFunAllocs results = do
             findAlloc :: String -> DevAlloc
             findAlloc v = fromJust $ find (\alloc -> devAllocVar alloc == v) allocs
 
-compileFun :: String -> [(Var, Rho)] -> DExp -> C CExp
-compileFun fname vrhos body = do
+compileFun :: String -> [(Var, Tau)] -> DExp -> C CExp
+compileFun fname vtaus body = do
     ((cty, tau, tempAllocs, resultAllocs), ps, items) <-
-      compileFunBody (NestedFun 0) vrhos body $ \(tau, ce) -> do
+      compileFunBody (NestedFun 0) vtaus body $ \(tau, ce) -> do
         (cty, results)             <- returnResult tau ce
         (tempAllocs, resultAllocs) <- orderFunAllocs results
         return (cty, tau, tempAllocs, resultAllocs)
@@ -1079,14 +1072,14 @@ compileFun fname vrhos body = do
 
 -- | Compile a 'Fun' to a 'CFun'
 compileTopFun :: String -> DExp -> IO (CFun a)
-compileTopFun fname (LamE vrhos body) =
+compileTopFun fname (LamE vtaus body) =
     runCFun compile
   where
     compile :: C (String, [DevAlloc])
     compile = do
         addSymbol fname
         ((tempAllocs, resultAllocs), ps, items) <-
-          compileFunBody (TopFun 0) vrhos body $ \(tau, ce) -> do
+          compileFunBody (TopFun 0) vtaus body $ \(tau, ce) -> do
             results <- allocResult tau ce
             orderFunAllocs results
 

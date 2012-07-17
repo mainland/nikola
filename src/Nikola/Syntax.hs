@@ -39,7 +39,6 @@ module Nikola.Syntax (
     maxGridWidth,
 
     Tau(..),
-    Rho(..),
 
     Var(..),
     Unop(..),
@@ -48,7 +47,7 @@ module Nikola.Syntax (
 
     Exp(..),
 
-    unScalarT,
+    isScalarT,
     vectorT,
     matrixT,
     freeVars
@@ -155,22 +154,22 @@ data Tau = UnitT
          | BoolT
          | IntT
          | FloatT
-  deriving (Eq, Ord, Data, Typeable)
-
-data Rho = ScalarT Tau
          | VectorT Tau N
          | MatrixT Tau N N N
-         | FunT [Rho] Rho
+         | FunT [Tau] Tau
   deriving (Eq, Ord, Data, Typeable)
 
-unScalarT :: Rho -> Tau
-unScalarT (ScalarT tau) = tau
-unScalarT rho           = error $ "Not a scalar type: " ++ show rho
+isScalarT :: Tau -> Bool
+isScalarT UnitT   = True
+isScalarT BoolT   = True
+isScalarT IntT    = True
+isScalarT FloatT  = True
+isScalarT _       = False
 
-vectorT :: Tau -> ParamIdx -> Rho
+vectorT :: Tau -> ParamIdx -> Tau
 vectorT tau n = VectorT tau (NVecLength n)
 
-matrixT :: Tau -> ParamIdx -> ParamIdx -> ParamIdx -> Rho
+matrixT :: Tau -> ParamIdx -> ParamIdx -> ParamIdx -> Tau
 matrixT tau s r c = MatrixT tau (NMatStride s) (NMatRows r) (NMatCols c)
 
 data Var = Var String
@@ -229,8 +228,8 @@ data Binop = Land
 
 data DExp = VarE Var
           | DelayedE (R DExp)
-          | LetE Var Rho DExp DExp
-          | LamE [(Var, Rho)] DExp
+          | LetE Var Tau DExp DExp
+          | LamE [(Var, Tau)] DExp
           | AppE DExp [DExp]
           | BoolE Bool
           | IntE Int
@@ -368,17 +367,10 @@ instance Show N where
     show = show . ppr
 
 instance Pretty Tau where
-    ppr UnitT  = text "Unit"
-    ppr BoolT  = text "Bool"
-    ppr IntT   = text "Int"
-    ppr FloatT = text "Float"
-
-instance Show Tau where
-    show = show . ppr
-
-instance Pretty Rho where
-    pprPrec _ (ScalarT tau) =
-        ppr tau
+    pprPrec _ UnitT  = text "Unit"
+    pprPrec _ BoolT  = text "Bool"
+    pprPrec _ IntT   = text "Int"
+    pprPrec _ FloatT = text "Float"
 
     pprPrec _ (VectorT tau n) =
         ppr tau <+> brackets (ppr n)
@@ -390,7 +382,7 @@ instance Pretty Rho where
         parensIf (p > appPrec) $
         infixop 0 (infixr_ 0) (text "->") tau1 tau2
 
-instance Show Rho where
+instance Show Tau where
     show = show . ppr
 
 instance Pretty Var where
@@ -418,7 +410,7 @@ instance Pretty DExp where
         parensIf (p > appPrec) $
         text "\\" <+> spread (map pp vtaus) <+> text "->" <+> ppr e
       where
-        pp :: (Var, Rho) -> Doc
+        pp :: (Var, Tau) -> Doc
         pp (v, tau) =
             parens $
             ppr v <+> text "::" <+> ppr tau
