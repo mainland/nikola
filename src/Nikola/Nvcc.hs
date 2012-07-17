@@ -38,7 +38,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Nikola.Nvcc (
-    compileFunction
+    compile
   ) where
 
 import Control.Monad.State
@@ -70,28 +70,45 @@ import System.IO (hClose,
 
 #include "Nikola.h"
 
-compileFunction :: [C.Definition] -> IO B.ByteString
-compileFunction cdefs = do
-    writeFile "temp.cu" (show (stack (map ppr cdefs)))
+data NvccOpt = Ptx
+             | Fatbin
+             | Gencode10
+             | Gencode20
+             | Debug
+             | Opt String
+             | Freeform String
+  deriving (Eq, Ord)
 
-    (exitCode, _, err) <- readProcessWithExitCode NVCC
-        ["-O", "--compiler-bindir", NVCC_CC, "--ptx", "temp.cu"]
-        ""
-{-
-    (exitCode, _, err) <- readProcessWithExitCode NVCC
-        ["--compiler-bindir", NVCC_CC,
-         "-O",
-         "--fatbin",
-         "-gencode", "arch=compute_10,code=sm_10",
-         "-gencode", "arch=compute_20,code=sm_20",
-         "temp.cu"]
-        ""
--}
+opts2args :: NvccOpt -> [String]
+opts2args Ptx            = ["--ptx"]
+opts2args Fatbin         = ["--fatbin"]
+opts2args Gencode10      = ["-gencode", "arch=compute_10,code=sm_10"]
+opts2args Gencode20      = ["-gencode", "arch=compute_20,code=sm_20"]
+opts2args Debug          = ["-G"]
+opts2args (Opt lvl)      = ["-O"++lvl]
+opts2args (Freeform opt) = [opt]
 
+compileEx :: [NvccOpt] -> [C.Definition] -> IO B.ByteString
+compileEx opts cdefs = do
+    writeFile cupath (show (stack (map ppr cdefs)))
+    (exitCode, _, err) <- readProcessWithExitCode NVCC
+        (["--compiler-bindir", NVCC_CC] ++
+         concatMap opts2args opts ++
+         ["temp.cu"])
+        ""
     when (exitCode /= ExitSuccess) $
         fail $ "nvcc failed: " ++ err
---    B.readFile "temp.fatbin"
-    B.readFile "temp.ptx"
+    B.readFile objpath
+  where
+    cupath :: FilePath
+    cupath = "temp.cu"
+
+    objpath :: FilePath
+    objpath | Fatbin `elem` opts  = "temp.fatbin"
+            | otherwise           = "temp.ptx"
+
+compile :: [C.Definition] -> IO B.ByteString
+compile = compileEx [Fatbin, Gencode10, Gencode20, Opt ""]
 
 #if !MIN_VERSION_process(1,1,0)
 readProcessWithExitCode

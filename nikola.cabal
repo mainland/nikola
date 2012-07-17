@@ -38,6 +38,7 @@ library
     Nikola.Compile
     Nikola.Exec
     Nikola.Nvcc
+    Nikola.Pretty
     Nikola.Quote
     Nikola.Reify
     Nikola.Reify.Monad

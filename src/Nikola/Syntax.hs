@@ -12,7 +12,7 @@
 -- 3. Neither the name of the University nor the names of its contributors
 --    may be used to endorse or promote products derived from this software
 --    without specific prior written permission.
-
+--
 -- THIS SOFTWARE IS PROVIDED BY THE UNIVERSITY AND CONTRIBUTORS ``AS IS'' AND
 -- ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 -- IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -58,6 +58,7 @@ import Data.Generics (Data, Typeable)
 import qualified Data.Set as Set
 import Text.PrettyPrint.Mainland
 
+import Nikola.Pretty
 import {-# SOURCE #-} Nikola.Reify.Monad
 
 -- |Function parameter index.
@@ -174,24 +175,6 @@ matrixT tau s r c = MatrixT tau (NMatStride s) (NMatRows r) (NMatCols c)
 
 data Var = Var String
   deriving (Eq, Ord, Typeable)
-
-data Fixity = Fixity FixityDirection Int
-  deriving (Eq, Ord, Typeable)
-
-data FixityDirection = InfixL | InfixR | Infix
-  deriving (Eq, Ord, Typeable)
-
-infix_ :: Int -> Fixity
-infix_ = Fixity Infix
-
-infixl_ :: Int -> Fixity
-infixl_ = Fixity InfixL
-
-infixr_ :: Int -> Fixity
-infixr_ = Fixity InfixR
-
-defaultFixity :: Fixity
-defaultFixity = infixr_ 9
 
 data Unop = Lnot
 
@@ -342,51 +325,11 @@ eqPrec = 4
 lorPrec :: Int
 lorPrec = 2
 
-addPrec :: Int
-addPrec = 6
-
-mulPrec :: Int
-mulPrec = 7
-
 bandPrec :: Int
 bandPrec = 7
 
 powPrec :: Int
 powPrec = 8
-
-appPrec :: Int
-appPrec = 10
-
-appPrec1 :: Int
-appPrec1 = appPrec + 1
-
-infixop :: (Pretty a, Pretty b)
-        => Int    -- Precedence of context
-        -> Fixity -- Fixity of the operator
-        -> Doc    -- Operator
-        -> a      -- Left argument
-        -> b      -- Right argument
-        -> Doc
-infixop prec (Fixity opAssoc opPrec) op l r =
-    parensIf (prec > opPrec) $
-    pprPrec leftPrec l <+> op <+/> pprPrec rightPrec r
-  where
-    leftPrec   | opAssoc == InfixR  = opPrec + 1
-               | otherwise          = opPrec
-    rightPrec  | opAssoc == InfixL  = opPrec + 1
-               | otherwise          = opPrec
-
-embrace ::[Doc] -> Doc
-embrace ds =
-    case ds of
-      [] ->  lbrace <> rbrace
-      [d] -> lbrace <+> d <+> rbrace
-      _ ->   lbrace </> stack (semis ds) </> rbrace
-  where
-    semis :: [Doc] -> [Doc]
-    semis []     = []
-    semis [d]    = [d]
-    semis (d:ds) = d <> semi : semis ds
 
 instance Pretty N where
     pprPrec _ (NVecLength n) = text "veclen" <+> parens (ppr n)

@@ -60,7 +60,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import Nikola.Backend.CUDA.CodeGen
 import Nikola.Exec
-import Nikola.Nvcc
+import qualified Nikola.Nvcc as Nvcc
 import Nikola.Quote
 import Nikola.Reify
 import Nikola.Representable
@@ -74,7 +74,7 @@ withRawCompiledCFun  :: CFun a
                      -> (ExState -> IO b)
                      -> IO b
 withRawCompiledCFun cfun act = do
-    bs <- compileFunction (cfunDefs cfun)
+    bs <- Nvcc.compile (cfunDefs cfun)
     withModuleFromByteString bs $ \mod -> do
     cudaFun <- CU.getFun mod (cfunName cfun)
     act emptyExState { exFun    = cudaFun
@@ -250,7 +250,7 @@ reifyCompileAndLoad ropts f =
 compileAndLoad :: CFun a
                -> IO (CU.Module, ExState)
 compileAndLoad cfun = do
-    mod     <- compileFunction (cfunDefs cfun) >>= CU.loadData
+    mod     <- Nvcc.compile (cfunDefs cfun) >>= CU.loadData
     cudaFun <- CU.getFun mod (cfunName cfun)
     let sigma = emptyExState { exFun    = cudaFun
                              , exLaunch = cfunLaunch cfun
@@ -337,7 +337,7 @@ reifyCompileAndLoadTH ropts f = do
 compileAndLoadTH :: CFun a
                  -> ExpQ
 compileAndLoadTH cfun = do
-    bs <- liftIO $ compileFunction (cfunDefs cfun)
+    bs <- liftIO $ Nvcc.compile (cfunDefs cfun)
     [|do { mod     <- CU.loadData (B.pack $(stringE (B.unpack bs)))
          ; cudaFun <- CU.getFun mod $(lift (cfunName cfun))
          ; let sigma = emptyExState { exFun    = cudaFun
