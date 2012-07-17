@@ -181,10 +181,10 @@ pushArg :: Arg -> Ex ()
 pushArg arg = modify $ \s ->
     s { exArgs = exArgs s ++ [arg] }
 
-lookupArg :: Int -> Ex Arg
+lookupArg :: ParamIdx -> Ex Arg
 lookupArg i = do
     args <- gets exArgs
-    return (args !! i)
+    return (args !! unParamIdx i)
 
 getAllocs :: Ex [Alloc]
 getAllocs = gets exAllocs

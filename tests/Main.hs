@@ -51,7 +51,7 @@ f2 = CFun { cfunName = "f2"
           }
   where
     nmin :: N
-    nmin = NVecLength 0
+    nmin = NVecLength (ParamIdx 0)
 
     defs :: [C.Definition]
     defs = [cunit|

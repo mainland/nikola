@@ -301,14 +301,14 @@ match taus = phi
     go m i (VectorT _ n : taus) =
         go (foldl' insert m kvs) (i+1) taus
       where
-        kvs = [(NVecLength i, n)]
+        kvs = [(NVecLength (ParamIdx i), n)]
 
     go m i (MatrixT _ s r c : taus) =
         go (foldl' insert m kvs) (i+1) taus
       where
-        kvs = [(NMatStride i, s),
-               (NMatRows i, r),
-               (NMatCols i, c)]
+        kvs = [(NMatStride (ParamIdx i), s),
+               (NMatRows   (ParamIdx i), r),
+               (NMatCols   (ParamIdx i), c)]
 
     go _ _ (FunT {} : _) =
         error "The impossible happened: an embedded higher-order function!"

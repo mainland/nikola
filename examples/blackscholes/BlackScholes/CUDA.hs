@@ -100,4 +100,6 @@ blackscholes = CFun { cfunName = "blackscholes"
       |]
 
     nmin :: N
-    nmin = NMin [NVecLength 0, NVecLength 1, NVecLength 2]
+    nmin = NMin [NVecLength (ParamIdx 0),
+                 NVecLength (ParamIdx 1),
+                 NVecLength (ParamIdx 2)]

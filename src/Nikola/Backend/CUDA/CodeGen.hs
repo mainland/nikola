@@ -239,9 +239,9 @@ typeToC (FunT rhos rho)     = [cty|$ty:(typeToC rho) (*)($params:params)|]
 -- | Allocate space for a function argument
 allocArgs :: [(Var, Rho)] -> C [CExp]
 allocArgs vtaus =
-    mapM allocArg (vtaus `zip` [0..])
+    mapM allocArg (vtaus `zip` map ParamIdx [0..])
   where
-    allocArg :: ((Var, Rho), Int) -> C CExp
+    allocArg :: ((Var, Rho), ParamIdx) -> C CExp
     allocArg ((Var v, ScalarT tau), _) = do
         addParam [cparam|$ty:cty $id:v|]
         return $ ScalarCExp [cexp|$id:v|]
@@ -249,10 +249,10 @@ allocArgs vtaus =
         cty :: C.Type
         cty = baseTypeToC tau
 
-    allocArg ((Var v, VectorT tau _), i) = do
+    allocArg ((Var v, VectorT tau _), pi) = do
         addParam [cparam|$ty:cty* $id:v|]
         addParam [cparam|int $id:vn|]
-        let n = NVecLength i
+        let n = NVecLength pi
         insertNTrans n [cexp|$id:vn|]
         return $ VectorCExp [cexp|$id:v|] [cexp|$id:vn|]
       where
@@ -262,14 +262,14 @@ allocArgs vtaus =
         vn :: String
         vn = v ++ "n"
 
-    allocArg ((Var v, MatrixT tau _ _ _), i) = do
+    allocArg ((Var v, MatrixT tau _ _ _), pi) = do
         addParam [cparam|$ty:cty* $id:v|]
         addParam [cparam|int $id:vs|]
         addParam [cparam|int $id:vr|]
         addParam [cparam|int $id:vc|]
-        let s = NMatStride i
-        let r = NMatRows i
-        let c = NMatCols i
+        let s = NMatStride pi
+        let r = NMatRows   pi
+        let c = NMatCols   pi
         insertNTrans s [cexp|$id:vs|]
         insertNTrans r [cexp|$id:vr|]
         insertNTrans c [cexp|$id:vc|]

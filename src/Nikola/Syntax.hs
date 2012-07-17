@@ -30,7 +30,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 module Nikola.Syntax (
-    ParamIdx,
+    ParamIdx(..),
     N(..),
     ExecConfig(..),
     nGridDimX,
@@ -61,7 +61,11 @@ import Text.PrettyPrint.Mainland
 import {-# SOURCE #-} Nikola.Reify.Monad
 
 -- |Function parameter index.
-type ParamIdx = Int
+newtype ParamIdx = ParamIdx { unParamIdx :: Int }
+  deriving (Eq, Ord, Data, Typeable)
+
+instance Pretty ParamIdx where
+    ppr pi = text "#" <> ppr (unParamIdx pi)
 
 -- |Gross constant...but we need it to perform type-level calculations.
 threadBlockWidth :: Integer
@@ -162,10 +166,10 @@ unScalarT :: Rho -> Tau
 unScalarT (ScalarT tau) = tau
 unScalarT rho           = error $ "Not a scalar type: " ++ show rho
 
-vectorT :: Tau -> Int -> Rho
+vectorT :: Tau -> ParamIdx -> Rho
 vectorT tau n = VectorT tau (NVecLength n)
 
-matrixT :: Tau -> Int -> Int -> Int -> Rho
+matrixT :: Tau -> ParamIdx -> ParamIdx -> ParamIdx -> Rho
 matrixT tau s r c = MatrixT tau (NMatStride s) (NMatRows r) (NMatCols c)
 
 data Var = Var String

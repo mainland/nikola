@@ -243,7 +243,7 @@ instance (Representable a, Representable b)
   => ReifiableFun (Exp a) (Exp b) where
     reifyfunk xrhos f = do
         x          <- gensym
-        let rho    =  embeddedType (undefined :: a) (length xrhos)
+        let rho    =  embeddedType (undefined :: a) (ParamIdx (length xrhos))
         let xrhos' =  reverse ((x, rho) : xrhos)
         body       <- extendVars [(x, rho)] $
                       flushBindings $
@@ -261,7 +261,7 @@ instance (Representable a, Representable b)
     reifyfunk xrhos f = do
         x          <- gensym
         fofx       <- liftIO $ f (E (VarE x))
-        let rho    =  embeddedType (undefined :: a) (length xrhos)
+        let rho    =  embeddedType (undefined :: a) (ParamIdx (length xrhos))
         let xrhos' =  reverse ((x, rho) : xrhos)
         body       <- extendVars [(x, rho)] $
                       flushBindings $
@@ -278,7 +278,7 @@ instance (Representable a, ReifiableFun b c)
   => ReifiableFun (Exp a) (b -> c) where
     reifyfunk xrhos f = do
         x       <- gensym
-        let rho =  embeddedType (undefined :: a) (length xrhos)
+        let rho =  embeddedType (undefined :: a) (ParamIdx (length xrhos))
         extendVars [(x, rho)] $
           reifyfunk ((x, rho) : xrhos) (f (E (VarE x)))
 

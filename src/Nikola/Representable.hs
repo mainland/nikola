@@ -96,7 +96,7 @@ unsafeFreeVector (Vector _ devPtr) =
 
 embeddedScalarType :: Representable a => a -> Tau
 embeddedScalarType dummy =
-    unScalarT (embeddedType dummy 0)
+    unScalarT (embeddedType dummy (ParamIdx 0))
 
 -- | A type that can be used in a GPU embedding.
 class (Typeable a, Storable (Rep a)) => Representable a where
