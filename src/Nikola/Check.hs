@@ -36,14 +36,15 @@ module Nikola.Check (
   match
   ) where
 
-import Control.Monad.State
+import Control.Applicative
+import Control.Monad (when)
 import Data.List (foldl')
 import qualified Data.Map as Map
 import Text.PrettyPrint.Mainland
 
 import Nikola.Syntax
 
-class MonadUniqueVar m => MonadCheck m where
+class (Functor m, Applicative m, Monad m) => MonadCheck m where
     lookupVar  :: Var -> m Rho
     extendVars :: [(Var, Rho)] -> m a -> m a
 
@@ -179,7 +180,7 @@ check (BlockedAddME xs sums) = do
     return $ ScalarT UnitT
 
 checkUnop :: MonadCheck m => Unop -> DExp -> m Rho
-checkUnop _ e = liftM ScalarT (checkScalar e)
+checkUnop _ e = ScalarT <$> checkScalar e
 
 checkBinop :: forall m . MonadCheck m
            => Binop

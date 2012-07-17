@@ -64,7 +64,7 @@ import qualified Language.C.Syntax
 import Nikola.CGen
 import Nikola.Check
 import Nikola.Syntax
-import Nikola.Exec
+import qualified Nikola.Exec as Ex
 
 -- | Index into a thread block
 data BlockVar = BlockVar { blockDim   :: Int
@@ -160,7 +160,7 @@ data ExecConfig = ExecConfig
     }
   deriving (Show, Data, Typeable)
 
-configToLaunchParams :: ExecConfig -> Ex (Int, Int, Int, Int, Int)
+configToLaunchParams :: ExecConfig -> Ex.Ex (Int, Int, Int, Int, Int)
 configToLaunchParams config = do
     gridW <- compGridW
     gridH <- compGridH
@@ -171,9 +171,9 @@ configToLaunchParams config = do
     dimY = blockDimY config
     dimZ = blockDimZ config
 
-    compGridW, compGridH :: Ex Int
-    compGridW = evalN (gridDimX config)
-    compGridH = evalN (gridDimY config)
+    compGridW, compGridH :: Ex.Ex Int
+    compGridW = Ex.evalN (gridDimX config)
+    compGridH = Ex.evalN (gridDimY config)
 
 -- | A compiled function.
 data CFun a = CFun
@@ -204,9 +204,7 @@ nest :: Ctx -> Ctx
 nest ctx = ctx { level = level ctx + 1 }
 
 data CState = CState
-    {  cuniq    :: Int
-
-    ,  cvars    :: Map.Map Var Rho
+    {  cvars    :: Map.Map Var Rho
     ,  cvarExps :: Map.Map Var CExp
 
     ,  cgenenv  :: CGenEnv
@@ -225,12 +223,6 @@ newtype C a = C { unC :: StateT CState (ExceptionT IO) a }
             MonadIO,
             MonadState CState)
 
-instance MonadUniqueVar C where
-    newUniqueVar v = do
-        u <- gets cuniq
-        modify $ \s -> s { cuniq = u + 1 }
-        return $ Var (v ++ show u)
-
 instance MonadCheck C where
     lookupVar v = do
         maybe_tau <- gets $ \s -> Map.lookup v (cvars s)
@@ -248,91 +240,91 @@ instance MonadCheck C where
       where
         insert m (k, v) = Map.insert k v m
 
-instance MonadEvalN C.Exp C where
-    evalN n = do
-        maybe_ce <- lookupNExp n
-        case maybe_ce of
-          Nothing -> go n
-          Just ce -> return ce
+evalN :: N -> C C.Exp
+evalN n = do
+    maybe_ce <- lookupNExp n
+    case maybe_ce of
+      Nothing -> go n
+      Just ce -> return ce
+  where
+    go :: N -> C C.Exp
+    go n@(NVecLength {}) =
+        faildoc $ text "Cannot evaluate:" <+> ppr n
+
+    go n@(NMatStride {}) =
+        faildoc $ text "Cannot evaluate:" <+> ppr n
+
+    go n@(NMatRows {}) =
+        faildoc $ text "Cannot evaluate:" <+> ppr n
+
+    go n@(NMatCols {}) =
+        faildoc $ text "Cannot evaluate:" <+> ppr n
+
+    go (N i) =
+        return [cexp|$int:i|]
+
+    go (NAdd n1 n2) = do
+        e1 :: C.Exp <- evalN n1
+        e2 :: C.Exp <- evalN n2
+        return [cexp|$e1 + $e2|]
+
+    go (NSub n1 n2) = do
+        e1 :: C.Exp <- evalN n1
+        e2 :: C.Exp <- evalN n2
+        return [cexp|$e1 - $e2|]
+
+    go (NMul n1 n2) = do
+        e1 :: C.Exp <- evalN n1
+        e2 :: C.Exp <- evalN n2
+        return [cexp|$e1 * $e2|]
+
+    go (NNegate n) = do
+        e :: C.Exp <- evalN n
+        return [cexp|-$e|]
+
+    go (NDiv n1 n2) = do
+        e1 :: C.Exp <- evalN n1
+        e2 :: C.Exp <- evalN n2
+        return [cexp|$e1 / $e2|]
+
+    go (NMod n1 n2) = do
+        e1 :: C.Exp <- evalN n1
+        e2 :: C.Exp <- evalN n2
+        return [cexp|$e1 % $e2|]
+
+    go n@(NMin ns) = do
+        vn <- gensym "tempn"
+        addLocal [cdecl|int $id:vn;|]
+        es :: [C.Exp] <- mapM evalN ns
+        cminimum vn es
+        insertNExp n [cexp|$id:vn|]
+        return [cexp|$id:vn|]
       where
-        go :: N -> C C.Exp
-        go n@(NVecLength {}) =
-            faildoc $ text "Cannot evaluate:" <+> ppr n
+        cminimum :: String -> [C.Exp] -> C ()
+        cminimum _    []       = fail "cminimum"
+        cminimum temp [e]      = addStm [cstm|$id:temp = $e;|]
+        cminimum temp [e1, e2] = addStm [cstm|$id:temp = $e1 < $e2 ? $e1 : $e2;|]
 
-        go n@(NMatStride {}) =
-            faildoc $ text "Cannot evaluate:" <+> ppr n
+        cminimum temp (e : es) = do
+            cminimum temp es
+            addStm [cstm|if ($e < $id:temp) { $id:temp = $e; }|]
 
-        go n@(NMatRows {}) =
-            faildoc $ text "Cannot evaluate:" <+> ppr n
+    go n@(NMax ns) = do
+        vn <- gensym "tempn"
+        addLocal [cdecl|int $id:vn;|]
+        es :: [C.Exp] <- mapM evalN ns
+        cmaximum vn es
+        insertNExp n [cexp|$id:vn|]
+        return [cexp|$id:vn|]
+      where
+        cmaximum :: String -> [C.Exp] -> C ()
+        cmaximum _    []       = fail "cmaximum"
+        cmaximum temp [e]      = addStm [cstm|$id:temp = $e;|]
+        cmaximum temp [e1, e2] = addStm [cstm|$id:temp = $e1 > $e2 ? $e1 : $e2;|]
 
-        go n@(NMatCols {}) =
-            faildoc $ text "Cannot evaluate:" <+> ppr n
-
-        go (N i) =
-            return [cexp|$int:i|]
-
-        go (NAdd n1 n2) = do
-            e1 :: C.Exp <- evalN n1
-            e2 :: C.Exp <- evalN n2
-            return [cexp|$e1 + $e2|]
-
-        go (NSub n1 n2) = do
-            e1 :: C.Exp <- evalN n1
-            e2 :: C.Exp <- evalN n2
-            return [cexp|$e1 - $e2|]
-
-        go (NMul n1 n2) = do
-            e1 :: C.Exp <- evalN n1
-            e2 :: C.Exp <- evalN n2
-            return [cexp|$e1 * $e2|]
-
-        go (NNegate n) = do
-            e :: C.Exp <- evalN n
-            return [cexp|-$e|]
-
-        go (NDiv n1 n2) = do
-            e1 :: C.Exp <- evalN n1
-            e2 :: C.Exp <- evalN n2
-            return [cexp|$e1 / $e2|]
-
-        go (NMod n1 n2) = do
-            e1 :: C.Exp <- evalN n1
-            e2 :: C.Exp <- evalN n2
-            return [cexp|$e1 % $e2|]
-
-        go n@(NMin ns) = do
-            vn <- gensym "tempn"
-            addLocal [cdecl|int $id:vn;|]
-            es :: [C.Exp] <- mapM evalN ns
-            cminimum vn es
-            insertNExp n [cexp|$id:vn|]
-            return [cexp|$id:vn|]
-          where
-            cminimum :: String -> [C.Exp] -> C ()
-            cminimum _    []       = fail "cminimum"
-            cminimum temp [e]      = addStm [cstm|$id:temp = $e;|]
-            cminimum temp [e1, e2] = addStm [cstm|$id:temp = $e1 < $e2 ? $e1 : $e2;|]
-
-            cminimum temp (e : es) = do
-                cminimum temp es
-                addStm [cstm|if ($e < $id:temp) { $id:temp = $e; }|]
-
-        go n@(NMax ns) = do
-            vn <- gensym "tempn"
-            addLocal [cdecl|int $id:vn;|]
-            es :: [C.Exp] <- mapM evalN ns
-            cmaximum vn es
-            insertNExp n [cexp|$id:vn|]
-            return [cexp|$id:vn|]
-          where
-            cmaximum :: String -> [C.Exp] -> C ()
-            cmaximum _    []       = fail "cmaximum"
-            cmaximum temp [e]      = addStm [cstm|$id:temp = $e;|]
-            cmaximum temp [e1, e2] = addStm [cstm|$id:temp = $e1 > $e2 ? $e1 : $e2;|]
-
-            cmaximum temp (e : es) = do
-                cmaximum temp es
-                addStm [cstm|if ($e > $id:temp) { $id:temp = $e; }|]
+        cmaximum temp (e : es) = do
+            cmaximum temp es
+            addStm [cstm|if ($e > $id:temp) { $id:temp = $e; }|]
 
 instance MonadCGen C where
     getCGenEnv = gets cgenenv
@@ -353,9 +345,7 @@ runC m =
   where
     emptyCState :: CState
     emptyCState = CState
-        {  cuniq    = 0
-
-        ,  cvars    = Map.empty
+        {  cvars    = Map.empty
         ,  cvarExps = Map.empty
 
         ,  cgenenv = emptyCGenEnv

@@ -42,6 +42,7 @@ module Nikola.Exec (
     Ex(..),
     evalEx,
     runEx,
+    evalN,
 
     Arg(..),
     Alloc(..),
@@ -129,36 +130,36 @@ instance Applicative Ex where
     pure  = return
     (<*>) = ap
 
-instance MonadEvalN Int Ex where
-    evalN = go
-      where
-        go :: N -> Ex Int
-        go n@(NVecLength i) = lookupArg i >>= arg n
-        go n@(NMatStride i) = lookupArg i >>= arg n
-        go n@(NMatRows i)   = lookupArg i >>= arg n
-        go n@(NMatCols i)   = lookupArg i >>= arg n
+evalN :: N -> Ex Int
+evalN = go
+  where
+    go :: N -> Ex Int
+    go n@(NVecLength i) = lookupArg i >>= arg n
+    go n@(NMatStride i) = lookupArg i >>= arg n
+    go n@(NMatRows i)   = lookupArg i >>= arg n
+    go n@(NMatCols i)   = lookupArg i >>= arg n
 
-        go (N i)        = pure i
-        go (NAdd n1 n2) = (+) <$> evalN n1 <*> evalN n2
-        go (NSub n1 n2) = (-) <$> evalN n1 <*> evalN n2
-        go (NMul n1 n2) = (*) <$> evalN n1 <*> evalN n2
-        go (NNegate n)  = negate <$> evalN n
+    go (N i)        = pure i
+    go (NAdd n1 n2) = (+) <$> evalN n1 <*> evalN n2
+    go (NSub n1 n2) = (-) <$> evalN n1 <*> evalN n2
+    go (NMul n1 n2) = (*) <$> evalN n1 <*> evalN n2
+    go (NNegate n)  = negate <$> evalN n
 
-        go (NDiv n1 n2)  = div <$> evalN n1 <*> evalN n2
-        go (NMod n1 n2)  = mod <$> evalN n1 <*> evalN n2
+    go (NDiv n1 n2)  = div <$> evalN n1 <*> evalN n2
+    go (NMod n1 n2)  = mod <$> evalN n1 <*> evalN n2
 
-        go (NMin ns) = minimum <$> mapM evalN ns
-        go (NMax ns) = maximum <$> mapM evalN ns
+    go (NMin ns) = minimum <$> mapM evalN ns
+    go (NMax ns) = maximum <$> mapM evalN ns
 
-        arg :: N -> Arg -> Ex Int
-        arg (NVecLength _) (VectorArg n _)      = return n
-        arg (NMatStride _) (MatrixArg n _ _ _)  = return n
-        arg (NMatRows _)   (MatrixArg _ n _ _)  = return n
-        arg (NMatCols _)   (MatrixArg _ _ n _)  = return n
-        arg n              arg                  = faildoc $
-                                                  text "Argument" <+> ppr arg <+>
-                                                  text "does not match index" <+>
-                                                  ppr n
+    arg :: N -> Arg -> Ex Int
+    arg (NVecLength _) (VectorArg n _)      = return n
+    arg (NMatStride _) (MatrixArg n _ _ _)  = return n
+    arg (NMatRows _)   (MatrixArg _ n _ _)  = return n
+    arg (NMatCols _)   (MatrixArg _ _ n _)  = return n
+    arg n              arg                  = faildoc $
+                                              text "Argument" <+> ppr arg <+>
+                                              text "does not match index" <+>
+                                              ppr n
 
 evalEx  ::  Ex a
         ->  ExState

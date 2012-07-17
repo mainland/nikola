@@ -93,7 +93,7 @@ withCompiledFunction' :: (ReifiableFun a b)
                       -> (F (a -> b) -> IO c)
                       -> IO c
 withCompiledFunction' ropts f act = do
-    cfun <- reify' ropts f >>= compileTopFun fname
+    cfun <- reifyEx ropts f >>= compileTopFun fname
     withRawCompiledCFun cfun (act . F)
   where
     fname = "f"
@@ -243,7 +243,7 @@ reifyCompileAndLoad :: ReifiableFun a b
                     -> (a -> b)
                     -> IO (CU.Module, ExState)
 reifyCompileAndLoad ropts f =
-    reify' ropts f >>= compileTopFun fname >>= compileAndLoad
+    reifyEx ropts f >>= compileTopFun fname >>= compileAndLoad
   where
     fname = "f"
 
@@ -328,7 +328,7 @@ reifyCompileAndLoadTH :: ReifiableFun a b
                       -> (a -> b)
                       -> ExpQ
 reifyCompileAndLoadTH ropts f = do
-    cfun <- liftIO $ reify' ropts f >>= compileTopFun fname
+    cfun <- liftIO $ reifyEx ropts f >>= compileTopFun fname
     compileAndLoadTH cfun
   where
     fname :: String

@@ -47,23 +47,17 @@ module Nikola.Syntax (
 
     Exp(..),
 
-    MonadEvalN(..),
-    MonadUniqueVar(..),
-    MonadStableExp(..),
-
     unScalarT,
     vectorT,
     matrixT,
     freeVars
 ) where
 
-import Control.Monad.State
 import Data.Generics (Data, Typeable)
 import qualified Data.Set as Set
-import System.Mem.StableName
 import Text.PrettyPrint.Mainland
 
-import {-# SOURCE #-} Nikola.Reify
+import {-# SOURCE #-} Nikola.Reify.Monad
 
 -- |Function parameter index.
 type ParamIdx = Int
@@ -140,9 +134,6 @@ nGridDimY n w_ =
   where
     w :: N
     w = fromIntegral w_
-
-class Monad m => MonadEvalN n m where
-    evalN :: N -> m n
 
 data Tau = UnitT
          | BoolT
@@ -326,13 +317,6 @@ freeVars (BlockedNacsME _ z xs)     = freeVars z
 freeVars (BlockedAddME xs sums)     = freeVars xs
                                       `Set.union`
                                       freeVars sums
-
-class Monad m => MonadUniqueVar m where
-    newUniqueVar :: String -> m Var
-
-class (Monad m, MonadIO m, MonadUniqueVar m) => MonadStableExp m where
-    lookupStableName :: Typeable a => StableName a -> m (Maybe DExp)
-    insertStableName :: Typeable a => StableName a -> DExp -> m ()
 
 landPrec :: Int
 landPrec = 3

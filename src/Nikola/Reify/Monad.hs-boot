@@ -1,4 +1,7 @@
-module Nikola.Reify where
+module Nikola.Reify.Monad (
+    REnv,
+    R
+  ) where
 
 import Control.Monad.State
 

@@ -34,11 +34,8 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Nikola.Reify (
-    REnv,
     ROpts(..),
     defaultROpts,
-    R(..),
-    runR,
 
     Reifiable(..),
     ReifiableFun(..),
@@ -48,104 +45,17 @@ module Nikola.Reify (
 import Control.Applicative
 import Control.Monad.State
 import Data.Dynamic
-import qualified Data.IntMap as IntMap
-import Data.List (foldl',
-                  foldl1')
+import Data.List (foldl1')
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import System.Mem.StableName
-import Text.PrettyPrint.Mainland
 
 import Nikola.Check
 import Nikola.Representable
+import Nikola.Reify.Monad
 import Nikola.Syntax
 
-type StableNameHash = Int
-
 type Binding = (Var, Rho, DExp)
-
-data ROpts = ROpts
-    { roptObserveSharing :: Bool }
-  deriving (Show)
-
-defaultROpts = ROpts { roptObserveSharing = True }
-
-data REnv = REnv
-    {  uniq      :: Int
-    ,  ropts     :: ROpts
-    ,  vars      :: Map.Map Var Rho
-    ,  names     :: IntMap.IntMap [(Dynamic, DExp)]
-    ,  bindings  :: [Binding]
-    }
-  deriving (Show)
-
-newtype R a = R { unR :: StateT REnv IO a }
-  deriving (Monad, MonadIO, MonadState REnv, Functor)
-
-instance Applicative R where
-    pure  = return
-    (<*>) = ap
-
-instance MonadUniqueVar R where
-    newUniqueVar v = do
-        u <- gets uniq
-        modify $ \s -> s { uniq = u + 1 }
-        return $ Var (v ++ show u)
-
-instance MonadStableExp R where
-    lookupStableName sn = gets $ \s ->
-        case IntMap.lookup hash (names s) of
-          Just m' -> Prelude.lookup (Just sn)
-                     [(fromDynamic d,e) | (d,e) <- m']
-          Nothing -> Nothing
-      where
-        hash :: StableNameHash
-        hash = hashStableName sn
-
-    insertStableName sn e = modify $ \s ->
-        s { names = IntMap.alter add (hashStableName sn) (names s) }
-      where
-        add :: Maybe [(Dynamic, DExp)] -> Maybe [(Dynamic, DExp)]
-        add Nothing   = Just [(toDyn sn, e)]
-        add (Just xs) = Just ((toDyn sn, e) : xs)
-
-runR  ::  ROpts
-      ->  R a
-      ->  IO a
-runR opts m = evalStateT (unR m) emptyREnv
-  where
-    emptyREnv :: REnv
-    emptyREnv = REnv
-        {  uniq      = 0
-        ,  ropts     = opts
-        ,  vars      = Map.empty
-        ,  names     = IntMap.empty
-        ,  bindings  = []
-        }
-
-instance MonadCheck R where
-    lookupVar v = do
-        maybe_tau <- gets $ \s -> Map.lookup v (vars s)
-        case maybe_tau of
-          Just tau -> return tau
-          Nothing ->  faildoc $ text "Variable" <+> ppr v <+>
-                                text "not in scope"
-
-    extendVars vtaus act = do
-        old_vars <- gets vars
-        modify $ \s -> s { vars = foldl' insert (vars s) vtaus }
-        x  <- act
-        modify $ \s -> s { vars = old_vars }
-        return x
-      where
-        insert m (k, v) = Map.insert k v m
-
-getObserveSharing :: R Bool
-getObserveSharing =
-    gets (roptObserveSharing . ropts)
-
-gensym :: R Var
-gensym = newUniqueVar "x"
 
 insertBinding :: Var -> DExp -> R ()
 insertBinding v e = do
@@ -374,18 +284,18 @@ instance (Representable a, ReifiableFun b c)
 
 class Reifiable a where
     reify :: a -> IO DExp
-    reify = reify' defaultROpts
+    reify = reifyEx defaultROpts
 
-    reify' :: ROpts -> a -> IO DExp
+    reifyEx :: ROpts -> a -> IO DExp
 
 instance Reifiable DExp where
-    reify' ropts = runR ropts . flushBindings . reifyR
+    reifyEx ropts = runR ropts . flushBindings . reifyR
 
 instance Reifiable (Exp a) where
-    reify' ropts = reify' ropts . unE
+    reifyEx ropts = reifyEx ropts . unE
 
 instance ReifiableFun a b => Reifiable (a -> b) where
-    reify' ropts = runR ropts . reifyfun
+    reifyEx ropts = runR ropts . reifyfun
 
 class (ReifiableFun a b) => VApply a b c d |  a -> c,
                                               b -> d,
