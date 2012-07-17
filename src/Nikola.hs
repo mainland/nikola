@@ -28,13 +28,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Nikola (
+    module Nikola.Backend.CUDA.CodeGen,
     module Nikola.Compile,
     module Nikola.Exec,
     module Nikola.Reify,
     module Nikola.Representable,
     module Nikola.Smart,
     module Nikola.Syntax,
-    module Nikola.ToC,
 
     withNewContext
  ) where
@@ -44,13 +44,13 @@ import Prelude hiding (catch)
 import Control.Exception
 import qualified Foreign.CUDA.Driver as CU
 
+import Nikola.Backend.CUDA.CodeGen
 import Nikola.Compile
 import Nikola.Exec
 import Nikola.Reify
 import Nikola.Representable
 import Nikola.Smart
 import Nikola.Syntax
-import Nikola.ToC
 
 withNewContext :: (CU.Context -> IO a) -> IO a
 withNewContext kont = do

@@ -32,10 +32,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Nikola.ToC (
-    C(..),
-
-    ExecConfig(..),
+module Nikola.Backend.CUDA.CodeGen (
     CFun(..),
     configToLaunchParams,
 
@@ -44,13 +41,9 @@ module Nikola.ToC (
   ) where
 
 import Control.Applicative
-import Control.Monad.Exception
 import Control.Monad.State
-import Data.Generics (Data, Typeable)
-import qualified Data.Map as Map
 import Data.Maybe (fromJust)
-import Data.List (find, foldl')
-import qualified Data.Set as Set
+import Data.List (find)
 import Language.C.Quote.CUDA
 import qualified Language.C.Syntax as C
 import Text.PrettyPrint.Mainland hiding (nest)
@@ -61,59 +54,10 @@ import qualified Data.Symbol
 import qualified Language.C.Syntax
 #endif /* !MIN_VERSION_template_haskell(2,7,0) */
 
-import Nikola.CGen
+import Nikola.Backend.CUDA.Monad
 import Nikola.Check
 import Nikola.Syntax
 import qualified Nikola.Exec as Ex
-
--- | Index into a thread block
-data BlockVar = BlockVar { blockDim   :: Int
-                         , blockWidth :: Int
-                         }
-  deriving (Eq, Ord, Show)
-
-instance Pretty BlockVar where
-    ppr = text . show
-
-instance ToExp BlockVar where
-    toExp bv _ = go (blockDim bv)
-      where
-        go :: Int -> C.Exp
-        go 0 = [cexp|threadIdx.x|]
-        go 1 = [cexp|threadIdx.y|]
-        go 2 = [cexp|threadIdx.z|]
-        go _ = error "bad thread block variable"
-
--- | Index into a grid
-data GridVar = GridVar { gridDim      :: Int
-                       , gridBlockVar :: BlockVar
-                       }
-  deriving (Eq, Ord, Show)
-
-instance Pretty GridVar where
-    ppr = text . show
-
-instance ToExp GridVar where
-    toExp (GridVar { gridBlockVar = t }) _ =
-        [cexp|(blockIdx.x + blockIdx.y*gridDim.x)*$(blockWidth t) + $t|]
-
--- | A compiled expression.
-data CExp = ScalarCExp C.Exp
-          | VectorCExp C.Exp C.Exp
-          | MatrixCExp C.Exp N N N
-          | FunCExp String Rho [DevAlloc] [DevAlloc]
-
-instance Pretty CExp where
-    ppr (ScalarCExp e)       = ppr e
-    ppr (VectorCExp e _)     = ppr e
-    ppr (MatrixCExp e _ _ _) = ppr e
-    ppr (FunCExp v _ _ _)    = ppr [cexp|$id:v|]
-
-instance ToExp CExp where
-    toExp (ScalarCExp e)       = const e
-    toExp (VectorCExp e _)     = const e
-    toExp (MatrixCExp e _ _ _) = const e
-    toExp (FunCExp v _ _ _)    = const [cexp|$id:v|]
 
 vectorSize :: CExp -> C.Exp
 vectorSize (VectorCExp _ n) = n
@@ -150,16 +94,6 @@ toTempArgs (MatrixCExp e _ _ _) =
 toTempArgs (FunCExp {}) =
     error "The impossible happened: an embedded higher-order function!"
 
--- | An execution configuration.
-data ExecConfig = ExecConfig
-    {  gridDimX  :: N
-    ,  gridDimY  :: N
-    ,  blockDimX :: Int
-    ,  blockDimY :: Int
-    ,  blockDimZ :: Int
-    }
-  deriving (Show, Data, Typeable)
-
 configToLaunchParams :: ExecConfig -> Ex.Ex (Int, Int, Int, Int, Int)
 configToLaunchParams config = do
     gridW <- compGridW
@@ -187,62 +121,9 @@ instance Pretty (CFun a) where
     ppr f = text (cfunName f) </>
             stack (map ppr (cfunDefs f))
 
--- | An on-device allocation needed by a compiled expression. We may need to
--- allocate device memory to hold intermediate results or to hold the final
--- result of a computation.
-data DevAlloc = DevAlloc
-    {  devAllocVar    :: String
-    ,  devAllocParams :: [C.Param]
-    ,  devAllocType   :: Rho
-    }
-
--- | Context in which compilation occurs.
-data Ctx = TopFun    { level :: Int }
-         | NestedFun { level :: Int }
-
-nest :: Ctx -> Ctx
-nest ctx = ctx { level = level ctx + 1 }
-
-data CState = CState
-    {  cvars    :: Map.Map Var Rho
-    ,  cvarExps :: Map.Map Var CExp
-
-    ,  cgenenv  :: CGenEnv
-
-    ,  cdevAllocs  :: [DevAlloc]
-    ,  cnExps      :: Map.Map N C.Exp
-
-    ,  cgridVars      :: Map.Map N GridVar
-    ,  cblockVars     :: [BlockVar]
-    ,  cusedBlockVars :: Set.Set BlockVar
-    }
-
-newtype C a = C { unC :: StateT CState (ExceptionT IO) a }
-  deriving (Monad,
-            MonadException,
-            MonadIO,
-            MonadState CState)
-
-instance MonadCheck C where
-    lookupVar v = do
-        maybe_tau <- gets $ \s -> Map.lookup v (cvars s)
-        case maybe_tau of
-          Just tau -> return tau
-          Nothing -> faildoc $ text "Variable" <+> ppr v <+>
-                     text "not in scope"
-
-    extendVars vtaus act = do
-        old_cvars <- gets cvars
-        modify $ \s -> s { cvars = foldl' insert (cvars s) vtaus }
-        x  <- act
-        modify $ \s -> s { cvars = old_cvars }
-        return x
-      where
-        insert m (k, v) = Map.insert k v m
-
 evalN :: N -> C C.Exp
 evalN n = do
-    maybe_ce <- lookupNExp n
+    maybe_ce <- lookupNTrans n
     case maybe_ce of
       Nothing -> go n
       Just ce -> return ce
@@ -297,7 +178,7 @@ evalN n = do
         addLocal [cdecl|int $id:vn;|]
         es :: [C.Exp] <- mapM evalN ns
         cminimum vn es
-        insertNExp n [cexp|$id:vn|]
+        insertNTrans n [cexp|$id:vn|]
         return [cexp|$id:vn|]
       where
         cminimum :: String -> [C.Exp] -> C ()
@@ -314,7 +195,7 @@ evalN n = do
         addLocal [cdecl|int $id:vn;|]
         es :: [C.Exp] <- mapM evalN ns
         cmaximum vn es
-        insertNExp n [cexp|$id:vn|]
+        insertNTrans n [cexp|$id:vn|]
         return [cexp|$id:vn|]
       where
         cmaximum :: String -> [C.Exp] -> C ()
@@ -326,161 +207,17 @@ evalN n = do
             cmaximum temp es
             addStm [cstm|if ($e > $id:temp) { $id:temp = $e; }|]
 
-instance MonadCGen C where
-    getCGenEnv = gets cgenenv
-
-    putCGenEnv env = modify $ \s ->
-        s { cgenenv = env }
-
-instance Functor C where
-    fmap = liftM
-
-instance Applicative C where
-    pure = return
-    (<*>) = ap
-
-runC :: C a -> IO a
-runC m =
-    runExceptionT (evalStateT (unC m) emptyCState) >>= liftException
-  where
-    emptyCState :: CState
-    emptyCState = CState
-        {  cvars    = Map.empty
-        ,  cvarExps = Map.empty
-
-        ,  cgenenv = emptyCGenEnv
-
-        ,  cdevAllocs  = []
-        ,  cnExps      = Map.empty
-
-        ,  cgridVars      = Map.empty
-        ,  cblockVars     = [BlockVar 0 (fromInteger threadBlockWidth)]
-        ,  cusedBlockVars = Set.empty
-        }
-
 runCFun :: C (String, [DevAlloc]) -> IO (CFun a)
-runCFun comp = runC $ do
-    (fname, allocs) <- comp
-    cdefs           <- getsCGenEnv codeToUnit
-    config          <- getExecConfig
+runCFun comp = do
+    ((fname, allocs, config), cdefs) <-  runC $ do
+                                         (fname, allocs) <- comp
+                                         config          <- getExecConfig
+                                         return (fname, allocs, config)
     return CFun { cfunName       = fname
                 , cfunDefs       = cdefs
                 , cfunAllocs     = map devAllocType allocs
                 , cfunExecConfig = config
                 }
-
-getExecConfig :: C ExecConfig
-getExecConfig = do
-    gridVars         <- gets (Map.toList . cgridVars)
-    blockVars        <- gets cblockVars
-    usedBlockVars    <- gets cusedBlockVars
-    let (dimX, dimY) =  gridDims gridVars
-    return ExecConfig { gridDimX  = dimX
-                      , gridDimY  = dimY
-                      , blockDimX = blockDim blockVars usedBlockVars 0
-                      , blockDimY = blockDim blockVars usedBlockVars 1
-                      , blockDimZ = blockDim blockVars usedBlockVars 2
-                      }
-  where
-    blockDim :: [BlockVar] -> Set.Set BlockVar -> Int -> Int
-    blockDim blockVars usedBlockVars i
-        | length blockVars > i  && t `Set.member` usedBlockVars = blockWidth t
-        | otherwise                                             = 1
-      where
-        t = blockVars !! i
-
-    gridDims :: [(N, GridVar)] -> (N, N)
-    gridDims ((n, g) : _) =
-        (nGridDimX n w, nGridDimY n w)
-      where
-        w = (blockWidth . gridBlockVar) g
-
-    gridDims _ = (1, 1)
-
-withBlockVar :: Ctx -> (Maybe BlockVar -> C a) -> C a
-withBlockVar (TopFun _) cont = do
-    blockVars <- gets cblockVars
-    case blockVars of
-      v : vs -> do  modify $ \s ->
-                      s { cblockVars     = vs
-                        , cusedBlockVars = Set.insert v (cusedBlockVars s)
-                        }
-                    x <- cont (Just v)
-                    modify $ \s -> s { cblockVars = v : vs }
-                    return x
-      [] -> cont Nothing
-
-withBlockVar _ cont = cont Nothing
-
-withGridVar :: Ctx -> N -> (Maybe GridVar -> C a) -> C a
-withGridVar (TopFun 0) n cont = do
-    maybe_g <- gets (Map.lookup n . cgridVars)
-    case maybe_g of
-      Just g -> cont (Just g)
-      Nothing -> newGridVar >>= cont
-  where
-    newGridVar :: C (Maybe GridVar)
-    newGridVar = do
-        ngridVars <- gets (Map.size . cgridVars)
-        case ngridVars of
-          0 -> withBlockVar (TopFun 0) $ \maybe_t ->
-               case maybe_t of
-                 Nothing -> return Nothing
-                 Just t -> do  let g = GridVar { gridDim = 0
-                                               , gridBlockVar = t
-                                               }
-                               modify $ \s ->
-                                   s { cgridVars = Map.insert n g
-                                                   (cgridVars s) }
-                               return (Just g)
-          _ -> return Nothing
-
-withGridVar _ _ cont = cont Nothing
-
-insertNExp :: N -> C.Exp -> C ()
-insertNExp n e = modify $ \s ->
-    s { cnExps = Map.insert n e (cnExps s) }
-
-lookupNExp :: N -> C (Maybe C.Exp)
-lookupNExp n =
-    gets $ \s -> Map.lookup n (cnExps s)
-
-lookupVarExp :: Var -> C CExp
-lookupVarExp v = do
-    maybe_cexp <- gets $ \s -> Map.lookup v (cvarExps s)
-    case maybe_cexp of
-      Just cexp -> return cexp
-      Nothing ->   faildoc $ text "Variable" <+> ppr v <+> text "not in scope"
-
-extendVarExps :: [(Var, CExp)] -> C a -> C a
-extendVarExps vexps act = do
-    old_cvarExps <- gets cvarExps
-    modify $ \s -> s { cvarExps = foldl' insert (cvarExps s) vexps }
-    x  <- act
-    modify $ \s -> s { cvarExps = old_cvarExps }
-    return x
-  where
-    insert m (k, v) = Map.insert k v m
-
-inNewCompiledFunction :: C a -> C a
-inNewCompiledFunction comp = do
-    old_cdevAllocs <- gets cdevAllocs
-    old_cnExps  <- gets cnExps
-    modify $ \s -> s { cdevAllocs  = []
-                     , cnExps      = Map.empty
-                     }
-    x <- comp
-    modify $ \s -> s { cdevAllocs  = old_cdevAllocs
-                     , cnExps      = old_cnExps
-                     }
-    return x
-
-addDevAlloc :: DevAlloc -> C ()
-addDevAlloc alloc = modify $ \s ->
-    s { cdevAllocs = alloc : cdevAllocs s }
-
-getDevAllocs :: C [DevAlloc]
-getDevAllocs = gets cdevAllocs
 
 -- | Translate a base type to its C equivalent
 baseTypeToC :: Tau -> C.Type
@@ -516,7 +253,7 @@ allocArgs vtaus =
         addParam [cparam|$ty:cty* $id:v|]
         addParam [cparam|int $id:vn|]
         let n = NVecLength i
-        insertNExp n [cexp|$id:vn|]
+        insertNTrans n [cexp|$id:vn|]
         return $ VectorCExp [cexp|$id:v|] [cexp|$id:vn|]
       where
         cty :: C.Type
@@ -533,9 +270,9 @@ allocArgs vtaus =
         let s = NMatStride i
         let r = NMatRows i
         let c = NMatCols i
-        insertNExp s [cexp|$id:vs|]
-        insertNExp r [cexp|$id:vr|]
-        insertNExp c [cexp|$id:vc|]
+        insertNTrans s [cexp|$id:vs|]
+        insertNTrans r [cexp|$id:vr|]
+        insertNTrans c [cexp|$id:vc|]
         return $ MatrixCExp [cexp|$id:v|] s r c
       where
         cty :: C.Type
@@ -683,16 +420,16 @@ parfor ctx v n cont = do
 -- | Compile an 'Exp' to a 'CExp'
 compileExp :: Ctx -> DExp -> C CExp
 compileExp _ (VarE v) =
-    lookupVarExp v
+    lookupVarTrans v
 
 compileExp _ (DelayedE _) =
     fail "Cannot compile delayed expression"
 
 compileExp ctx (LetE v@(Var vname) tau e1 e2) = do
-    cve <- compileExp (nest ctx) e1 >>= compileLet tau
-    extendVars    [(v, tau)] $ do
-    extendVarExps [(v, cve)] $ do
-    compileExp (nest ctx) e2
+    cve <- compileExp (nestCtx ctx) e1 >>= compileLet tau
+    extendVars     [(v, tau)] $ do
+    extendVarTrans [(v, cve)] $ do
+    compileExp (nestCtx ctx) e2
   where
     compileLet :: Rho -> CExp -> C CExp
     compileLet (ScalarT _) ce@(ScalarCExp [cexp|$id:_|]) = do
@@ -775,7 +512,7 @@ compileExp _ (FloatE n) =
     r = toRational n
 
 compileExp ctx (UnopE op e) = do
-    ce <- compileExp (nest ctx) e >>= fromScalar
+    ce <- compileExp (nestCtx ctx) e >>= fromScalar
     return $ ScalarCExp (compile op ce)
   where
     fromScalar :: CExp -> C C.Exp
@@ -813,8 +550,8 @@ compileExp ctx (UnopE op e) = do
     compile Facosh e = [cexp|acosh($e)|]
 
 compileExp ctx (BinopE op e1 e2) = do
-    ce1 <- compileExp (nest ctx) e1 >>= fromScalar
-    ce2 <- compileExp (nest ctx) e2 >>= fromScalar
+    ce1 <- compileExp (nestCtx ctx) e1 >>= fromScalar
+    ce2 <- compileExp (nestCtx ctx) e2 >>= fromScalar
     return $ ScalarCExp (compile op ce1 ce2)
   where
     fromScalar :: CExp -> C C.Exp
@@ -851,11 +588,11 @@ compileExp ctx (BinopE op e1 e2) = do
     compile FlogBase e1 e2 = [cexp|logf($e2)/logf($e1)|]
 
 compileExp ctx (IfteE teste thene elsee) = do
-    testce <- compileExp (nest ctx) teste
+    testce <- compileExp (nestCtx ctx) teste
     (thence, thenItems) <- inNewBlock $
-                           compileExp (nest ctx) thene
+                           compileExp (nestCtx ctx) thene
     (elsece, elseItems) <- inNewBlock $
-                           compileExp (nest ctx) elsee
+                           compileExp (nestCtx ctx) elsee
     tau      <- check thene
     result   <- allocTemp tau
     addStm [cstm|if ($testce) {
@@ -872,12 +609,12 @@ compileExp ctx e@(MapE (LamE [(x, _)] body) e1) = do
     (tau1, _)         <- checkVector e1
     result            <- allocTemp rho
     cn :: C.Exp       <- evalN n
-    cx                <- compileExp (nest ctx) e1
+    cx                <- compileExp (nestCtx ctx) e1
     (fapp, items) <-
-        extendVars    [(x, ScalarT tau1)] $
-        extendVarExps [(x, ScalarCExp [cexp|$cx[i]|])] $
+        extendVars     [(x, ScalarT tau1)] $
+        extendVarTrans [(x, ScalarCExp [cexp|$cx[i]|])] $
         inNewBlock $
-        compileExp (nest ctx) body
+        compileExp (nestCtx ctx) body
     parfor ctx "i" n $ \i -> do
         addStm [cstm|{$items:items $result[$i] = $fapp; }|]
         addStm [cstm|if ($i == 0) $(vectorSize result) = $cn;|]
@@ -891,13 +628,13 @@ compileExp ctx (MapME (LamE [(x, rho)] body) xs ys) = do
     (VectorT _ n1) <- check xs
     (VectorT _ n2) <- check ys
     let n          =  NMin [n1, n2]
-    cxs            <- compileExp (nest ctx) xs
-    cys            <- compileExp (nest ctx) ys
+    cxs            <- compileExp (nestCtx ctx) xs
+    cys            <- compileExp (nestCtx ctx) ys
     (fapp, items) <-
-        extendVars    [(x, rho)] $
-        extendVarExps [(x, ScalarCExp [cexp|$cxs[i]|])] $
+        extendVars     [(x, rho)] $
+        extendVarTrans [(x, ScalarCExp [cexp|$cxs[i]|])] $
         inNewBlock $
-        compileExp (nest ctx) body
+        compileExp (nestCtx ctx) body
     parfor ctx "i" n $ \i -> do
         addStm [cstm|{$items:items $cys[$i] = $fapp; }|]
     addStm [cstm|__syncthreads();|]
@@ -910,8 +647,8 @@ compileExp ctx e@(PermuteE xs is) = do
     rho@(VectorT _ n) <- check e
     cys               <- allocTemp rho
     cn :: C.Exp       <- evalN n
-    cxs               <- compileExp (nest ctx) xs
-    cis               <- compileExp (nest ctx) is
+    cxs               <- compileExp (nestCtx ctx) xs
+    cis               <- compileExp (nestCtx ctx) is
     parfor ctx "i" n $ \i -> do
         addStm [cstm|{
                    $cys[$cis[$i]] = $cxs[$i];
@@ -926,9 +663,9 @@ compileExp ctx (PermuteME xs is ys) = do
     (VectorT _ n2) <- check is
     (VectorT _ n3) <- check ys
     let n          =  NMin [n1, n2, n3]
-    cxs            <- compileExp (nest ctx) xs
-    cis            <- compileExp (nest ctx) is
-    cys            <- compileExp (nest ctx) ys
+    cxs            <- compileExp (nestCtx ctx) xs
+    cis            <- compileExp (nestCtx ctx) is
+    cys            <- compileExp (nestCtx ctx) ys
     parfor ctx "i" n $ \i -> do
         addStm [cstm|{
                    $cys[$cis[$i]] = $cxs[$i];
@@ -942,15 +679,15 @@ compileExp ctx e@(ZipWithE (LamE [(x, _), (y, _)] body) e1 e2) = do
     (tau2, _)         <- checkVector e2
     result            <- allocTemp rho
     cn :: C.Exp       <- evalN n
-    cx                <- compileExp (nest ctx) e1
-    cy                <- compileExp (nest ctx) e2
+    cx                <- compileExp (nestCtx ctx) e1
+    cy                <- compileExp (nestCtx ctx) e2
     (fapp, items) <-
-        extendVars    [(x, ScalarT tau1),
-                       (y, ScalarT tau2)] $
-        extendVarExps [(x, ScalarCExp [cexp|$cx[i]|]),
-                       (y, ScalarCExp [cexp|$cy[i]|])] $
+        extendVars     [(x, ScalarT tau1),
+                        (y, ScalarT tau2)] $
+        extendVarTrans [(x, ScalarCExp [cexp|$cx[i]|]),
+                        (y, ScalarCExp [cexp|$cy[i]|])] $
         inNewBlock $
-        compileExp (nest ctx) body
+        compileExp (nestCtx ctx) body
     parfor ctx "i" n $ \i -> do
         addStm [cstm|{$items:items $result[$i] = $fapp; }|]
         addStm [cstm|if ($i == 0) $(vectorSize result) = $cn;|]
@@ -967,18 +704,18 @@ compileExp ctx e@(ZipWith3E (LamE [(x, _), (y, _), (z, _)] body) e1 e2 e3) = do
     (tau3, _)         <- checkVector e3
     result            <- allocTemp rho
     cn :: C.Exp       <- evalN n
-    cx                <- compileExp (nest ctx) e1
-    cy                <- compileExp (nest ctx) e2
-    cz                <- compileExp (nest ctx) e3
+    cx                <- compileExp (nestCtx ctx) e1
+    cy                <- compileExp (nestCtx ctx) e2
+    cz                <- compileExp (nestCtx ctx) e3
     (fapp, items) <-
-        extendVars    [(x, ScalarT tau1),
-                       (y, ScalarT tau2),
-                       (z, ScalarT tau3)] $
-        extendVarExps [(x, ScalarCExp [cexp|$cx[i]|]),
-                       (y, ScalarCExp [cexp|$cy[i]|]),
-                       (z, ScalarCExp [cexp|$cz[i]|])] $
+        extendVars     [(x, ScalarT tau1),
+                        (y, ScalarT tau2),
+                        (z, ScalarT tau3)] $
+        extendVarTrans [(x, ScalarCExp [cexp|$cx[i]|]),
+                        (y, ScalarCExp [cexp|$cy[i]|]),
+                        (z, ScalarCExp [cexp|$cz[i]|])] $
         inNewBlock $
-        compileExp (nest ctx) body
+        compileExp (nestCtx ctx) body
     parfor ctx "i" n $ \i -> do
         addStm [cstm|{$items:items $result[$i] = $fapp; }|]
         addStm [cstm|if ($i == 0) $(vectorSize result) = $cn;|]
@@ -994,19 +731,19 @@ compileExp ctx (ZipWith3ME (LamE [(x, _), (y, _), (z, _)] body) xs ys zs results
     (VectorT tau3 n3) <- check zs
     (VectorT _ n4)    <- check results
     let n             =  NMin [n1, n2, n3, n4]
-    cxs               <- compileExp (nest ctx) xs
-    cys               <- compileExp (nest ctx) ys
-    czs               <- compileExp (nest ctx) zs
-    cresults          <- compileExp (nest ctx) results
+    cxs               <- compileExp (nestCtx ctx) xs
+    cys               <- compileExp (nestCtx ctx) ys
+    czs               <- compileExp (nestCtx ctx) zs
+    cresults          <- compileExp (nestCtx ctx) results
     (fapp, items) <-
-        extendVars    [(x, ScalarT tau1),
-                       (y, ScalarT tau2),
-                       (z, ScalarT tau3)] $
-        extendVarExps [(x, ScalarCExp [cexp|$cxs[i]|]),
-                       (y, ScalarCExp [cexp|$cys[i]|]),
-                       (z, ScalarCExp [cexp|$czs[i]|])] $
+        extendVars     [(x, ScalarT tau1),
+                        (y, ScalarT tau2),
+                        (z, ScalarT tau3)] $
+        extendVarTrans [(x, ScalarCExp [cexp|$cxs[i]|]),
+                        (y, ScalarCExp [cexp|$cys[i]|]),
+                        (z, ScalarCExp [cexp|$czs[i]|])] $
         inNewBlock $
-        compileExp (nest ctx) body
+        compileExp (nestCtx ctx) body
     parfor ctx "i" n $ \i -> do
         addStm [cstm|{$items:items $cresults[$i] = $fapp; }|]
     addStm [cstm|__syncthreads();|]
@@ -1020,8 +757,8 @@ compileExp ctx e@(ScanE (LamE [(x, _), (y, _)] body) z xs) = do
     result              <- allocTemp rho
     let ctau            =  baseTypeToC tau
     cn :: C.Exp         <- evalN n
-    cz                  <- compileExp (nest ctx) z
-    cxs                 <- compileExp (nest ctx) xs
+    cz                  <- compileExp (nestCtx ctx) z
+    cxs                 <- compileExp (nestCtx ctx) xs
     temp                <- gensym "temp"
     t                   <- gensym "t"
     addLocal [cdecl|__shared__ $ty:ctau $id:temp[2*$int:threadBlockWidth];|]
@@ -1081,12 +818,12 @@ compileExp ctx e@(ScanE (LamE [(x, _), (y, _)] body) z xs) = do
   where
     plus :: Tau -> C.Exp -> C.Exp -> C (CExp, [C.BlockItem])
     plus tau e1 e2 =
-        extendVars    [(x, ScalarT tau),
-                       (y, ScalarT tau)] $
-        extendVarExps [(x, ScalarCExp e1),
-                       (y, ScalarCExp e2)] $
+        extendVars     [(x, ScalarT tau),
+                        (y, ScalarT tau)] $
+        extendVarTrans [(x, ScalarCExp e1),
+                        (y, ScalarCExp e2)] $
         inNewBlock $
-        compileExp (nest ctx) body
+        compileExp (nestCtx ctx) body
 
 compileExp _ (ScanE {}) =
     fail "Impossible: improperly reified scan expression"
@@ -1098,8 +835,8 @@ compileExp ctx e@(BlockedScanME (LamE [(x, _), (y, _)] body) z xs) = do
     let ctau              =  baseTypeToC tau
     cn :: C.Exp           <- evalN n
     csumsn :: C.Exp       <- evalN sumsn
-    cz                    <- compileExp (nest ctx) z
-    cxs                   <- compileExp (nest ctx) xs
+    cz                    <- compileExp (nestCtx ctx) z
+    cxs                   <- compileExp (nestCtx ctx) xs
     temp                  <- gensym "temp"
     addLocal [cdecl|__shared__ $ty:ctau $id:temp[2*$int:threadBlockWidth];|]
     parfor ctx "i" ((n+1) `div` 2) $ \i -> do
@@ -1170,12 +907,12 @@ compileExp ctx e@(BlockedScanME (LamE [(x, _), (y, _)] body) z xs) = do
   where
     plus :: Tau -> C.Exp -> C.Exp -> C (CExp, [C.BlockItem])
     plus tau e1 e2 =
-        extendVars    [(x, ScalarT tau),
-                       (y, ScalarT tau)] $
-        extendVarExps [(x, ScalarCExp e1),
-                       (y, ScalarCExp e2)] $
+        extendVars     [(x, ScalarT tau),
+                        (y, ScalarT tau)] $
+        extendVarTrans [(x, ScalarCExp e1),
+                        (y, ScalarCExp e2)] $
         inNewBlock $
-        compileExp (nest ctx) body
+        compileExp (nestCtx ctx) body
 
 compileExp _ (BlockedScanME {}) =
     fail "Impossible: improperly reified upsweep expression"
@@ -1187,8 +924,8 @@ compileExp ctx e@(BlockedNacsME (LamE [(x, _), (y, _)] body) z xs) = do
     let ctau              =  baseTypeToC tau
     cn :: C.Exp           <- evalN n
     csumsn :: C.Exp       <- evalN sumsn
-    cz                    <- compileExp (nest ctx) z
-    cxs                   <- compileExp (nest ctx) xs
+    cz                    <- compileExp (nestCtx ctx) z
+    cxs                   <- compileExp (nestCtx ctx) xs
     temp                  <- gensym "temp"
     addLocal [cdecl|__shared__ $ty:ctau $id:temp[2*$int:threadBlockWidth];|]
     parfor ctx "i" ((n+1) `div` 2) $ \i -> do
@@ -1259,20 +996,20 @@ compileExp ctx e@(BlockedNacsME (LamE [(x, _), (y, _)] body) z xs) = do
   where
     plus :: Tau -> C.Exp -> C.Exp -> C (CExp, [C.BlockItem])
     plus tau e1 e2 =
-        extendVars    [(x, ScalarT tau),
-                       (y, ScalarT tau)] $
-        extendVarExps [(x, ScalarCExp e1),
-                       (y, ScalarCExp e2)] $
+        extendVars     [(x, ScalarT tau),
+                        (y, ScalarT tau)] $
+        extendVarTrans [(x, ScalarCExp e1),
+                        (y, ScalarCExp e2)] $
         inNewBlock $
-        compileExp (nest ctx) body
+        compileExp (nestCtx ctx) body
 
 compileExp _ (BlockedNacsME {}) =
     fail "Impossible: improperly reified blockedNacsM expression"
 
 compileExp ctx (BlockedAddME xs sums) = do
     VectorT _ n <- check xs
-    cxs         <- compileExp (nest ctx) xs
-    csums       <- compileExp (nest ctx) sums
+    cxs         <- compileExp (nestCtx ctx) xs
+    csums       <- compileExp (nestCtx ctx) sums
     parfor ctx "i" ((n+1) `div` 2) $ \_ -> do
         addStm [cstm|{
             int block = 2*blockIdx.x*$int:threadBlockWidth;
@@ -1295,7 +1032,7 @@ compileFunBody ctx vrhos body cont =
     inNewCompiledFunction $ do
     vexps <- allocArgs vrhos
     (tau, ce) <- extendVars vrhos $ do
-                 extendVarExps (vs `zip` vexps) $ do
+                 extendVarTrans (vs `zip` vexps) $ do
                  tau <- check body
                  ce  <- compileExp ctx body
                  return (tau, ce)

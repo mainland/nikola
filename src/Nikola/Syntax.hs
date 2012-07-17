@@ -32,6 +32,7 @@
 module Nikola.Syntax (
     ParamIdx,
     N(..),
+    ExecConfig(..),
     nGridDimX,
     nGridDimY,
     threadBlockWidth,
@@ -114,6 +115,16 @@ instance Integral N where
     rem = error "rem not implemented for N"
     quotRem = error "quotRem not implemented for N"
     toInteger = error "toInteger not implemented for N"
+
+-- | An execution configuration.
+data ExecConfig = ExecConfig
+    {  gridDimX  :: N
+    ,  gridDimY  :: N
+    ,  blockDimX :: Int
+    ,  blockDimY :: Int
+    ,  blockDimZ :: Int
+    }
+  deriving (Show, Data, Typeable)
 
 nGridDimX :: Integral a
           => N

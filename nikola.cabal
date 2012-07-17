@@ -32,16 +32,18 @@ flag hmatrix
 library
   exposed-modules:
     Nikola
-    Nikola.CGen
+    Nikola.Backend.CUDA.CodeGen
+    Nikola.Backend.CUDA.Monad
     Nikola.Check
     Nikola.Compile
     Nikola.Exec
     Nikola.Nvcc
+    Nikola.Quote
     Nikola.Reify
+    Nikola.Reify.Monad
     Nikola.Representable
     Nikola.Smart
     Nikola.Syntax
-    Nikola.ToC
     Nikola.Util
 
   build-depends:

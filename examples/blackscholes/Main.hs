@@ -58,7 +58,6 @@ import Text.Printf
 
 import Nikola
 import qualified Nikola.Syntax
-import qualified Nikola.ToC
 import Nikola.Util
 
 import qualified BlackScholes.CUDA as BSC

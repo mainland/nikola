@@ -54,17 +54,17 @@ import Control.Monad.Trans (MonadIO(..))
 import qualified Data.ByteString.Char8 as B
 import Data.Data
 import qualified Foreign.CUDA.Driver as CU
-import qualified Language.Haskell.TH as TH
 import Language.Haskell.TH hiding (Exp, reify)
 import Language.Haskell.TH.Syntax hiding (Exp, reify)
 import System.IO.Unsafe (unsafePerformIO)
 
+import Nikola.Backend.CUDA.CodeGen
 import Nikola.Exec
 import Nikola.Nvcc
+import Nikola.Quote
 import Nikola.Reify
 import Nikola.Representable
 import Nikola.Syntax (Exp)
-import Nikola.ToC
 
 withModuleFromByteString :: B.ByteString -> (CU.Module -> IO a) -> IO a
 withModuleFromByteString bs =
@@ -366,72 +366,3 @@ instance Data a => Lift a where
 
 instance MonadIO Q where
     liftIO = runIO
-
-dataToQa  ::  forall a k q. Data a
-          =>  (Name -> k)
-          ->  (Lit -> Q q)
-          ->  (k -> [Q q] -> Q q)
-          ->  (forall b . Data b => b -> Maybe (Q q))
-          ->  a
-          ->  Q q
-dataToQa mkCon mkLit appCon antiQ t =
-    case antiQ t of
-      Nothing ->
-          case constrRep constr of
-            AlgConstr _  ->
-                appCon con conArgs
-            IntConstr n ->
-                mkLit $ integerL n
-            FloatConstr n ->
-                mkLit $ rationalL (toRational n)
-            CharConstr c ->
-                mkLit $ charL c
-        where
-          constr :: Constr
-          constr = toConstr t
-
-          con :: k
-          con = mkCon (mkName' mod occ)
-            where
-              mod :: String
-              mod = (tyconModule . dataTypeName . dataTypeOf) t
-
-              occ :: String
-              occ = showConstr constr
-
-              mkName' :: String -> String -> Name
-              mkName' "Prelude" "(:)" = Name (mkOccName ":") NameS
-              mkName' "Prelude" "[]"  = Name (mkOccName "[]") NameS
-              mkName' "Prelude" "()"  = Name (mkOccName "()") NameS
-
-              mkName' "Prelude" s@('(' : ',' : rest) = go rest
-                where
-                  go :: String -> Name
-                  go (',' : rest) = go rest
-                  go ")"          = Name (mkOccName s) NameS
-                  go _            = Name (mkOccName occ) (NameQ (mkModName mod))
-
-              mkName' "GHC.Real" ":%" = mkNameG_d "base" "GHC.Real" ":%"
-
-              mkName' mod occ = Name (mkOccName occ) (NameQ (mkModName mod))
-
-          conArgs :: [Q q]
-          conArgs = gmapQ (dataToQa mkCon mkLit appCon antiQ) t
-
-      Just y -> y
-
--- | 'dataToExpQ' converts a value to a 'Q Exp' representation of the same
--- value. It takes a function to handle type-specific cases.
-dataToExpQ  ::  Data a
-            =>  (forall b . Data b => b -> Maybe TH.ExpQ)
-            ->  a
-            ->  ExpQ
-dataToExpQ = dataToQa conE litE (foldl appE)
-
--- | 'dataToPatQ' converts a value to a 'Q Pat' representation of the same
--- value. It takes a function to handle type-specific cases.
-dataToPatQ  ::  Data a
-            =>  (forall b . Data b => b -> Maybe TH.PatQ)
-            ->  a
-            ->  PatQ
-dataToPatQ = dataToQa id litP conP
