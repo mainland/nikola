@@ -21,7 +21,7 @@ GHC_FLAGS += \
 	-package bytestring \
 	-package containers \
 	-package criterion \
-	-package cuda \
+	-package cuda-0.4.1.2 \
 	-package exception-transformers \
 	-package hmatrix \
 	-package language-c-quote \
