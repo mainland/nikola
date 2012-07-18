@@ -129,20 +129,27 @@ letBind :: [Binding] -> DExp -> DExp
 letBind  []                body = body
 letBind  ((v,tau,e) : bs)  body = letBind bs $ LetE v tau e body
 
+-- Given a "thing" @x@ and a computation @comp@ that computes its translation to
+-- a @DExp@, see if we already have a cached translation for @x@. If we do,
+-- return it, otherwise compute it via @comp@ and then cache and return the
+-- result.
+cacheDExp :: Typeable a => a -> R DExp -> R DExp
+cacheDExp x comp = do
+    sn       <- liftIO $ makeStableName $! x
+    maybe_e' <- lookupStableName sn
+    case maybe_e' of
+      Just e' -> return e'
+      Nothing -> do  e' <- comp
+                     insertStableName sn e'
+                     return e'
+
 reifyR :: DExp -> R DExp
 reifyR e = do
     obSharing <- getObserveSharing
     if obSharing then observeSharingReifyR else ignoreSharingReifyR
   where
     observeSharingReifyR :: R DExp
-    observeSharingReifyR = do
-        sn <-       liftIO $ makeStableName $! e
-        maybe_e' <- lookupStableName sn
-        case maybe_e' of
-          Just e' -> return e'
-          Nothing -> do  e' <- mapReifyR e >>= bind
-                         insertStableName sn e'
-                         return e'
+    observeSharingReifyR = cacheDExp e (mapReifyR e >>= bind)
       where
         bind :: DExp -> R DExp
         bind (VarE v)   = return $ VarE v
@@ -302,17 +309,7 @@ class (ReifiableFun a b) => VApply a b c d |  a -> c,
                                               c -> a,
                                               d -> b where
     vapply :: (a -> b) -> c -> d
-    vapply f = vapplyk (DelayedE (comp >>= reifyR)) []
-      where
-        comp :: R DExp
-        comp = do
-            sn <-       liftIO $ makeStableName $! f
-            maybe_e <-  lookupStableName sn
-            case maybe_e of
-              Just e ->   return e
-              Nothing ->  do  e <- reifyfun f
-                              insertStableName sn e
-                              return e
+    vapply f = vapplyk (DelayedE (cacheDExp f (reifyfun f) >>= reifyR)) []
 
     vapplyk :: DExp -> [DExp] -> c -> d
 
