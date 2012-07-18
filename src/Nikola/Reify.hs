@@ -143,13 +143,17 @@ cacheDExp x comp = do
                      insertStableName sn e'
                      return e'
 
+-- The main reification function. Note that we DO NOT cache the translations of
+-- the function argument to expressions like MapE and ZipWithE because we want
+-- the function in its original lambda form---the bodies of the lambda get
+-- turned into the body of a loop rather than the body of a function.
 reifyR :: DExp -> R DExp
 reifyR e = do
     obSharing <- getObserveSharing
     if obSharing then observeSharingReifyR else ignoreSharingReifyR
   where
     observeSharingReifyR :: R DExp
-    observeSharingReifyR = cacheDExp e (mapReifyR e >>= bind)
+    observeSharingReifyR = cacheDExp e (go e >>= bind)
       where
         bind :: DExp -> R DExp
         bind (VarE v)   = return $ VarE v
@@ -161,83 +165,82 @@ reifyR e = do
                               return (VarE v)
 
     ignoreSharingReifyR :: R DExp
-    ignoreSharingReifyR = mapReifyR e
+    ignoreSharingReifyR = go e
 
-mapReifyR :: DExp
-          -> R DExp
-mapReifyR (VarE v) =
-    pure $ VarE v
+    go :: DExp -> R DExp
+    go (VarE v) =
+        pure $ VarE v
 
-mapReifyR (DelayedE comp) =
-    comp
+    go (DelayedE comp) =
+        comp
 
-mapReifyR (LetE v _ e1 e2) = do
-    e1' <- reifyR e1
-    insertBinding v e1'
-    reifyR e2
+    go (LetE v _ e1 e2) = do
+        e1' <- reifyR e1
+        insertBinding v e1'
+        reifyR e2
 
-mapReifyR (LamE vtaus e) = do
-    e' <- extendVars vtaus $
-          flushBindings $
-          reifyR e
-    return $ LamE vtaus e'
+    go (LamE vtaus e) = do
+        e' <- extendVars vtaus $
+              flushBindings $
+              reifyR e
+        return $ LamE vtaus e'
 
-mapReifyR (AppE e es) =
-    AppE <$> reifyR e <*> mapM reifyR es
+    go (AppE e es) =
+        AppE <$> reifyR e <*> mapM reifyR es
 
-mapReifyR (BoolE b) =
-    pure $ BoolE b
+    go (BoolE b) =
+        pure $ BoolE b
 
-mapReifyR (IntE n) =
-    pure $ IntE n
+    go (IntE n) =
+        pure $ IntE n
 
-mapReifyR (FloatE n) =
-    pure $ FloatE n
+    go (FloatE n) =
+        pure $ FloatE n
 
-mapReifyR (UnopE op e ) =
-    UnopE op <$> reifyR e
+    go (UnopE op e ) =
+        UnopE op <$> reifyR e
 
-mapReifyR (BinopE op e1 e2) =
-    BinopE op <$> reifyR e1 <*> reifyR e2
+    go (BinopE op e1 e2) =
+        BinopE op <$> reifyR e1 <*> reifyR e2
 
-mapReifyR (IfteE e1 e2 e3) = do
-  e1'        <- reifyR e1
-  [e2', e3'] <- maximizeSharing reifyR [e2, e3]
-  return $ IfteE e1' e2' e3'
+    go (IfteE e1 e2 e3) = do
+      e1'        <- reifyR e1
+      [e2', e3'] <- maximizeSharing reifyR [e2, e3]
+      return $ IfteE e1' e2' e3'
 
-mapReifyR (MapE f e) =
-    MapE <$> mapReifyR f <*> reifyR e
+    go (MapE f e) =
+        MapE <$> go f <*> reifyR e
 
-mapReifyR (MapME f xs ys) =
-    MapME <$> mapReifyR f <*> reifyR xs <*> reifyR ys
+    go (MapME f xs ys) =
+        MapME <$> go f <*> reifyR xs <*> reifyR ys
 
-mapReifyR (PermuteE xs is) =
-    PermuteE <$> mapReifyR xs <*> reifyR is
+    go (PermuteE xs is) =
+        PermuteE <$> go xs <*> reifyR is
 
-mapReifyR (PermuteME xs is ys) =
-    PermuteME <$> mapReifyR xs <*> reifyR is <*> reifyR ys
+    go (PermuteME xs is ys) =
+        PermuteME <$> go xs <*> reifyR is <*> reifyR ys
 
-mapReifyR (ZipWithE f e1 e2) =
-    ZipWithE <$> mapReifyR f <*> reifyR e1 <*> reifyR e2
+    go (ZipWithE f e1 e2) =
+        ZipWithE <$> go f <*> reifyR e1 <*> reifyR e2
 
-mapReifyR (ZipWith3E f e1 e2 e3) =
-    ZipWith3E <$> mapReifyR f <*> reifyR e1 <*> reifyR e2 <*> reifyR e3
+    go (ZipWith3E f e1 e2 e3) =
+        ZipWith3E <$> go f <*> reifyR e1 <*> reifyR e2 <*> reifyR e3
 
-mapReifyR (ZipWith3ME f e1 e2 e3 e4) =
-    ZipWith3ME <$> mapReifyR f <*>
-        reifyR e1 <*> reifyR e2 <*> reifyR e3 <*> reifyR e4
+    go (ZipWith3ME f e1 e2 e3 e4) =
+        ZipWith3ME <$> go f <*>
+            reifyR e1 <*> reifyR e2 <*> reifyR e3 <*> reifyR e4
 
-mapReifyR (ScanE f z e) =
-    ScanE <$> mapReifyR f <*> reifyR z <*> reifyR e
+    go (ScanE f z e) =
+        ScanE <$> go f <*> reifyR z <*> reifyR e
 
-mapReifyR (BlockedScanME f z e) =
-    BlockedScanME <$> mapReifyR f <*> reifyR z <*> reifyR e
+    go (BlockedScanME f z e) =
+        BlockedScanME <$> go f <*> reifyR z <*> reifyR e
 
-mapReifyR (BlockedNacsME f z e) =
-    BlockedNacsME <$> mapReifyR f <*> reifyR z <*> reifyR e
+    go (BlockedNacsME f z e) =
+        BlockedNacsME <$> go f <*> reifyR z <*> reifyR e
 
-mapReifyR (BlockedAddME xs sums) =
-    BlockedAddME <$> reifyR xs <*> reifyR sums
+    go (BlockedAddME xs sums) =
+        BlockedAddME <$> reifyR xs <*> reifyR sums
 
 class (Typeable a, Typeable b)
   => ReifiableFun a b where
