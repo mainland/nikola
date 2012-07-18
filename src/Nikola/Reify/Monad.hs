@@ -41,11 +41,14 @@ module Nikola.Reify.Monad (
     R,
     runR,
 
-    newUniqueVar,
     gensym,
     getObserveSharing,
     lookupStableName,
     insertStableName,
+
+    inNewScope,
+    inBranch,
+
     lookupVar,
     extendVars
   ) where
@@ -64,8 +67,6 @@ import Nikola.Syntax
 
 type StableNameHash = Int
 
-type Binding = (Var, Tau, DExp)
-
 data ROpts = ROpts { roptObserveSharing :: Bool }
   deriving (Show)
 
@@ -76,7 +77,6 @@ data REnv = REnv
     ,  rOpts         :: ROpts
     ,  rVars         :: Map.Map Var Tau
     ,  rStableNames  :: IntMap.IntMap [(Dynamic, DExp)]
-    ,  rBindings     :: [Binding]
     }
   deriving (Show)
 
@@ -97,17 +97,13 @@ runR opts m = evalStateT (unR m) emptyREnv
         ,  rOpts         = opts
         ,  rVars         = Map.empty
         ,  rStableNames  = IntMap.empty
-        ,  rBindings     = []
         }
 
-newUniqueVar :: String -> R Var
-newUniqueVar v = do
+gensym :: String -> R Var
+gensym v = do
     u <- gets rUniq
     modify $ \s -> s { rUniq = u + 1 }
     return $ Var (v ++ show u)
-
-gensym :: R Var
-gensym = newUniqueVar "x"
 
 getObserveSharing :: R Bool
 getObserveSharing =
@@ -131,13 +127,28 @@ insertStableName sn e = modify $ \s ->
     add Nothing   = Just [(toDyn sn, e)]
     add (Just xs) = Just ((toDyn sn, e) : xs)
 
-instance  MonadCheck R where
+inNewScope :: R a -> R a
+inNewScope comp = do
+    cache <- gets rStableNames
+    modify $ \s -> s { rStableNames = IntMap.empty }
+    a     <- comp
+    modify $ \s -> s { rStableNames = cache }
+    return a
+
+inBranch :: R a -> R a
+inBranch comp = do
+    cache <- gets rStableNames
+    a     <- comp
+    modify $ \s -> s { rStableNames = cache }
+    return a
+
+instance MonadCheck R where
     lookupVar v = do
         maybe_tau <- gets $ \s -> Map.lookup v (rVars s)
         case maybe_tau of
           Just tau -> return tau
           Nothing ->  faildoc $ text "Variable" <+> ppr v <+>
-                                text "not in scope"
+                                text "not in scope during reification."
 
     extendVars vtaus act = do
         old_vars <- gets rVars

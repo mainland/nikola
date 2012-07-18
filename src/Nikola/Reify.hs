@@ -37,285 +37,339 @@ module Nikola.Reify (
     ROpts(..),
     defaultROpts,
 
-    Reifiable(..),
-    ReifiableFun(..),
-    VApply(..)
+    Reifiable,
+    reify,
+    reifyEx,
+
+    ReifiableFun,
+    reifyLam,
+
+    VApply,
+    vapply
   ) where
 
 import Control.Applicative
 import Control.Monad.State
 import Data.Dynamic
-import Data.List (foldl1')
-import qualified Data.Map as Map
-import qualified Data.Set as Set
 import System.Mem.StableName
+import Text.PrettyPrint.Mainland
 
 import Nikola.Check
 import Nikola.Representable
 import Nikola.Reify.Monad
 import Nikola.Syntax
 
-type Binding = (Var, Tau, DExp)
-
-insertBinding :: Var -> DExp -> R ()
-insertBinding v e = do
-    bs  <- gets rBindings
-    tau <- extendVars [(v,tau) | (v,tau,_) <- bs] $ check e
-    modify $ \s -> s { rBindings = (v,tau,e) : bs }
-
-collectBindings :: R a -> R ([Binding], a)
-collectBindings act = do
-    bs <- gets rBindings
-    modify $ \s -> s { rBindings = []}
-    x   <- extendVars [(v,tau) | (v,tau,_) <- bs] $ act
-    bs' <- gets rBindings
-    modify $ \s -> s { rBindings = bs }
-    return (bs', x)
-
-flushBindings :: R DExp -> R DExp
-flushBindings act = do
-    (bs, e) <- collectBindings act
-    return $ letBind bs e
-
-maximizeSharing :: (DExp -> R DExp)
-                -> [DExp]
-                -> R [DExp]
-maximizeSharing f es = do
-    (bs, es') <- collectBindings $ mapM f es
-    -- @bs@ is the list of all new bindings created during the the construction
-    -- of es'. Note that the order of @bs@ is important; a binding in @bs@ can
-    -- only depend on a binding that occurs later in the list.
-    let ves      = Map.fromList [(v, e) | (v, _, e) <- bs]
-    -- Calculate the set of variables in bs that are needed by each expression.
-    let used     = map (closure ves . Set.toList . freeVars) es'
-    -- Calculate the set of variables in bs that are needed by all expressions.
-    let vshared  = foldl1' Set.intersection used
-    -- Split the bindings into two sets: the set that can be shared among all
-    -- expressions without duplicating works, and the rest. Throw the shared
-    -- bindings back into the pool.
-    let (shared, unshared) = split (\(v, _, _) -> Set.member v vshared) bs
-    modify $ \s -> s { rBindings = shared ++ rBindings s }
-    -- For each expression, determine which of the remaining bindings are needed
-    -- for the expression, and bind them.
-    return $ map (bind unshared) (used `zip` es')
-  where
-    closure :: Map.Map Var DExp -> [Var] -> Set.Set Var
-    closure ves vs = loop vs Set.empty
-      where
-        loop :: [Var] -> Set.Set Var -> Set.Set Var
-        loop [] theta = theta
-        loop (v : vs) theta | v `Set.member` theta = loop vs theta
-                            | otherwise            = loop (fvs ++ vs) (Set.insert v theta)
-          where
-            fvs = case Map.lookup v ves of
-                    Nothing -> []
-                    Just e -> Set.toList (freeVars e)
-
-    bind :: [Binding] -> (Set.Set Var, DExp) -> DExp
-    bind unshared (used, e) =
-        letBind bs e
-      where
-        bs = filter (\(v, _, _) -> Set.member v used) unshared
-
-    -- Like partition, but we need to maintain the order of the sublists.
-    split :: (a -> Bool) -> [a] -> ([a], [a])
-    split _ []                 = ([], [])
-    split p (x:xs) | p x       = (x:ts', fs')
-                   | otherwise = (ts', x:fs')
-      where
-        (ts', fs') = split p xs
-
-letBind :: [Binding] -> DExp -> DExp
-letBind  []                body = body
-letBind  ((v,tau,e) : bs)  body = letBind bs $ LetE v tau e body
-
--- Given a "thing" @x@ and a computation @comp@ that computes its translation to
--- a @DExp@, see if we already have a cached translation for @x@. If we do,
--- return it, otherwise compute it via @comp@ and then cache and return the
--- result.
-cacheDExp :: Typeable a => a -> R DExp -> R DExp
-cacheDExp x comp = do
-    sn       <- liftIO $ makeStableName $! x
-    maybe_e' <- lookupStableName sn
-    case maybe_e' of
-      Just e' -> return e'
-      Nothing -> do  e' <- comp
-                     insertStableName sn e'
-                     return e'
+--prettyIO :: (MonadIO m) => Doc -> m ()
+--prettyIO = liftIO . putStrLn . pretty 80
 
 -- The main reification function. Note that we DO NOT cache the translations of
 -- the function argument to expressions like MapE and ZipWithE because we want
 -- the function in its original lambda form---the bodies of the lambda get
 -- turned into the body of a loop rather than the body of a function.
-reifyR :: DExp -> R DExp
-reifyR e = do
+reifyE :: DExp
+       -> (DExp -> R DExp)
+       -> R DExp
+reifyE e kont = do
     obSharing <- getObserveSharing
     if obSharing
-        then cacheDExp e (go e >>= bind)
-        else go e
+        then cacheDExp e (go e) kont
+        else go e kont
   where
-    bind :: DExp -> R DExp
-    bind (VarE v)   = return $ VarE v
-    bind (BoolE n)  = return $ BoolE n
-    bind (IntE n)   = return $ IntE n
-    bind (FloatE n) = return $ FloatE n
-    bind e          = do  v <- newUniqueVar "v"
-                          insertBinding v e
-                          return (VarE v)
+    reifyEs :: [DExp]
+            -> ([DExp] -> R DExp)
+            -> R DExp
+    reifyEs [] kont = kont []
 
-    go :: DExp -> R DExp
-    go (VarE v) =
-        pure $ VarE v
+    reifyEs (e:es) kont = do
+        reifyE  e  $ \e'  -> do
+        reifyEs es $ \es' -> do
+        kont (e':es')
 
-    go (DelayedE comp) =
-        comp
+    go :: DExp
+       -> (DExp -> R DExp)
+       -> R DExp
+    go e@(VarE {}) kont =
+        kont e
 
-    go (LetE v _ e1 e2) = do
-        e1' <- reifyR e1
-        insertBinding v e1'
-        reifyR e2
+    go (DelayedE comp) kont =
+        comp     $ \e  -> do
+        reifyE e $ \e' -> do
+        kont e'
 
-    go (LamE vtaus e) = do
-        e' <- extendVars vtaus $
-              flushBindings $
-              reifyR e
-        return $ LamE vtaus e'
+    go (LetE v tau e1 e2) kont = do
+        reifyE e1 $ \e1' -> do
+        e2' <- extendVars [(v, tau)] $ do
+               reifyE e2 kont
+        kont $ LetE v tau e1' e2'
 
-    go (AppE e es) =
-        AppE <$> reifyR e <*> mapM reifyR es
+    go (LamE vtaus e) kont = do
+        e' <- extendVars vtaus $ do
+              reifyE e return
+        kont $ LamE vtaus e'
 
-    go (BoolE b) =
-        pure $ BoolE b
+    go (AppE e es) kont = do
+        reifyE  e  $ \e'  -> do
+        reifyEs es $ \es' -> do
+        kont $ AppE e' es'
 
-    go (IntE n) =
-        pure $ IntE n
+    go e@(BoolE {}) kont =
+        kont e
 
-    go (FloatE n) =
-        pure $ FloatE n
+    go e@(IntE {}) kont =
+        kont e
 
-    go (UnopE op e ) =
-        UnopE op <$> reifyR e
+    go e@(FloatE {}) kont =
+        kont e
 
-    go (BinopE op e1 e2) =
-        BinopE op <$> reifyR e1 <*> reifyR e2
+    go (UnopE op e) kont = do
+        reifyE e $ \e' -> do
+        kont $ UnopE op e'
 
-    go (IfteE e1 e2 e3) = do
-      e1'        <- reifyR e1
-      [e2', e3'] <- maximizeSharing reifyR [e2, e3]
-      return $ IfteE e1' e2' e3'
+    go (BinopE op e1 e2) kont = do
+        reifyE e1 $ \e1' -> do
+        reifyE e2 $ \e2' -> do
+        kont $ BinopE op e1' e2'
 
-    go (MapE f e) =
-        MapE <$> go f <*> reifyR e
+    go (IfteE e1 e2 e3) kont = do
+        reifyE e1 $ \e1' -> do
+        e2' <- inBranch $ reifyE e2 return
+        e3' <- inBranch $ reifyE e3 return
+        kont $ IfteE e1' e2' e3'
 
-    go (MapME f xs ys) =
-        MapME <$> go f <*> reifyR xs <*> reifyR ys
+    go (MapE f e) kont = do
+        f' <- reifyBareLam f
+        reifyE e $ \e' -> do
+        kont $ MapE f' e'
 
-    go (PermuteE xs is) =
-        PermuteE <$> go xs <*> reifyR is
+    go (MapME f xs ys) kont = do
+        f' <- reifyBareLam f
+        reifyE xs $ \xs' -> do
+        reifyE ys $ \ys' -> do
+        kont $ MapME f' xs' ys'
 
-    go (PermuteME xs is ys) =
-        PermuteME <$> go xs <*> reifyR is <*> reifyR ys
+    go (PermuteE xs is) kont =
+        reifyE xs $ \xs' -> do
+        reifyE is $ \is' -> do
+        kont $ PermuteE xs' is'
 
-    go (ZipWithE f e1 e2) =
-        ZipWithE <$> go f <*> reifyR e1 <*> reifyR e2
+    go (PermuteME xs is ys) kont =
+        reifyE xs $ \xs' -> do
+        reifyE is $ \is' -> do
+        reifyE ys $ \ys' -> do
+        kont $ PermuteME xs' is' ys'
 
-    go (ZipWith3E f e1 e2 e3) =
-        ZipWith3E <$> go f <*> reifyR e1 <*> reifyR e2 <*> reifyR e3
+    go (ZipWithE f e1 e2) kont = do
+        f' <- reifyBareLam f
+        reifyE e1 $ \e1' -> do
+        reifyE e2 $ \e2' -> do
+        kont $ ZipWithE f' e1' e2'
 
-    go (ZipWith3ME f e1 e2 e3 e4) =
-        ZipWith3ME <$> go f <*>
-            reifyR e1 <*> reifyR e2 <*> reifyR e3 <*> reifyR e4
+    go (ZipWith3E f e1 e2 e3) kont = do
+        f' <- reifyBareLam  f
+        reifyE e1 $ \e1' -> do
+        reifyE e2 $ \e2' -> do
+        reifyE e3 $ \e3' -> do
+        kont $ ZipWith3E f' e1' e2' e3'
 
-    go (ScanE f z e) =
-        ScanE <$> go f <*> reifyR z <*> reifyR e
+    go (ZipWith3ME f e1 e2 e3 e4) kont = do
+        f' <- reifyBareLam f
+        reifyE e1 $ \e1' -> do
+        reifyE e2 $ \e2' -> do
+        reifyE e3 $ \e3' -> do
+        reifyE e4 $ \e4' -> do
+        kont $ ZipWith3ME f' e1' e2' e3' e4'
 
-    go (BlockedScanME f z e) =
-        BlockedScanME <$> go f <*> reifyR z <*> reifyR e
+    go (ScanE f z e) kont = do
+        f' <- reifyBareLam f
+        reifyE z $ \z' -> do
+        reifyE e $ \e' -> do
+        kont $ ScanE f' z' e'
 
-    go (BlockedNacsME f z e) =
-        BlockedNacsME <$> go f <*> reifyR z <*> reifyR e
+    go (BlockedScanME f z e) kont = do
+        f' <- reifyBareLam f
+        reifyE z $ \z' -> do
+        reifyE e $ \e' -> do
+        kont $ BlockedScanME f' z' e'
 
-    go (BlockedAddME xs sums) =
-        BlockedAddME <$> reifyR xs <*> reifyR sums
+    go (BlockedNacsME f z e) kont = do
+        f' <- reifyBareLam f
+        reifyE z $ \z' -> do
+        reifyE e $ \e' -> do
+        kont $ BlockedNacsME f' z' e'
 
-class (Typeable a, Typeable b)
-  => ReifiableFun a b where
-    reifyfun :: (a -> b) -> R DExp
-    reifyfun = reifyfunk []
+    go (BlockedAddME xs sums) kont =
+        reifyE xs   $ \xs'   -> do
+        reifyE sums $ \sums' -> do
+        kont $ BlockedAddME xs' sums'
 
-    reifyfunk :: [(Var, Tau)] -> (a -> b) -> R DExp
+-- Given a "thing" @x@ and a computation @comp@ that computes its translation to
+-- a @DExp@, see if we already have a cached translation for @x@. If we do,
+-- return it, otherwise compute it via @comp@ and then cache and return the
+-- result.
+cacheDExp :: Typeable a
+          => a
+          -> ((DExp -> R DExp) -> R DExp)
+          -> (DExp -> R DExp)
+          -> R DExp
+cacheDExp x comp kont = do
+    sn      <- liftIO $ makeStableName $! x
+    maybe_e <- lookupStableName sn
+    case maybe_e of
+      Just e  -> kont e
+      Nothing -> do  comp   $ \e  -> do
+                     letE e $ \e' -> do
+                     insertStableName sn e'
+                     kont e'
+  where
+    letE :: DExp
+         -> (DExp -> R DExp)
+         -> R DExp
+    letE e@(VarE {})   kont = kont e
+    letE e@(BoolE {})  kont = kont e
+    letE e@(IntE {})   kont = kont e
+    letE e@(FloatE {}) kont = kont e
 
-instance (Representable a, Representable b)
-  => ReifiableFun (Exp a) (Exp b) where
-    reifyfunk xrhos f = do
-        x          <- gensym
-        let rho    =  embeddedType (undefined :: a) (ParamIdx (length xrhos))
-        let xrhos' =  reverse ((x, rho) : xrhos)
-        body       <- extendVars [(x, rho)] $
-                      flushBindings $
-                      reifyR (unE (f (E (VarE x))))
-        -- This is a hack. Eliminating a pointless let binding allows our simple
-        -- syntaxtic check for a function body consisting of a single looping
-        -- construct to work, thereby enabling running the kernel on a
-        -- non-degenerate grid.
-        case body of
-          LetE v _ e (VarE v') | v' == v ->  return $ LamE xrhos' e
-          _ ->                               return $ LamE xrhos' body
+    letE e kont = do
+        v    <- gensym "v"
+        tau  <- check e
+        body <- extendVars [(v, tau)] $
+                kont (VarE v)
+        return (LetE v tau e body)
 
-instance (Representable a, Representable b)
-  => ReifiableFun (Exp a) (IO (Exp b)) where
-    reifyfunk xrhos f = do
-        x          <- gensym
-        fofx       <- liftIO $ f (E (VarE x))
-        let rho    =  embeddedType (undefined :: a) (ParamIdx (length xrhos))
-        let xrhos' =  reverse ((x, rho) : xrhos)
-        body       <- extendVars [(x, rho)] $
-                      flushBindings $
-                      reifyR (unE fofx)
-        -- This is a hack. Eliminating a pointless let binding allows our simple
-        -- syntaxtic check for a function body consisting of a single looping
-        -- construct to work, thereby enabling running the kernel on a
-        -- non-degenerate grid.
-        case body of
-          LetE v _ e (VarE v') | v' == v ->  return $ LamE xrhos' e
-          _ ->                               return $ LamE xrhos' body
-
-instance (Representable a, ReifiableFun b c)
-  => ReifiableFun (Exp a) (b -> c) where
-    reifyfunk xrhos f = do
-        x       <- gensym
-        let rho =  embeddedType (undefined :: a) (ParamIdx (length xrhos))
-        extendVars [(x, rho)] $
-          reifyfunk ((x, rho) : xrhos) (f (E (VarE x)))
-
+-- | The @Reifiable@ class tells us what types can be reified to a @DExp@.
 class Reifiable a where
     reify :: a -> IO DExp
     reify = reifyEx defaultROpts
 
     reifyEx :: ROpts -> a -> IO DExp
 
+-- @DExp@'s and @Exp@'s are reified by running them through @reifyE@.
 instance Reifiable DExp where
-    reifyEx ropts = runR ropts . flushBindings . reifyR
+    reifyEx ropts e = runR ropts (reifyE e return)
 
 instance Reifiable (Exp a) where
     reifyEx ropts = reifyEx ropts . unE
 
+-- Functions that are instances of @ReifiableFun@ are reified by calling
+-- @reifyFun@.
 instance ReifiableFun a b => Reifiable (a -> b) where
-    reifyEx ropts = runR ropts . reifyfun
+    reifyEx ropts f = runR ropts (reifyFun f >>= reifyBareLam)
 
+reifyLam :: ReifiableFun a b
+         => (a -> b)
+         -> (DExp -> R DExp)
+         -> R DExp
+reifyLam f kont = do
+    e <- reifyFun f
+    reifyE e kont
+
+-- Reification let-binds all non-"simple" intermediate expressions, including
+-- lambdas, but when we reify a function we /want/ the lambda. Therefore we
+-- unwrap the let binding returned by @reifyE@.
+reifyBareLam :: DExp -> R DExp
+reifyBareLam f = do
+    e <- reifyE f return
+    case e of
+      LamE {} -> return e
+      LetE v _ e1@(LamE {}) (VarE v') | v' == v -> return e1
+      _ -> faildoc $ text "Huh!? Reifying a lmbda produced something unexpected!" </> ppr e
+
+-- @shiftLam@ builds a lambda out of a variable binding and a lambda body. If
+-- the body is already a lambda, we shift the parameter indices in its bindings
+-- by one and build a new, combined lambda. Our intermediate language requires
+-- all lambda arguments be tupled, whereas Haskell does not, so we need to play
+-- this game due to the fact that we're working with and embedded DSL.
+shiftLamE :: Var -> Tau -> DExp -> DExp
+shiftLamE v tau (LamE vtaus e) =
+    LamE ((v, tau) : vs `zip` taus') e
+  where
+    (vs, taus) = unzip vtaus
+    taus'      = map shiftType taus
+
+    -- @shiftType@ shifts the parameter indices in a type up by 1.
+    shiftType :: Tau -> Tau
+    shiftType tau@(UnitT {})  = tau
+    shiftType tau@(BoolT {})  = tau
+    shiftType tau@(IntT {})   = tau
+    shiftType tau@(FloatT {}) = tau
+
+    shiftType (ArrayT tau ds ps) =
+        ArrayT (shiftType tau) (map shiftN ds) (map shiftN ps)
+
+    shiftType (FunT taus tau) =
+        FunT (map shiftType taus) (shiftType tau)
+
+    -- @shiftType@ shifts the parameter indices in an @N@ up by 1.
+    shiftN :: N -> N
+    shiftN (NDim   i (ParamIdx pi)) = NDim   i (ParamIdx (pi+1))
+    shiftN (NPitch i (ParamIdx pi)) = NPitch i (ParamIdx (pi+1))
+
+    shiftN n@(N {})     = n
+    shiftN (NAdd n1 n2) = NAdd (shiftN n1) (shiftN n2)
+    shiftN (NSub n1 n2) = NSub (shiftN n1) (shiftN n2)
+    shiftN (NMul n1 n2) = NMul (shiftN n1) (shiftN n2)
+    shiftN (NNegate n)  = NNegate (shiftN n)
+    shiftN (NDiv n1 n2) = NDiv (shiftN n1) (shiftN n2)
+    shiftN (NMod n1 n2) = NMod (shiftN n1) (shiftN n2)
+    shiftN (NMin ns)    = NMin (map shiftN ns)
+    shiftN (NMax ns)    = NMax (map shiftN ns)
+
+shiftLamE v tau e =
+    LamE [(v, tau)] e
+
+-- | @reifyFun f kont@ reifies the function @f@ and passes the parameters and
+-- body of the reified function to @kont@
+class (Typeable a, Typeable b) => ReifiableFun a b where
+    reifyFun :: (a -> b) -> R DExp
+
+-- The next two instances represent the base cases for function
+-- reification. They reify a function by gensym'ing a fresh variable name,
+-- passing it to the function, and then reifying the result by calling @reifyE@.
+instance (Representable a, Representable b) => ReifiableFun (Exp a)
+                                                            (Exp b) where
+    reifyFun f = do
+        v          <- gensym "x"
+        let fOfX   =  (unE . f . E) (VarE v)
+        let tau    =  embeddedType (undefined :: a) (ParamIdx 0)
+        extendVars [(v, tau)] $ do
+        return $ shiftLamE v tau fOfX
+
+instance (Representable a, Representable b) => ReifiableFun (Exp a)
+                                                            (IO (Exp b)) where
+    reifyFun f = do
+        v          <- gensym "x"
+        fOfX       <- liftIO $ unE <$> (f . E) (VarE v)
+        let tau    =  embeddedType (undefined :: a) (ParamIdx 0)
+        extendVars [(v, tau)] $ do
+        return $ shiftLamE v tau fOfX
+
+-- This is the inductive case. As with the base cases, we gensym a fresh
+-- variable and pass it to @f@ to yield @g@. We reify @g@---itself a
+-- function---by calling @reifyFun@.
+instance (Representable a, ReifiableFun b c) => ReifiableFun (Exp a)
+                                                             (b -> c) where
+    reifyFun f = do
+        v       <- gensym "x"
+        let tau =  embeddedType (undefined :: a) (ParamIdx 0)
+        let g   =  f (E (VarE v))
+        extendVars [(v, tau)] $ do
+        shiftLamE v tau <$> reifyFun g
+
+-- | @vapply@ is tricky... We first build a @DelayedE@ AST node containing an
+-- action that reifies the lambda. Then we wrap the result in enough
 class (ReifiableFun a b) => VApply a b c d |  a -> c,
                                               b -> d,
                                               c -> a,
                                               d -> b where
     vapply :: (a -> b) -> c -> d
-    vapply f = vapplyk (DelayedE (cacheDExp f (reifyfun f))) []
+    vapply f = vapplyk (DelayedE (cacheDExp f (reifyLam f))) []
 
     vapplyk :: DExp -> [DExp] -> c -> d
 
-instance (Representable a, Representable b)
-  => VApply (Exp a) (Exp b) (Exp a) (Exp b) where
+instance (Representable a, Representable b) => VApply (Exp a) (Exp b)
+                                                      (Exp a) (Exp b) where
     vapplyk f es = \e -> E $ AppE f (reverse (unE e : es))
 
-instance (Representable a, VApply b c d e)
-  => VApply (Exp a) (b -> c) (Exp a) (d -> e) where
+instance (Representable a, VApply b c d e) => VApply (Exp a) (b -> c)
+                                                     (Exp a) (d -> e) where
     vapplyk f es = \e -> vapplyk f (unE e : es)

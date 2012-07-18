@@ -35,6 +35,7 @@ GHC_FLAGS += \
 	-package syb \
 	-package symbol \
 	-package template-haskell \
+	-package text \
 	-package uniplate \
 	-package vector \
 	-package vector-algorithms

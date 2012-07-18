@@ -63,6 +63,7 @@ library
     srcloc >=0.2 && <0.3,
     syb >=0.3 && <0.4,
     symbol >=0.1 && <0.2,
+    text >=0.11 && <0.12,
     vector >=0.9 && <0.10
 
   if impl(ghc >= 7.0) && impl(ghc < 7.2)

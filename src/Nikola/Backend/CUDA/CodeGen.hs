@@ -42,10 +42,15 @@ module Nikola.Backend.CUDA.CodeGen (
 
 import Control.Applicative
 import Control.Monad.State
+import qualified Data.ByteString.Lazy as B
 import Data.Maybe (fromJust)
 import Data.List (find)
+import qualified Data.Text.Lazy.Encoding as E
 import Language.C.Quote.CUDA
 import qualified Language.C.Syntax as C
+import System.IO (IOMode(..),
+                  openFile,
+                  hClose)
 import Text.PrettyPrint.Mainland hiding (nest)
 
 #if !MIN_VERSION_template_haskell(2,7,0)
@@ -1065,11 +1070,16 @@ compileFun fname vtaus body = do
 
 -- | Compile a 'Fun' to a 'CFun'
 compileTopFun :: String -> DExp -> IO (CFun a)
-compileTopFun fname (LamE vtaus body) =
-    runCFun compile
+compileTopFun fname e_f = do
+    h <- openFile "temp.f" WriteMode
+    B.hPut h $ E.encodeUtf8 (prettyLazyText 200 (ppr e_f))
+    hClose h
+    case e_f of
+      LamE vtaus body -> runCFun (compile vtaus body)
+      _ -> faildoc $ text "Cannot compile non-function:" <+/> ppr e_f
   where
-    compile :: C (String, [DevAlloc])
-    compile = do
+    compile ::[(Var, Tau)] -> DExp -> C (String, [DevAlloc])
+    compile vtaus body = do
         addSymbol fname
         ((tempAllocs, resultAllocs), ps, items) <-
           compileFunBody (TopFun 0) vtaus body $ \(tau, ce) -> do
@@ -1081,6 +1091,3 @@ compileTopFun fname (LamE vtaus body) =
                          |]
 
         return (fname, tempAllocs ++ resultAllocs)
-
-compileTopFun _ e =
-    faildoc $ text "Cannot compile non-function:" <+/> ppr e

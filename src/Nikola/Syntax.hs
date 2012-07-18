@@ -253,7 +253,7 @@ data Binop = Land
            | FlogBase
 
 data DExp = VarE Var
-          | DelayedE (R DExp)
+          | DelayedE ((DExp -> R DExp) -> R DExp)
           | LetE Var Tau DExp DExp
           | LamE [(Var, Tau)] DExp
           | AppE DExp [DExp]
@@ -357,8 +357,8 @@ powPrec :: Int
 powPrec = 8
 
 instance Pretty N where
-    pprPrec _ (NDim i pi)   = text "dim" <+> parens (ppr i) <> ppr pi
-    pprPrec _ (NPitch i pi) = text "pitch" <+> parens (ppr i) <> ppr pi
+    pprPrec _ (NDim i pi)   = text "dim" <> ppr i <> ppr pi
+    pprPrec _ (NPitch i pi) = text "pitch" <> ppr i <> ppr pi
 
     pprPrec _ (N i) = ppr i
 
@@ -390,18 +390,25 @@ instance Pretty N where
 instance Show N where
     show = show . ppr
 
+arrowPrec :: Int
+arrowPrec = 0
+
 instance Pretty Tau where
     pprPrec _ UnitT  = text "Unit"
     pprPrec _ BoolT  = text "Bool"
     pprPrec _ IntT   = text "Int"
     pprPrec _ FloatT = text "Float"
 
-    pprPrec _ (ArrayT tau sh _) =
-        ppr tau <+> brackets (commasep (map ppr sh))
-
-    pprPrec p (FunT tau1 tau2) =
+    pprPrec p (ArrayT tau sh _) =
         parensIf (p > appPrec) $
-        infixop 0 (infixr_ 0) (text "->") tau1 tau2
+        text "Array" <+> ppr tau <+>
+        brackets (commasep (map ppr sh))
+
+    pprPrec p (FunT taus tau) =
+        parensIf (p > arrowPrec) $
+        parens (commasep (map ppr taus)) <+>
+        text "->" <+>
+        pprPrec arrowPrec tau
 
 instance Show Tau where
     show = show . ppr
@@ -421,15 +428,14 @@ instance Pretty DExp where
 
     pprPrec p (LetE v tau e1 e2) =
         parensIf (p > appPrec) $
-        nest 4 (text "let" <+>
-            embrace [ppr v <+> text "::" <+> ppr tau <+>
-                     text "=" <+> ppr e1]) </>
+        text "let" <+> text "{" <+>
+          nest 2 (ppr v <+> text "::" <+> ppr tau <+> text "=" <+> ppr e1) <+> text "}" <+>
         text "in" </>
         ppr e2
 
     pprPrec p (LamE vtaus e) =
-        parensIf (p > appPrec) $
-        text "\\" <+> spread (map pp vtaus) <+> text "->" <+> ppr e
+        parensIf (p > appPrec) $ nest 2 $
+        text "\\" <> spread (map pp vtaus) <+> text "->" </> ppr e
       where
         pp :: (Var, Tau) -> Doc
         pp (v, tau) =
@@ -449,14 +455,17 @@ instance Pretty DExp where
     pprPrec _ (FloatE n) =
         (text . show) n
 
+    pprPrec p (UnopE Ineg e) =
+        parensIf (p > addPrec) $
+        ppr Ineg <> pprPrec (addPrec + 1) e
+
+    pprPrec p (UnopE Fneg e) =
+        parensIf (p > addPrec) $
+        ppr Fneg <> pprPrec (addPrec + 1) e
+
     pprPrec p (UnopE op e) =
-        parensIf (p > prec op) $
-        ppr op  <+> pprPrec (prec op + 1) e
-      where
-        prec :: Unop -> Int
-        prec Ineg = addPrec
-        prec Fneg = addPrec
-        prec _    = appPrec
+        parensIf (p > appPrec) $
+        ppr op <+> pprPrec appPrec1 e
 
     pprPrec p (BinopE FlogBase e1 e2) =
         parensIf (p > appPrec) $
@@ -494,80 +503,85 @@ instance Pretty DExp where
         fixity FlogBase = infixl_ mulPrec
 
     pprPrec p (IfteE teste thene elsee) =
-        parensIf (p > appPrec) $
-        text "if" <+> ppr teste
-        <+/> text "then" <+> ppr thene
-        <+/> text "else" <+> ppr elsee
+        parensIf (p > appPrec) $ align $
+        text "if" <+> ppr teste </>
+        text "then" <+> align (ppr thene) </>
+        text "else" <+> align (ppr elsee)
 
     pprPrec p (MapE f e) =
-        parensIf (p > appPrec) $ nest 4 $
+        parensIf (p > appPrec) $
         text "map" <+> pprPrec appPrec1 f <+> pprPrec appPrec1 e
 
     pprPrec p (MapME f e1 e2) =
-        parensIf (p > appPrec) $ nest 4 $
-        text "mapM" <+> pprPrec appPrec1 f <+>
-           pprPrec appPrec1 e1 <+> pprPrec appPrec1 e2
+        parensIf (p > appPrec) $
+        text "mapM" <+>
+          pprPrec appPrec1 f <+>
+          pprPrec appPrec1 e1 <+>
+          pprPrec appPrec1 e2
 
     pprPrec p (PermuteE e1 e2) =
-        parensIf (p > appPrec) $ nest 4 $
-        text "permute" <+> pprPrec appPrec1 e1 <+> pprPrec appPrec1 e2
+        parensIf (p > appPrec) $
+        text "permute" <+>
+          pprPrec appPrec1 e1 <+>
+          pprPrec appPrec1 e2
 
     pprPrec p (PermuteME e2 e1 e3) =
-        parensIf (p > appPrec) $ nest 4 $
-        text "permuteM" <+> pprPrec appPrec1 e1 <+>
-            pprPrec appPrec1 e2 <+>
-            pprPrec appPrec1 e3
+        parensIf (p > appPrec) $
+        text "permuteM" <+>
+          pprPrec appPrec1 e1 <+>
+          pprPrec appPrec1 e2 <+>
+          pprPrec appPrec1 e3
 
     pprPrec p (ZipWithE f e1 e2) =
-        parensIf (p > appPrec) $ nest 4 $
+        parensIf (p > appPrec) $
         text "zipWith" <+>
-            pprPrec appPrec1 f <+>
-            pprPrec appPrec1 e1 <+>
-            pprPrec appPrec1 e2
+          pprPrec appPrec1 f <+>
+          pprPrec appPrec1 e1 <+>
+          pprPrec appPrec1 e2
 
     pprPrec p (ZipWith3E f e1 e2 e3) =
-        parensIf (p > appPrec) $ nest 4 $
+        parensIf (p > appPrec) $
         text "zipWith3" <+>
-            pprPrec appPrec1 f <+>
-            pprPrec appPrec1 e1 <+>
-            pprPrec appPrec1 e2 <+>
-            pprPrec appPrec1 e3
+          pprPrec appPrec1 f <+>
+          pprPrec appPrec1 e1 <+>
+          pprPrec appPrec1 e2 <+>
+          pprPrec appPrec1 e3
 
     pprPrec p (ZipWith3ME f e1 e2 e3 e4) =
-        parensIf (p > appPrec) $ nest 4 $
+        parensIf (p > appPrec) $
         text "zipWithM3" <+>
-            pprPrec appPrec1 f <+>
-            pprPrec appPrec1 e1 <+>
-            pprPrec appPrec1 e2 <+>
-            pprPrec appPrec1 e3 <+>
-            pprPrec appPrec1 e4
+          pprPrec appPrec1 f <+>
+          pprPrec appPrec1 e1 <+>
+          pprPrec appPrec1 e2 <+>
+          pprPrec appPrec1 e3 <+>
+          pprPrec appPrec1 e4
 
     pprPrec p (ScanE f e1 e2) =
-        parensIf (p > appPrec) $ nest 4 $
+        parensIf (p > appPrec) $
         text "scan" <+>
-            pprPrec appPrec1 f <+>
-            pprPrec appPrec1 e1 <+>
-            pprPrec appPrec1 e2
+          pprPrec appPrec1 f <+>
+          pprPrec appPrec1 e1 <+>
+          pprPrec appPrec1 e2
 
     pprPrec p (BlockedScanME f z xs) =
-        parensIf (p > appPrec) $ nest 4 $
+        parensIf (p > appPrec) $
         text "blockedScanM" <+>
-            pprPrec appPrec1 f <+>
-            pprPrec appPrec1 z <+>
-            pprPrec appPrec1 xs
+          pprPrec appPrec1 f <+>
+          pprPrec appPrec1 z <+>
+          pprPrec appPrec1 xs
 
     pprPrec p (BlockedNacsME f z xs) =
-        parensIf (p > appPrec) $ nest 4 $
+        parensIf (p > appPrec) $
         text "blockedNacsME" <+>
-            pprPrec appPrec1 f <+>
-            pprPrec appPrec1 z <+>
-            pprPrec appPrec1 xs
+          pprPrec appPrec1 f <+>
+          pprPrec appPrec1 z <+>
+          pprPrec appPrec1 xs
 
     pprPrec p (BlockedAddME xs sums) =
-        parensIf (p > appPrec) $ nest 4 $
+        parensIf (p > appPrec) $
         text "blockedAddM" <+>
-            pprPrec appPrec1 xs <+>
-            pprPrec appPrec1 sums
+          pprPrec appPrec1 xs <+>
+          pprPrec appPrec1 sums
 
 instance Show DExp where
     show = show . ppr
@@ -603,18 +617,18 @@ instance Show Unop where
     show = show . ppr
 
 instance Pretty Binop where
-    ppr Land = text ".&&."
-    ppr Lor  = text ".||."
+    ppr Land = text "&&"
+    ppr Lor  = text "||"
 
-    ppr Leq  = text ".==."
-    ppr Lne  = text "./=."
+    ppr Leq  = text "=="
+    ppr Lne  = text "/="
 
-    ppr Lgt = text ".>."
-    ppr Lge = text ".>=."
-    ppr Llt = text ".<."
-    ppr Lle = text ".<=."
+    ppr Lgt = text ">"
+    ppr Lge = text ">="
+    ppr Llt = text "<"
+    ppr Lle = text "<="
 
-    ppr Band = text ".&."
+    ppr Band = text "&"
 
     ppr Iadd = text "+"
     ppr Isub = text "-"

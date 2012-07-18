@@ -232,4 +232,4 @@ blockedAddM xs sums =
 delayFun :: ReifiableFun a b
          => (a -> b)
          -> DExp
-delayFun = DelayedE . reifyfun
+delayFun = DelayedE . reifyLam
