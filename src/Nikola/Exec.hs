@@ -65,6 +65,7 @@ module Nikola.Exec (
 import Control.Applicative
 import Control.Exception
 import Control.Monad.State
+import Data.List (foldl')
 import qualified Foreign.CUDA.Driver as CU
 import qualified Foreign.CUDA.Driver.Event as CU (Event)
 import qualified Foreign.CUDA.Driver.Event as CUEvent
@@ -76,28 +77,21 @@ import Nikola.Syntax
 
 data Arg = IntArg    !Int
          | FloatArg  !Float
-         | VectorArg !Int                -- ^ Size of the vector
+         | ArrayArg  [Int]               -- ^ Sizes of each dimension
+                     [Int]               -- ^ Pitches
                      !(CU.DevicePtr ())  -- ^ The vector
-         | MatrixArg !Int                -- ^ Stride
-                     !Int                -- ^ Rows
-                     !Int                -- ^ Columns
-                     !(CU.DevicePtr ())  -- ^ The matrix
          | PtrArg    !(CU.DevicePtr ())  -- ^ Used to push allocations
   deriving (Eq, Ord, Show)
 
 instance Pretty Arg where
     ppr = text . show
 
-data Alloc = IntAlloc    { allocPtr       :: CU.DevicePtr () }
-           | FloatAlloc  { allocPtr       :: CU.DevicePtr () }
-           | VectorAlloc { allocVecLength :: N
-                         , allocPtr       :: CU.DevicePtr ()
-                         }
-           | MatrixAlloc { allocMatStride :: N
-                         , allocMatRows   :: N
-                         , allocMatCols   :: N
-                         , allocPtr       :: CU.DevicePtr ()
-                         }
+data Alloc = IntAlloc   { allocPtr      :: CU.DevicePtr () }
+           | FloatAlloc { allocPtr      :: CU.DevicePtr () }
+           | ArrayAlloc { allocDims     :: [N]
+                        , allocPitches  :: [N]
+                        , allocPtr      :: CU.DevicePtr ()
+                        }
   deriving (Eq, Ord, Show)
 
 -- | An execution context for a GPU-embedded function.
@@ -134,10 +128,8 @@ evalN :: N -> Ex Int
 evalN = go
   where
     go :: N -> Ex Int
-    go n@(NVecLength i) = lookupArg i >>= arg n
-    go n@(NMatStride i) = lookupArg i >>= arg n
-    go n@(NMatRows i)   = lookupArg i >>= arg n
-    go n@(NMatCols i)   = lookupArg i >>= arg n
+    go n@(NDim _ pi)   = lookupArg pi >>= arg n
+    go n@(NPitch _ pi) = lookupArg pi >>= arg n
 
     go (N i)        = pure i
     go (NAdd n1 n2) = (+) <$> evalN n1 <*> evalN n2
@@ -152,14 +144,12 @@ evalN = go
     go (NMax ns) = maximum <$> mapM evalN ns
 
     arg :: N -> Arg -> Ex Int
-    arg (NVecLength _) (VectorArg n _)      = return n
-    arg (NMatStride _) (MatrixArg n _ _ _)  = return n
-    arg (NMatRows _)   (MatrixArg _ n _ _)  = return n
-    arg (NMatCols _)   (MatrixArg _ _ n _)  = return n
-    arg n              arg                  = faildoc $
-                                              text "Argument" <+> ppr arg <+>
-                                              text "does not match index" <+>
-                                              ppr n
+    arg (NDim i _)   (ArrayArg ds _  _)  = return $ ds !! i
+    arg (NPitch i _) (ArrayArg _  ps _)  = return $ ps !! i
+    arg n            arg                 = faildoc $
+                                           text "Argument" <+> ppr arg <+>
+                                           text "does not match index" <+>
+                                           ppr n
 
 evalEx  ::  Ex a
         ->  ExState
@@ -226,39 +216,47 @@ alloc FloatT = do
     pushAlloc (FloatAlloc (CU.castDevPtr devPtr))
     pushArg (PtrArg (CU.castDevPtr devPtr))
 
-alloc (VectorT IntT n) = do
-    count       <-  evalN n
-    let count'  =   max 1 count
+-- Special case for matrix...
+alloc (ArrayT IntT nds@[_, _] nps@[_]) = do
+    ds       <- mapM evalN nds
+    ps       <- mapM evalN nps
+    let size =  foldl' (*) (last ds) ps
     -- Push vector data
-    devPtr :: CU.DevicePtr Int <- liftIO $ CU.mallocArray count'
-    pushAlloc (VectorAlloc n (CU.castDevPtr devPtr))
+    devPtr :: CU.DevicePtr Int <- liftIO $ CU.mallocArray (max 1 size)
+    pushAlloc (ArrayAlloc nds nps (CU.castDevPtr devPtr))
+    pushArg (PtrArg (CU.castDevPtr devPtr))
+
+-- Special case for matrix...
+alloc (ArrayT FloatT nds@[_, _] nps@[_]) = do
+    ds       <- mapM evalN nds
+    ps       <- mapM evalN nps
+    let size =  foldl' (*) (last ds) ps
+    -- Push vector data
+    devPtr :: CU.DevicePtr Float <- liftIO $ CU.mallocArray (max 1 size)
+    pushAlloc (ArrayAlloc nds nps (CU.castDevPtr devPtr))
+    pushArg (PtrArg (CU.castDevPtr devPtr))
+
+alloc (ArrayT IntT nds nps) = do
+    ds       <- mapM evalN nds
+    ps       <- mapM evalN nps
+    let size =  foldl' (*) (last ds) ps
+    -- Push vector data
+    devPtr :: CU.DevicePtr Int <- liftIO $ CU.mallocArray (max 1 size)
+    pushAlloc (ArrayAlloc nds nps (CU.castDevPtr devPtr))
     pushArg (PtrArg (CU.castDevPtr devPtr))
     -- Push vector size
     alloc IntT
 
-alloc (VectorT FloatT n) = do
-    count       <-  evalN n
-    let count'  =   max 1 count
+alloc (ArrayT FloatT nds nps) = do
+    ds       <- mapM evalN nds
+    ps       <- mapM evalN nps
+    let size =  foldl' (*) (last ds) ps
     -- Push vector data
-    devPtr :: CU.DevicePtr Float <- liftIO $ CU.mallocArray count'
-    pushAlloc (VectorAlloc n (CU.castDevPtr devPtr))
+    devPtr :: CU.DevicePtr Float <- liftIO $ CU.mallocArray (max 1 size)
+    pushAlloc (ArrayAlloc nds nps (CU.castDevPtr devPtr))
     pushArg (PtrArg (CU.castDevPtr devPtr))
     -- Push vector size
     alloc IntT
-
-alloc (MatrixT IntT s r c) = do
-    count <- (*) <$> evalN s <*> evalN c
-    -- Push vector data
-    devPtr :: CU.DevicePtr Int <- liftIO $ CU.mallocArray count
-    pushAlloc (MatrixAlloc s r c (CU.castDevPtr devPtr))
-    pushArg (PtrArg (CU.castDevPtr devPtr))
-
-alloc (MatrixT FloatT s r c) = do
-    count <- (*) <$> evalN s <*> evalN c
-    -- Push vector data
-    devPtr :: CU.DevicePtr Float <- liftIO $ CU.mallocArray count
-    pushAlloc (MatrixAlloc s r c (CU.castDevPtr devPtr))
-    pushArg (PtrArg (CU.castDevPtr devPtr))
 
 alloc rho =
     faildoc $ text "Cannot allocate type" <+> ppr rho
@@ -293,11 +291,13 @@ defaultLaunch dimX dimY dimZ gridW gridH act = do
     return x
   where
     arg2params :: Arg -> [CU.FunParam]
-    arg2params (IntArg i)             = [CU.IArg i]
-    arg2params (FloatArg f)           = [CU.FArg f]
-    arg2params (VectorArg n ptr)      = [CU.VArg ptr, CU.IArg n]
-    arg2params (MatrixArg s r c ptr)  = [CU.VArg ptr, CU.IArg s, CU.IArg r, CU.IArg c]
-    arg2params (PtrArg ptr)           = [CU.VArg ptr]
+    arg2params (IntArg i)                 = [CU.IArg i]
+    arg2params (FloatArg f)               = [CU.FArg f]
+    arg2params (ArrayArg [r, c] [s] ptr)  = [CU.VArg ptr, CU.IArg s, CU.IArg r, CU.IArg c]
+    arg2params (ArrayArg ds ps ptr)       = [CU.VArg ptr] ++
+                                            map CU.IArg ds ++
+                                            map CU.IArg ps
+    arg2params (PtrArg ptr)               = [CU.VArg ptr]
 
 -- | A wrapping of a GPU execution environment that provides a phantom type
 -- parameter.

@@ -97,7 +97,7 @@ check (MapE f e) = do
     (tau1, n) <- checkVector e
     tau2      <- checkFunType f [tau1] >>=
                  checkScalarType
-    return $ VectorT tau2 n
+    return $ vectorT tau2 n
 
 check (MapME f v1 v2) = do
     (tau1, _) <- checkVector v1
@@ -111,7 +111,7 @@ check (PermuteE xs is) = do
     (tau1, n1) <- checkVector xs
     (tau2, n2) <- checkVector is
     checkEqual tau2 IntT
-    return $ VectorT tau1 (nmin n1 n2)
+    return $ vectorT tau1 (nmin n1 n2)
 
 check (PermuteME xs is xs') = do
     (tau1, _) <- checkVector xs
@@ -126,7 +126,7 @@ check (ZipWithE f e1 e2) = do
     (tau2, n2) <- checkVector e2
     tau3       <- checkFunType f [tau1, tau2] >>=
                   checkScalarType
-    return $ VectorT tau3 (nmin n1 n2)
+    return $ vectorT tau3 (nmin n1 n2)
 
 check (ZipWith3E f e1 e2 e3) = do
     (tau1, n1) <- checkVector e1
@@ -134,7 +134,7 @@ check (ZipWith3E f e1 e2 e3) = do
     (tau3, n3) <- checkVector e3
     tau4       <- checkFunType f [tau1, tau2, tau3] >>=
                   checkScalarType
-    return $ VectorT tau4 (nminimum [n1, n2, n3])
+    return $ vectorT tau4 (nminimum [n1, n2, n3])
 
 check (ZipWith3ME f xs ys zs results) = do
     (tau1, _) <- checkVector xs
@@ -153,7 +153,7 @@ check (ScanE f z e) = do
     tau3      <- checkFunType f [tau1, tau1] >>=
                  checkScalarType
     checkEqual tau1 tau3
-    return $ VectorT tau1 n
+    return $ vectorT tau1 n
 
 check (BlockedScanME f z xs) = do
     tau1      <- checkScalar z
@@ -162,7 +162,7 @@ check (BlockedScanME f z xs) = do
     tau3      <- checkFunType f [tau1, tau1] >>=
                  checkScalarType
     checkEqual tau1 tau3
-    return $ VectorT tau1 (n `div` (2*fromInteger threadBlockWidth))
+    return $ vectorT tau1 (n `div` (2*fromInteger threadBlockWidth))
 
 check (BlockedNacsME f z xs) = do
     tau1      <- checkScalar z
@@ -171,7 +171,7 @@ check (BlockedNacsME f z xs) = do
     tau3      <- checkFunType f [tau1, tau1] >>=
                  checkScalarType
     checkEqual tau1 tau3
-    return $ VectorT tau1 (n `div` (2*fromInteger threadBlockWidth))
+    return $ vectorT tau1 (n `div` (2*fromInteger threadBlockWidth))
 
 check (BlockedAddME xs sums) = do
     (tau1, _) <- checkVector xs
@@ -243,10 +243,10 @@ checkScalarType rho      = faildoc $
                            ppr rho
 
 checkVectorType :: MonadCheck m => Tau -> m (Tau, N)
-checkVectorType (VectorT tau n) = return (tau, n)
-checkVectorType rho             = faildoc $
-                                  text "Expected vector type but got" <+>
-                                  ppr rho
+checkVectorType (ArrayT tau [n] []) = return (tau, n)
+checkVectorType rho                 = faildoc $
+                                      text "Expected vector type but got" <+>
+                                      ppr rho
 
 checkFunType :: MonadCheck m
              => DExp
@@ -270,11 +270,8 @@ match :: [Tau] -> Tau -> Tau
 match taus = phi
   where
     phi :: Tau -> Tau
-    phi (VectorT tau n) =
-        VectorT tau (phiN n)
-
-    phi (MatrixT tau s r c) =
-        MatrixT tau (phiN s) (phiN r) (phiN c)
+    phi (ArrayT tau sh ptch) =
+        ArrayT tau (map phiN sh) (map phiN ptch)
 
     phi (FunT rhos rho) =
         FunT (map phi rhos) (phi rho)
@@ -298,23 +295,18 @@ match taus = phi
     go m _ [] =
         m
 
-    go m i (VectorT _ n : taus) =
-        go (foldl' insert m kvs) (i+1) taus
+    go m pi (ArrayT _ dims pitches : taus) =
+        go (foldl' insert m kvs) (pi+1) taus
       where
-        kvs = [(NVecLength (ParamIdx i), n)]
-
-    go m i (MatrixT _ s r c : taus) =
-        go (foldl' insert m kvs) (i+1) taus
-      where
-        kvs = [(NMatStride (ParamIdx i), s),
-               (NMatRows   (ParamIdx i), r),
-               (NMatCols   (ParamIdx i), c)]
+        kvs = [NDim d (ParamIdx pi) | d <- [0..] ] `zip` dims
+              ++
+              [NPitch d (ParamIdx pi) | d <- [0..] ] `zip` pitches
 
     go _ _ (FunT {} : _) =
         error "The impossible happened: an embedded higher-order function!"
 
-    go m i (_ : taus) =
-        go m (i+1) taus
+    go m pi (_ : taus) =
+        go m (pi+1) taus
 
     insert :: Ord k => Map.Map k v -> (k, v) -> Map.Map k v
     insert m (k, v) = Map.insert k v m

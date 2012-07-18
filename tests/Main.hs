@@ -41,7 +41,7 @@ inc = vapply $ \x -> x + 1
 f2 :: CFun (Exp (V.Vector Float) -> Exp (V.Vector Float))
 f2 = CFun { cfunName = "f2"
           , cfunDefs = defs
-          , cfunAllocs = [VectorT FloatT nmin]
+          , cfunAllocs = [vectorArgT FloatT (ParamIdx 0)]
           , cfunExecConfig = ExecConfig { gridDimX  = fromIntegral 240
                                         , gridDimY  = 1
                                         , blockDimX = fromIntegral 128
@@ -50,9 +50,6 @@ f2 = CFun { cfunName = "f2"
                                         }
           }
   where
-    nmin :: N
-    nmin = NVecLength (ParamIdx 0)
-
     defs :: [C.Definition]
     defs = [cunit|
 __device__ float f0(float x2)

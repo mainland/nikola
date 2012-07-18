@@ -53,6 +53,8 @@ module Nikola.Syntax (
     Exp(..),
 
     isScalarT,
+    vectorArgT,
+    matrixArgT,
     vectorT,
     matrixT,
     freeVars
@@ -81,10 +83,8 @@ maxGridWidth = 32768
 
 -- |Type-level "numbers". These numbers are all derived from the size of a
 -- function arguments.
-data N = NVecLength ParamIdx
-       | NMatStride ParamIdx
-       | NMatRows ParamIdx
-       | NMatCols ParamIdx
+data N = NDim Int ParamIdx
+       | NPitch Int ParamIdx
 
        | N Int
        | NAdd N N
@@ -171,8 +171,11 @@ data Tau = UnitT
          | BoolT
          | IntT
          | FloatT
-         | VectorT Tau N
-         | MatrixT Tau N N N
+         | ArrayT Tau  -- ^ Type of elements
+                  [N]  -- ^ Shape of the array. An n-dimensional array will have
+                       -- a list of length n here.
+                  [N]  -- ^ Pitch. An n-dimensional array will have a list of
+                       -- length n-1 here.
          | FunT [Tau] Tau
   deriving (Eq, Ord, Data, Typeable)
 
@@ -183,11 +186,17 @@ isScalarT IntT    = True
 isScalarT FloatT  = True
 isScalarT _       = False
 
-vectorT :: Tau -> ParamIdx -> Tau
-vectorT tau n = VectorT tau (NVecLength n)
+vectorArgT :: Tau -> ParamIdx -> Tau
+vectorArgT tau pi = ArrayT tau [NDim 0 pi] []
 
-matrixT :: Tau -> ParamIdx -> ParamIdx -> ParamIdx -> Tau
-matrixT tau s r c = MatrixT tau (NMatStride s) (NMatRows r) (NMatCols c)
+matrixArgT :: Tau -> ParamIdx -> Tau
+matrixArgT tau pi = ArrayT tau [NDim 0 pi, NDim 1 pi] [NPitch 0 pi]
+
+vectorT :: Tau -> N -> Tau
+vectorT tau n = ArrayT tau [n] []
+
+matrixT :: Tau -> N -> N -> N -> Tau
+matrixT tau s r c = ArrayT tau [r, c] [s]
 
 data Var = Var String
   deriving (Eq, Ord, Typeable)
@@ -348,10 +357,8 @@ powPrec :: Int
 powPrec = 8
 
 instance Pretty N where
-    pprPrec _ (NVecLength n) = text "veclen" <+> parens (ppr n)
-    pprPrec _ (NMatStride n) = text "matstride" <+> parens (ppr n)
-    pprPrec _ (NMatRows n)   = text "matrows" <+> parens (ppr n)
-    pprPrec _ (NMatCols n)   = text "matcols" <+> parens (ppr n)
+    pprPrec _ (NDim i pi)   = text "dim" <+> parens (ppr i) <> ppr pi
+    pprPrec _ (NPitch i pi) = text "pitch" <+> parens (ppr i) <> ppr pi
 
     pprPrec _ (N i) = ppr i
 
@@ -389,11 +396,8 @@ instance Pretty Tau where
     pprPrec _ IntT   = text "Int"
     pprPrec _ FloatT = text "Float"
 
-    pprPrec _ (VectorT tau n) =
-        ppr tau <+> brackets (ppr n)
-
-    pprPrec _ (MatrixT tau s r c) =
-        ppr tau <+> brackets (commasep [ppr s, ppr r, ppr c])
+    pprPrec _ (ArrayT tau sh _) =
+        ppr tau <+> brackets (commasep (map ppr sh))
 
     pprPrec p (FunT tau1 tau2) =
         parensIf (p > appPrec) $

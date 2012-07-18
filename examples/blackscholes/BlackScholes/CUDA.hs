@@ -26,7 +26,7 @@ blackscholes :: CFun (   Exp (V.Vector Float)
                      )
 blackscholes = CFun { cfunName = "blackscholes"
                     , cfunDefs = defs
-                    , cfunAllocs = [VectorT FloatT nmin]
+                    , cfunAllocs = [vectorT FloatT nmin]
                     , cfunExecConfig = ExecConfig { gridDimX  = fromIntegral 480
                                                   , gridDimY  = 1
                                                   , blockDimX = fromIntegral 128
@@ -100,6 +100,6 @@ blackscholes = CFun { cfunName = "blackscholes"
       |]
 
     nmin :: N
-    nmin = NMin [NVecLength (ParamIdx 0),
-                 NVecLength (ParamIdx 1),
-                 NVecLength (ParamIdx 2)]
+    nmin = NMin [NDim 0 (ParamIdx 0),
+                 NDim 0 (ParamIdx 1),
+                 NDim 0 (ParamIdx 2)]

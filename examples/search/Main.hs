@@ -584,11 +584,10 @@ test innerloop = do
     let k :: CFun (Exp (Matrix Float) -> Exp (Matrix Float) -> Exp (Matrix Float))
         k = CFun { cfunName = "kmatmul"
                  , cfunDefs = defs
-                 , cfunAllocs = [matrixT FloatT (ParamIdx 0)
-                                                (ParamIdx 0)
-                                                (ParamIdx 1)]
-                 , cfunExecConfig = ExecConfig { gridDimX  = nGridDimX (NMatRows (ParamIdx 0)) sx
-                                               , gridDimY  = nGridDimX (NMatCols (ParamIdx 1)) sy
+                 , cfunAllocs = [ArrayT FloatT [NDim 0 (ParamIdx 0), NDim 1 (ParamIdx 1)]
+                                               [NDim 0 (ParamIdx 0)]]
+                 , cfunExecConfig = ExecConfig { gridDimX  = nGridDimX (NDim 0 (ParamIdx 0)) sx
+                                               , gridDimY  = nGridDimX (NDim 1 (ParamIdx 1)) sy
                                                , blockDimX = wx
                                                , blockDimY = wy
                                                , blockDimZ = 1

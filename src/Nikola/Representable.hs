@@ -205,19 +205,19 @@ instance (Elt a, Storable a, Storable (Rep a))
         mapM fromRep xs
 
     embeddedType _ n =
-        vectorT (embeddedType (undefined :: a) n) n
+        vectorArgT (embeddedType (undefined :: a) n) n
 
     withArg xs act = do
         Vector n devPtr <- liftIO $ toRep xs
-        pushArg (VectorArg n (CU.castDevPtr devPtr))
+        pushArg (ArrayArg [n] [] (CU.castDevPtr devPtr))
 
         result <- act
         liftIO $ CU.free devPtr
         return result
 
     returnResult = do
-        count :: Int          <- returnResult
-        VectorAlloc _ devPtr  <- popAlloc
+        count :: Int           <- returnResult
+        ArrayAlloc _ _ devPtr  <- popAlloc
         xs <- liftIO $ fromRep (Vector count (CU.castDevPtr devPtr))
         liftIO $ CU.free devPtr
         return xs
@@ -231,15 +231,15 @@ instance (Elt a, Storable a)
     toRep = return
 
     embeddedType _ n =
-        vectorT (embeddedType (undefined :: a) n) n
+        vectorArgT (embeddedType (undefined :: a) n) n
 
     withArg (Vector n devPtr) act = do
-        pushArg (VectorArg n (CU.castDevPtr devPtr))
+        pushArg (ArrayArg [n] [] (CU.castDevPtr devPtr))
         act
 
     returnResult = do
-        count :: Int         <- returnResult
-        VectorAlloc _ devPtr <- popAlloc
+        count :: Int          <- returnResult
+        ArrayAlloc _ _ devPtr <- popAlloc
         return $ Vector count (CU.castDevPtr devPtr)
 
 instance (Elt a, Storable a)
@@ -262,20 +262,20 @@ instance (Elt a, Storable a)
         return $ V.unsafeFromForeignPtr fptr 0 n
 
     embeddedType _ n =
-        vectorT (embeddedType (undefined :: a) n) n
+        vectorArgT (embeddedType (undefined :: a) n) n
 
     withArg v act = do
         Vector n devPtr <- liftIO $ toRep v
 
-        pushArg (VectorArg n (CU.castDevPtr devPtr))
+        pushArg (ArrayArg [n] [] (CU.castDevPtr devPtr))
 
         result <- act
         liftIO $ CU.free devPtr
         return result
 
     returnResult = do
-        count :: Int         <- returnResult
-        VectorAlloc _ devPtr <- popAlloc
+        count :: Int          <- returnResult
+        ArrayAlloc _ _ devPtr <- popAlloc
         xs <- liftIO $ fromRep (Vector count (CU.castDevPtr devPtr))
         liftIO $ CU.free devPtr
         return xs
@@ -301,14 +301,14 @@ instance (Element a, Elt a, Storable a)
     fromRep _ = fail "fromRep undefined for Matrix"
 
     embeddedType _ n =
-        matrixT (embeddedType (undefined :: a) n) n n n
+        matrixArgT (embeddedType (undefined :: a) n) n
 
     withArg m act = do
         devPtr <- liftIO $ CU.mallocArray n
         liftIO $ withMatrix (fmat m) $ \_ _ ptr ->
                  CU.pokeArray n ptr devPtr
 
-        pushArg (MatrixArg r r c (CU.castDevPtr devPtr))
+        pushArg (ArrayArg [r, c] [r] (CU.castDevPtr devPtr))
 
         result <- act
         liftIO $ CU.free devPtr
@@ -320,7 +320,7 @@ instance (Element a, Elt a, Storable a)
         n = r * c
 
     returnResult = do
-        MatrixAlloc _ r c devPtr <- popAlloc
+        ArrayAlloc [r, c] [_] devPtr <- popAlloc
         r      <-  evalN r
         c      <-  evalN c
         let n  =   r * c
