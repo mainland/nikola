@@ -150,22 +150,18 @@ cacheDExp x comp = do
 reifyR :: DExp -> R DExp
 reifyR e = do
     obSharing <- getObserveSharing
-    if obSharing then observeSharingReifyR else ignoreSharingReifyR
+    if obSharing
+        then cacheDExp e (go e >>= bind)
+        else go e
   where
-    observeSharingReifyR :: R DExp
-    observeSharingReifyR = cacheDExp e (go e >>= bind)
-      where
-        bind :: DExp -> R DExp
-        bind (VarE v)   = return $ VarE v
-        bind (BoolE n)  = return $ BoolE n
-        bind (IntE n)   = return $ IntE n
-        bind (FloatE n) = return $ FloatE n
-        bind e          = do  v <- newUniqueVar "v"
-                              insertBinding v e
-                              return (VarE v)
-
-    ignoreSharingReifyR :: R DExp
-    ignoreSharingReifyR = go e
+    bind :: DExp -> R DExp
+    bind (VarE v)   = return $ VarE v
+    bind (BoolE n)  = return $ BoolE n
+    bind (IntE n)   = return $ IntE n
+    bind (FloatE n) = return $ FloatE n
+    bind e          = do  v <- newUniqueVar "v"
+                          insertBinding v e
+                          return (VarE v)
 
     go :: DExp -> R DExp
     go (VarE v) =
