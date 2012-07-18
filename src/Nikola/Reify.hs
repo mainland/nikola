@@ -312,7 +312,7 @@ class (ReifiableFun a b) => VApply a b c d |  a -> c,
                                               c -> a,
                                               d -> b where
     vapply :: (a -> b) -> c -> d
-    vapply f = vapplyk (DelayedE (cacheDExp f (reifyfun f) >>= reifyR)) []
+    vapply f = vapplyk (DelayedE (cacheDExp f (reifyfun f))) []
 
     vapplyk :: DExp -> [DExp] -> c -> d
 
