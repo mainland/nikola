@@ -354,8 +354,11 @@ instance (Representable a, ReifiableFun b c) => ReifiableFun (Exp a)
         extendVars [(v, tau)] $ do
         shiftLamE v tau <$> reifyFun g
 
--- | @vapply@ is tricky... We first build a @DelayedE@ AST node containing an
--- action that reifies the lambda. Then we wrap the result in enough
+-- | @vapply@ is a bit tricky... We first build a @DelayedE@ AST node containing
+-- an action that reifies the lambda. Then we wrap the result in enough
+-- (Haskell) lambdas and (Nikola) @AppE@ constructors to turn in back into a
+-- Haskell function (at the original type) whose body is a Nikola application
+-- term.
 class (ReifiableFun a b) => VApply a b where
     vapply :: (a -> b) -> a -> b
     vapply f = vapplyk (DelayedE (cacheDExp f (reifyLam f))) []
