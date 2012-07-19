@@ -26,7 +26,6 @@
 -- SUCH DAMAGE.
 
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
@@ -357,19 +356,14 @@ instance (Representable a, ReifiableFun b c) => ReifiableFun (Exp a)
 
 -- | @vapply@ is tricky... We first build a @DelayedE@ AST node containing an
 -- action that reifies the lambda. Then we wrap the result in enough
-class (ReifiableFun a b) => VApply a b c d |  a -> c,
-                                              b -> d,
-                                              c -> a,
-                                              d -> b where
-    vapply :: (a -> b) -> c -> d
+class (ReifiableFun a b) => VApply a b where
+    vapply :: (a -> b) -> a -> b
     vapply f = vapplyk (DelayedE (cacheDExp f (reifyLam f))) []
 
-    vapplyk :: DExp -> [DExp] -> c -> d
+    vapplyk :: DExp -> [DExp] -> a -> b
 
-instance (Representable a, Representable b) => VApply (Exp a) (Exp b)
-                                                      (Exp a) (Exp b) where
+instance (Representable a, Representable b) => VApply (Exp a) (Exp b) where
     vapplyk f es = \e -> E $ AppE f (reverse (unE e : es))
 
-instance (Representable a, VApply b c d e) => VApply (Exp a) (b -> c)
-                                                     (Exp a) (d -> e) where
+instance (Representable a, VApply b c) => VApply (Exp a) (b -> c) where
     vapplyk f es = \e -> vapplyk f (unE e : es)
