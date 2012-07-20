@@ -345,7 +345,7 @@ class (Functor m, MonadIO m, MonadPlus m) => MonadConfig m where
                        withCompiledCFun k $ \f ->
                        replicateM 5 $
                        timeKernel f $ \f -> do
-                       call f a b
+                       compileIO f a b
             when (not (all (== c) (map (toLists . snd) samples))) $
                 fail "Incorrect kernel"
             let gflops = Vector.fromList (map (toGFlops . fst) samples)

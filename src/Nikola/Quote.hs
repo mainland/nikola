@@ -35,9 +35,11 @@
 --------------------------------------------------------------------------------
 
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Nikola.Quote (
     QuasiQuoter(..),
@@ -46,11 +48,18 @@ module Nikola.Quote (
     dataToPatQ
   ) where
 
-import Data.Generics
+#if MIN_VERSION_template_haskell(2,7,0)
+import Language.Haskell.TH.Quote (QuasiQuoter(..),
+                                  dataToQa,
+                                  dataToExpQ,
+                                  dataToPatQ)
+#else /* !MIN_VERSION_template_haskell(2,7,0) */
 import Language.Haskell.TH
 import Language.Haskell.TH.Quote (QuasiQuoter(..))
 import Language.Haskell.TH.Syntax
+#endif /* !MIN_VERSION_template_haskell(2,7,0) */
 
+#if !MIN_VERSION_template_haskell(2,7,0)
 dataToQa  ::  forall a k q. Data a
           =>  (Name -> k)
           ->  (Lit -> Q q)
@@ -119,3 +128,4 @@ dataToPatQ  ::  Data a
             ->  a
             ->  Q Pat
 dataToPatQ = dataToQa id litP conP
+#endif /* !MIN_VERSION_template_haskell(2,7,0) */

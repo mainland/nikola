@@ -25,25 +25,24 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE ImpredicativeTypes #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Nikola.Compile (
     withCompiledCFun,
-    withCompiledFunction',
     withCompiledFunction,
+    withCompiledFunctionEx,
 
-    call,
+    compileIO,
     compile,
     compileTH,
-    compileTH'
+    compileTHEx
   ) where
 
 import Prelude hiding (map, zipWith)
@@ -52,10 +51,12 @@ import Control.Applicative
 import Control.Exception
 import Control.Monad.Trans (MonadIO(..))
 import qualified Data.ByteString.Char8 as B
-import Data.Data
 import qualified Foreign.CUDA.Driver as CU
-import Language.Haskell.TH hiding (Exp, reify)
-import Language.Haskell.TH.Syntax hiding (Exp, reify)
+import Language.Haskell.TH (Q,
+                            ExpQ,
+                            runIO,
+                            stringE)
+import Language.Haskell.TH.Syntax (Lift(..))
 import System.IO.Unsafe (unsafePerformIO)
 
 import Nikola.Backend.CUDA.CodeGen
@@ -64,37 +65,37 @@ import qualified Nikola.Nvcc as Nvcc
 import Nikola.Quote
 import Nikola.Reify
 import Nikola.Representable
-import Nikola.Syntax (Exp)
+import Nikola.Syntax (Exp, Tau, ExecConfig)
 
 withModuleFromByteString :: B.ByteString -> (CU.Module -> IO a) -> IO a
 withModuleFromByteString bs =
     bracket (CU.loadData bs) CU.unload
 
-withRawCompiledCFun  :: CFun a
-                     -> (ExState -> IO b)
-                     -> IO b
-withRawCompiledCFun cfun act = do
+withCompiledCFunEx  :: CFun a
+                    -> (ExState -> IO b)
+                    -> IO b
+withCompiledCFunEx cfun kont = do
     bs <- Nvcc.compile (cfunDefs cfun)
     withModuleFromByteString bs $ \mod -> do
     cudaFun <- CU.getFun mod (cfunName cfun)
-    act emptyExState { exFun    = cudaFun
-                     , exLaunch = cfunLaunch cfun
-                     }
+    kont emptyExState { exFun    = cudaFun
+                      , exLaunch = cfunLaunch cfun
+                      }
 
 withCompiledCFun :: CFun a
                  -> (F a -> IO b)
                  -> IO b
 withCompiledCFun cfun act =
-    withRawCompiledCFun cfun (act . F)
+    withCompiledCFunEx cfun (act . F)
 
-withCompiledFunction' :: (ReifiableFun a b)
-                      => ROpts
-                      -> (a -> b)
-                      -> (F (a -> b) -> IO c)
-                      -> IO c
-withCompiledFunction' ropts f act = do
+withCompiledFunctionEx :: (ReifiableFun a b)
+                       => ROpts
+                       -> (a -> b)
+                       -> (F (a -> b) -> IO c)
+                       -> IO c
+withCompiledFunctionEx ropts f act = do
     cfun <- reifyEx ropts f >>= compileTopFun fname
-    withRawCompiledCFun cfun (act . F)
+    withCompiledCFunEx cfun (act . F)
   where
     fname = "f"
 
@@ -103,7 +104,7 @@ withCompiledFunction :: (ReifiableFun a b)
                      -> (F (a -> b) -> IO c)
                      -> IO c
 withCompiledFunction =
-    withCompiledFunction' defaultROpts
+    withCompiledFunctionEx defaultROpts
 
 cfunLaunch :: CFun a -> Ex b -> Ex b
 cfunLaunch cfun comp = do
@@ -111,34 +112,24 @@ cfunLaunch cfun comp = do
     (dimX, dimY, dimZ, gridW, gridH) <- configToLaunchParams (cfunExecConfig cfun)
     defaultLaunch dimX dimY dimZ gridW gridH comp
 
-class Callable a b | a -> b where
-    -- | Transform an 'a' into a callable function of type 'b'.
-    call :: a -> b
+-- | Compile an 'a' into a function of type 'IOFun a' that returns its result in
+-- the 'IO' monad.
+class CompileIO a where
+    type IOFun a :: *
 
-instance CompilableIO a b c => Callable (a -> b) c where
-    call = compileIO
+    compileIO :: a -> IOFun a
 
-instance CompilableIO a b c => Callable (CFun (a -> b)) c where
-    call cfun = compilekIO f id
-      where
-        f :: IO (F (a -> b))
-        f = F <$> snd <$> compileAndLoad cfun
+    compilekIO :: IO (F a) -> (forall a . Ex a -> Ex a) -> IOFun a
 
-instance CompilableIO a b c => Callable (F (a -> b)) c where
-    call f = compilekIO (return f) id
+instance (Representable a,
+          Representable b) => CompileIO (Exp a -> Exp b) where
+    type IOFun (Exp a -> Exp b) = a -> IO b
 
-class CompilableIO a b c | a b -> c where
-    compileIO  :: (a -> b) -> c
-
-    compilekIO :: IO (F (a -> b)) -> (forall a . Ex a -> Ex a) -> c
-
-instance (Representable a, Representable b) =>
-  CompilableIO (Exp a) (Exp b) (a -> IO b) where
     compileIO f = compilekIO sigma id
       where
         sigma :: IO (F (Exp a -> Exp b))
         sigma = do
-          F <$> snd <$> reifyCompileAndLoad defaultROpts f
+          F <$> reifyCompileAndLoad defaultROpts f
 
     compilekIO sigma args = \x -> do
         sigma' <- sigma
@@ -148,13 +139,15 @@ instance (Representable a, Representable b) =>
             launchKernel $
             returnResult
 
-instance (Representable a, Representable b) =>
-  CompilableIO (Exp a) (IO (Exp b)) (a -> IO b) where
+instance (Representable a,
+          Representable b) => CompileIO (Exp a -> IO (Exp b)) where
+    type IOFun (Exp a -> IO (Exp b)) = a -> IO b
+
     compileIO f = compilekIO sigma id
       where
         sigma :: IO (F (Exp a -> Exp b))
         sigma = do
-          F <$> snd <$> reifyCompileAndLoad defaultROpts f
+          F <$> reifyCompileAndLoad defaultROpts f
 
     compilekIO sigma args = \x -> do
         sigma' <- sigma
@@ -164,164 +157,186 @@ instance (Representable a, Representable b) =>
             launchKernel $
             returnResult
 
-instance (Representable a, ReifiableFun (Exp a) (b -> c), CompilableIO b c d) =>
-  CompilableIO (Exp a) (b -> c) (a -> d) where
+instance (Representable a,
+          ReifiableFun (Exp a) (b -> c),
+          CompileIO (b -> c)) => CompileIO (Exp a -> b -> c) where
+    type IOFun (Exp a -> b -> c) = a -> IOFun (b -> c)
+
     compileIO f = compilekIO sigma id
       where
         sigma :: IO (F (Exp a -> b -> c))
-        sigma = F <$> snd <$> reifyCompileAndLoad defaultROpts f
+        sigma = F <$> reifyCompileAndLoad defaultROpts f
 
     compilekIO sigma args = \x -> compilekIO sigma' (args . withArg x)
       where
         sigma' ::  IO (F (b -> c))
         sigma' = castF <$> sigma
 
-class Compilable a b | a -> b where
-    -- | Transform an 'a' into a callable function of type 'b'.
-    compile :: a -> b
+instance (CompileIO (a -> b)) => CompileIO (CFun (a -> b)) where
+    type IOFun (CFun (a -> b)) = IOFun (a -> b)
 
-instance CompilablePure a b c => Compilable (a -> b) c where
-    compile = compilePure
-
-instance CompilablePure a b c => Compilable (CFun (a -> b)) c where
-    compile cfun = compilekPure f id
+    compileIO cfun = compilekIO f id
       where
-        f :: F (a -> b)
-        f = F $ snd $ unsafePerformIO (compileAndLoad cfun)
+        f :: IO (F (a -> b))
+        f = F <$> compileAndLoad cfun
 
-instance CompilablePure a b c => Compilable (F (a -> b)) c where
-    compile f = compilekPure f id
+    compilekIO = compilekIO
 
-class CompilablePure a b c | a b -> c where
-    compilePure :: (a -> b) -> c
+instance (CompileIO (a -> b)) => CompileIO (F (a -> b)) where
+    type IOFun (F (a -> b)) = IOFun (a -> b)
 
-    compilekPure :: F (a -> b) -> (forall a . Ex a -> Ex a) -> c
+    compileIO f = compilekIO (return f) id
 
-instance (Representable a, Representable b) =>
-  CompilablePure (Exp a) (Exp b) (a -> b) where
-    compilePure f = compilekPure sigma id
+    compilekIO = compilekIO
+
+-- | Compile an 'a' into a pure function of type 'Fun a'.
+class Compile a where
+    type Fun a :: *
+
+    compile  :: a -> Fun a
+
+    compilek :: IO (F a)
+             -> (forall a . Ex a -> Ex a)
+             -> Fun a
+
+instance (Representable a, Representable b) => Compile (Exp a -> Exp b) where
+    type Fun (Exp a -> Exp b) = a -> b
+
+    compile f = compilek sigma id
       where
-        sigma :: F (Exp a -> Exp b)
-        sigma = F $ snd $ unsafePerformIO (reifyCompileAndLoad defaultROpts f)
+        sigma :: IO (F (Exp a -> Exp b))
+        sigma = F <$> reifyCompileAndLoad defaultROpts f
 
-    compilekPure sigma args = \x ->
-        unsafePerformIO $
-        flip evalEx (unF sigma) $
-        args $
-        withArg x $
-        launchKernel $
-        returnResult
+    compilek sigma args = unsafePerformIO . compilekIO sigma args
 
-instance (Representable a, Representable b) =>
-  CompilablePure (Exp a) (IO (Exp b)) (a -> IO b) where
-    compilePure f = compilekPure sigma id
+instance (Representable a, Representable b) => Compile (Exp a -> IO (Exp b)) where
+    type Fun (Exp a -> IO (Exp b)) = a -> IO b
+
+    compile f = compilek sigma id
       where
-        sigma :: F (Exp a -> IO (Exp b))
-        sigma = F $ snd $ unsafePerformIO (reifyCompileAndLoad defaultROpts f)
+        sigma :: IO (F (Exp a -> IO (Exp b)))
+        sigma = F <$> reifyCompileAndLoad defaultROpts f
 
-    compilekPure sigma args = \x ->
-        flip evalEx (unF sigma) $
-        args $
-        withArg x $
-        launchKernel $
-        returnResult
+    compilek sigma args = compilekIO sigma args
 
-instance (Representable a, ReifiableFun (Exp a) (b -> c), CompilablePure b c d) =>
-  CompilablePure (Exp a) (b -> c) (a -> d) where
-    compilePure f = compilekPure sigma id
+instance (Representable a,
+          ReifiableFun (Exp a) (b -> c),
+          Compile (b -> c)) => Compile (Exp a -> b -> c) where
+    type Fun (Exp a -> b -> c) = a -> Fun (b -> c)
+
+    compile f = compilek sigma id
       where
-        sigma :: F (Exp a -> b -> c)
-        sigma = F $ snd $ unsafePerformIO (reifyCompileAndLoad defaultROpts f)
+        sigma :: IO (F (Exp a -> b -> c))
+        sigma = F <$> reifyCompileAndLoad defaultROpts f
 
-    compilekPure sigma args = \x -> compilekPure sigma' (args . withArg x)
+    compilek sigma args = \x -> compilek sigma' (args . withArg x)
       where
-        sigma' ::  F (b -> c)
-        sigma' = castF sigma
+        sigma' :: IO (F (b -> c))
+        sigma' = castF <$> sigma
+
+instance (Compile (a -> b)) => Compile (CFun (a -> b)) where
+    type Fun (CFun (a -> b)) = Fun (a -> b)
+
+    compile cfun = compilek f id
+      where
+        f :: IO (F (a -> b))
+        f = F <$> compileAndLoad cfun
+
+    compilek = compilek
+
+instance (Compile (a -> b)) => Compile (F (a -> b)) where
+    type Fun (F (a -> b)) = Fun (a -> b)
+
+    compile f = compilek (return f) id
+
+    compilek = compilek
 
 reifyCompileAndLoad :: ReifiableFun a b
                     => ROpts
                     -> (a -> b)
-                    -> IO (CU.Module, ExState)
+                    -> IO ExState
 reifyCompileAndLoad ropts f =
     reifyEx ropts f >>= compileTopFun fname >>= compileAndLoad
   where
     fname = "f"
 
-compileAndLoad :: CFun a
-               -> IO (CU.Module, ExState)
+compileAndLoad :: CFun a -> IO ExState
 compileAndLoad cfun = do
     mod     <- Nvcc.compile (cfunDefs cfun) >>= CU.loadData
     cudaFun <- CU.getFun mod (cfunName cfun)
-    let sigma = emptyExState { exFun    = cudaFun
-                             , exLaunch = cfunLaunch cfun
-                             }
-    return (mod, sigma)
+    return emptyExState { exFun    = cudaFun
+                        , exLaunch = cfunLaunch cfun
+                        }
 
-newtype QExp a = QExp { unQExp :: ExpQ }
+-- | Compile an 'a' into a Template Haskell expression of type 'LiftFun a'.
+class CompileLift a where
+    type LiftFun a :: *
 
-class CompilablePureTH a b c | a b -> c where
-    compilePureTH :: ROpts -> (a -> b) -> QExp c
+    compileLift :: ROpts -> a -> QExp (LiftFun a)
 
-    compilekPureTH :: QExp (F (a -> b))
-                   -> QExp (forall a . Ex a -> Ex a)
-                   -> QExp c
+    compilekLift :: QExp (F a)
+                 -> QExp (forall a . Ex a -> Ex a)
+                 -> QExp (LiftFun a)
 
-instance (Representable a, Representable b) =>
-  CompilablePureTH (Exp a) (Exp b) (a -> b) where
-    compilePureTH ropts f = compilekPureTH sigma (QExp [|id|])
+instance (Representable a,
+          Representable b) => CompileLift (Exp a -> Exp b) where
+    type LiftFun (Exp a -> Exp b) = a -> b
+
+    compileLift ropts f = compilekLift sigma (QExp [|id|])
       where
         sigma :: QExp (F (Exp a -> Exp b))
-        sigma = QExp [|F $ snd $ unsafePerformIO $(reifyCompileAndLoadTH ropts f)|]
+        sigma = QExp [|F $ unsafePerformIO $(reifyCompileAndLoadTH ropts f)|]
 
-    compilekPureTH sigma args = QExp [|\x ->
+    compilekLift sigma args = QExp [|\x ->
         unsafePerformIO $
         flip evalEx (unF $(unQExp sigma)) $
-        $(unQExp args) $ do
-        withArg x $ do
-        launchKernel $ do
+        $(unQExp args) $
+        withArg x $
+        launchKernel $
         returnResult|]
 
-instance (Representable a, Representable b) =>
-  CompilablePureTH (Exp a) (IO (Exp b)) (a -> IO b) where
-    compilePureTH ropts f = compilekPureTH sigma (QExp [|id|])
+instance (Representable a, Representable b) => CompileLift (Exp a -> IO (Exp b)) where
+    type LiftFun (Exp a -> IO (Exp b)) = a -> IO b
+
+    compileLift ropts f = compilekLift sigma (QExp [|id|])
       where
         sigma :: QExp (F (Exp a -> IO (Exp b)))
-        sigma = QExp [|F $ snd $ unsafePerformIO $(reifyCompileAndLoadTH ropts f)|]
+        sigma = QExp [|F $ unsafePerformIO $(reifyCompileAndLoadTH ropts f)|]
 
-    compilekPureTH sigma args = QExp [|\x ->
+    compilekLift sigma args = QExp [|\x ->
         flip evalEx (unF $(unQExp sigma)) $
-        $(unQExp args) $ do
-        withArg x $ do
-        launchKernel $ do
+        $(unQExp args) $
+        withArg x $
+        launchKernel $
         returnResult|]
 
-instance (Representable a, ReifiableFun (Exp a) (b -> c), CompilablePureTH b c d) =>
-  CompilablePureTH (Exp a) (b -> c) (a -> d) where
-    compilePureTH ropts f = compilekPureTH sigma (QExp [|id|])
+instance (CompileLift (a -> b)) => CompileLift (CFun (a -> b)) where
+    type LiftFun (CFun (a -> b)) = LiftFun (a -> b)
+
+    compileLift ropts cfun = compilekLift f (QExp [|id|])
+      where
+        f :: QExp (F (a -> b))
+        f = QExp [|F $ unsafePerformIO $(compileAndLoadTH cfun)|]
+
+    compilekLift = compilekLift
+
+instance (Representable a,
+          ReifiableFun (Exp a) (b -> c),
+          CompileLift (b -> c)) => CompileLift (Exp a -> b -> c) where
+    type LiftFun (Exp a -> b -> c) = a -> LiftFun (b -> c)
+
+    compileLift ropts f = compilekLift sigma (QExp [|id|])
       where
         sigma :: QExp (F (Exp a -> b -> c))
-        sigma = QExp [|F $ snd $ unsafePerformIO $(reifyCompileAndLoadTH ropts f)|]
+        sigma = QExp [|F $ unsafePerformIO $(reifyCompileAndLoadTH ropts f)|]
 
-    compilekPureTH sigma args =
-        QExp [|\x -> $(unQExp (compilekPureTH sigma' (QExp [|$(unQExp args) . withArg x|])))|]
+    compilekLift sigma args =
+        QExp [|\x -> $(unQExp (compilekLift sigma' (QExp [|$(unQExp args) . withArg x|])))|]
       where
         sigma' ::  QExp (F (b -> c))
         sigma' = QExp [|castF $(unQExp sigma)|]
 
-compileTH :: CompilableTH a => a -> ExpQ
-compileTH = compileTH' defaultROpts
-
-class CompilableTH a where
-    compileTH' :: ROpts -> a -> ExpQ
-
-instance CompilablePureTH a b c => CompilableTH (a -> b) where
-    compileTH' ropts = unQExp . compilePureTH ropts
-
-instance CompilablePureTH a b c => CompilableTH (CFun (a -> b)) where
-    compileTH' _ cfun = unQExp $ compilekPureTH f (QExp [|id|])
-      where
-        f :: QExp (F (a -> b))
-        f = QExp [|F $ snd $ unsafePerformIO $(compileAndLoadTH cfun)|]
+newtype QExp a = QExp { unQExp :: ExpQ }
 
 reifyCompileAndLoadTH :: ReifiableFun a b
                       => ROpts
@@ -343,7 +358,7 @@ compileAndLoadTH cfun = do
          ; let sigma = emptyExState { exFun    = cudaFun
                                     , exLaunch = $(cfunLaunchTH cfun)
                                     }
-         ; return (mod, sigma)
+         ; return sigma
          }|]
   where
     cfunLaunchTH :: CFun a -> ExpQ
@@ -361,8 +376,17 @@ compileAndLoadTH cfun = do
         qExecConfig :: ExpQ
         qExecConfig = lift (cfunExecConfig cfun)
 
-instance Data a => Lift a where
+instance Lift Tau where
+    lift = dataToExpQ (const Nothing)
+
+instance Lift ExecConfig where
     lift = dataToExpQ (const Nothing)
 
 instance MonadIO Q where
     liftIO = runIO
+
+compileTHEx :: CompileLift a => ROpts -> a -> ExpQ
+compileTHEx ropts = unQExp . compileLift ropts
+
+compileTH :: CompileLift a => a -> ExpQ
+compileTH = compileTHEx defaultROpts

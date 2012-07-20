@@ -59,7 +59,7 @@ test0 = g 1 >>= print
     f :: Exp Float -> Exp Float
     f x = x
 
-    g = call f
+    g = compileIO f
 
 test1 :: IO ()
 test1 = do
@@ -67,7 +67,7 @@ test1 = do
     cfun <- reify add >>= compileTopFun "f"
     print $ stack (P.map ppr (cfunDefs cfun))
 
-    withCompiledFunction add $ \f -> call f 1 2 >>= print
+    withCompiledFunction add $ \f -> compileIO f 1 2 >>= print
 
     let f = compile add
     print $ f 1 2
@@ -83,7 +83,7 @@ test2 = do
     print $ stack (P.map ppr (cfunDefs cfun))
 
     withCompiledFunction f $ \f -> do
-        call f (V.fromList [1..10]) >>= print . V.toList
+        compileIO f (V.fromList [1..10]) >>= print . V.toList
   where
     f :: Exp (V.Vector Int) -> Exp (V.Vector Int)
     f v = map (\x -> x) v
@@ -95,7 +95,7 @@ test3 = do
     print $ stack (P.map ppr (cfunDefs cfun))
 
     withCompiledFunction f $ \f -> do
-        call f [1..32] >>= print
+        compileIO f [1..32] >>= print
   where
     f :: Exp [Int] -> Exp [Int]
     f v = map (\x -> x) v
@@ -107,7 +107,7 @@ test4 = do
     print $ stack (P.map ppr (cfunDefs cfun))
 
     withCompiledFunction f $ \f -> do
-        call f (V.fromList [1..32]) >>= print
+        compileIO f (V.fromList [1..32]) >>= print
   where
     f :: Exp (V.Vector Int) -> Exp [Float]
     f v = map (\_ -> 1) v
@@ -119,7 +119,7 @@ test5 = do
     print $ stack (P.map ppr (cfunDefs cfun))
 
     withCompiledFunction f $ \f -> do
-        call f [1..32] [1..32] >>= print
+        compileIO f [1..32] [1..32] >>= print
   where
     f :: Exp [Float] -> Exp [Float] -> Exp [Float]
     f x y = zipWithPlus temp temp
@@ -139,7 +139,7 @@ test6 = do
     print $ stack (P.map ppr (cfunDefs cfun))
 
     withCompiledFunction f $ \f -> do
-        call f 2 3 >>= print
+        compileIO f 2 3 >>= print
   where
     f :: Exp Float -> Exp Float -> Exp Float
     f x y = g x + g y

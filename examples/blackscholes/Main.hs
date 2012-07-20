@@ -53,11 +53,9 @@ import qualified Data.Vector.Storable as V
 import Statistics.Function
 import Statistics.Sample
 import System.Environment
--- import Text.PrettyPrint.Mainland
 import Text.Printf
 
 import Nikola
-import qualified Nikola.Syntax
 import Nikola.Util
 
 import qualified BlackScholes.CUDA as BSC
@@ -150,7 +148,7 @@ blackscholesNikola :: V.Vector Float
                    -> V.Vector Float
                    -> IO (V.Vector Float)
 blackscholesNikola ss xs ts =
-    call BSN.blackscholes ss xs ts rISKFREE vOLATILITY
+    compileIO BSN.blackscholes ss xs ts rISKFREE vOLATILITY
 
 blackscholesNikolaCompiledNoObservedSharingNoVapply :: V.Vector Float
                                                     -> V.Vector Float
@@ -165,7 +163,7 @@ blackscholesNikolaCompiledNoObservedSharingNoVapply ss xs ts =
                  -> Float
                  -> Float
                  -> V.Vector Float
-    blackscholes = $(compileTH' (ROpts False) BSN2.blackscholes)
+    blackscholes = $(compileTHEx (ROpts False) BSN2.blackscholes)
 
 blackscholesNikolaCompiledNoVapply :: V.Vector Float
                                    -> V.Vector Float
@@ -180,7 +178,7 @@ blackscholesNikolaCompiledNoVapply ss xs ts =
                  -> Float
                  -> Float
                  -> V.Vector Float
-    blackscholes = $(compileTH' (ROpts True) BSN2.blackscholes)
+    blackscholes = $(compileTHEx (ROpts True) BSN2.blackscholes)
 
 blackscholesNikolaCompiled :: V.Vector Float
                            -> V.Vector Float
