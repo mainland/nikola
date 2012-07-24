@@ -1071,9 +1071,10 @@ compileFun fname vtaus body = do
 -- | Compile a 'Fun' to a 'CFun'
 compileTopFun :: String -> DExp -> IO (CFun a)
 compileTopFun fname e_f = do
-    h <- openFile "temp.f" WriteMode
-    B.hPut h $ E.encodeUtf8 (prettyLazyText 200 (ppr e_f))
-    hClose h
+    when False $ do
+        h <- openFile "temp.f" WriteMode
+        B.hPut h $ E.encodeUtf8 (prettyLazyText 200 (ppr e_f))
+        hClose h
     case e_f of
       LamE vtaus body -> runCFun (compile vtaus body)
       _ -> faildoc $ text "Cannot compile non-function:" <+/> ppr e_f
