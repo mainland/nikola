@@ -25,11 +25,7 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuasiQuotes #-}
@@ -63,7 +59,7 @@ import System.Random.Mersenne.Pure64
 -- import Text.PrettyPrint.Mainland
 import Text.Printf
 
-import Data.Array.Nikola
+import Data.Array.Nikola.Backend.CUDA
 import Data.Array.Nikola.Util
 
 main :: IO ()
@@ -101,9 +97,9 @@ benchmarkIO f n = do
 scanNikola :: V.Vector Int32
            -> IO (V.Vector Int32)
 scanNikola flags = do
-    v <- toRep flags
+    v <- toCUDARep flags
     scan' v
-    fromRep v
+    fromCUDARep v
   where
     scan' :: Vector Int32 -> IO ()
     scan'  (Vector 0 _)  = return ()

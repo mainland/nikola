@@ -1,6 +1,6 @@
 name:           nikola
 version:        0.2.1
-cabal-version:  >= 1.8
+cabal-version:  >= 1.10
 license:        BSD3
 license-file:   LICENSE
 copyright:      (c) 2006-2012 Harvard University
@@ -32,11 +32,13 @@ flag hmatrix
 library
   exposed-modules:
     Data.Array.Nikola
+    Data.Array.Nikola.Backend.CUDA
     Data.Array.Nikola.Backend.CUDA.CodeGen
     Data.Array.Nikola.Backend.CUDA.Compile
     Data.Array.Nikola.Backend.CUDA.Exec
     Data.Array.Nikola.Backend.CUDA.Monad
     Data.Array.Nikola.Backend.CUDA.Nvcc
+    Data.Array.Nikola.Backend.CUDA.Target
     Data.Array.Nikola.Language.Check
     Data.Array.Nikola.Language.Smart
     Data.Array.Nikola.Language.Syntax
@@ -65,6 +67,8 @@ library
     symbol >=0.1 && <0.2,
     text >=0.11 && <0.12,
     vector >=0.9 && <0.10
+
+  default-language: Haskell98
 
   if impl(ghc >= 7.0) && impl(ghc < 7.2)
     build-depends:
@@ -96,8 +100,9 @@ executable blackscholes
     symbol >=0.1 && <0.2,
     vector >=0.9 && <0.10
 
-  main-is: 	   Main.hs
-  hs-source-dirs:  examples/blackscholes
+  main-is: 	    Main.hs
+  hs-source-dirs:   examples/blackscholes
+  default-language: Haskell98
 
   if flag(examples)
     buildable: True
@@ -115,8 +120,9 @@ executable blackscholes-compile
     statistics >=0.10 && <0.11,
     vector >=0.9 && <0.10
 
-  main-is: 	   Main.hs
-  hs-source-dirs:  examples/blackscholes-compile
+  main-is: 	    Main.hs
+  hs-source-dirs:   examples/blackscholes-compile
+  default-language: Haskell98
 
   if flag(examples)
     buildable: True
@@ -133,8 +139,9 @@ executable radix
     vector >=0.9 && <0.10,
     vector-algorithms >=0.5 && <0.6
 
-  main-is: 	   Main.hs
-  hs-source-dirs:  examples/radix
+  main-is: 	    Main.hs
+  hs-source-dirs:   examples/radix
+  default-language: Haskell98
 
   if flag(examples)
     buildable: True
@@ -157,8 +164,9 @@ executable search
     uniplate >=1.5 && <1.7,
     vector >=0.9 && <0.10
 
-  main-is: 	   Main.hs
-  hs-source-dirs:  examples/search
+  main-is: 	    Main.hs
+  hs-source-dirs:   examples/search
+  default-language: Haskell98
 
   ghc-options: -W -Werror
 

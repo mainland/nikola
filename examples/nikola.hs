@@ -25,13 +25,6 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE UndecidableInstances #-}
-
 module Main where
 
 import Prelude hiding (map, zipWith)
@@ -42,7 +35,9 @@ import Data.Int
 import qualified Data.Packed.Vector as V
 import Text.PrettyPrint.Mainland
 
-import Data.Array.Nikola
+import Data.Array.Nikola.Backend.CUDA
+import Data.Array.Nikola.Backend.CUDA.CodeGen
+import Data.Array.Nikola.Reify
 
 main :: IO ()
 main = withNewContext $ \_ -> do

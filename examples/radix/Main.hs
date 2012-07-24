@@ -60,7 +60,7 @@ import System.Environment
 -- import Text.PrettyPrint.Mainland
 import Text.Printf
 
-import Data.Array.Nikola
+import Data.Array.Nikola.Backend.CUDA
 import Data.Array.Nikola.Util
 
 main :: IO ()
@@ -98,9 +98,9 @@ benchmarkIO f n = do
 radixNikola :: V.Vector Int32
             -> IO (V.Vector Int32)
 radixNikola xs = do
-    v <- toRep xs
+    v <- toCUDARep xs
     radixM v
-    fromRep v
+    fromCUDARep v
 
 radixM :: Vector Int32
        -> IO ()
@@ -195,7 +195,7 @@ chooseM = compile (zipWith3M (\ x y z -> (x ./=. 0) ? (y, z)))
 
 dbg :: String -> Vector Int32 -> IO ()
 dbg msg xs = do
-    xs' :: [Int32] <- fromRep xs
+    xs' :: [Int32] <- fromCUDARep xs
     putStrLn $ msg ++ ": " ++ show xs'
 
 radixVector :: V.Vector Int32

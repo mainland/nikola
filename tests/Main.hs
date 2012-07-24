@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -16,7 +17,8 @@ import qualified Data.Symbol
 import qualified Language.C.Syntax
 #endif /* !MIN_VERSION_template_haskell(2,7,0) */
 
-import Data.Array.Nikola
+import Data.Array.Nikola.Backend.CUDA
+import Data.Array.Nikola.Backend.CUDA.CodeGen
 
 main :: IO ()
 main = withNewContext $ \_ -> do

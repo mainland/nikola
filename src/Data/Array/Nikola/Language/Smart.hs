@@ -27,6 +27,7 @@
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Data.Array.Nikola.Language.Smart (
     IsBool(..),
@@ -54,17 +55,11 @@ import Data.Array.Nikola.Reify
 import Data.Array.Nikola.Representable
 import Data.Array.Nikola.Language.Syntax
 
-instance Eq (Exp a) where
-    _ == _ = error "Cannot compare values of type Exp a"
-
-instance Ord (Exp a) where
-    _ `compare` _ = error "Cannot compare values of type Exp a"
-
-unop :: Unop -> Exp a -> Exp b
+unop :: Unop -> Exp t a -> Exp t b
 unop Fsqrt (E (FloatE x)) = E (FloatE (sqrt x))
 unop op e                 = (E . UnopE op . unE) e
 
-binop :: Binop -> Exp a -> Exp b -> Exp c
+binop :: Binop -> Exp t a -> Exp t b -> Exp t c
 binop Fadd (E (FloatE x)) (E (FloatE y)) = E (FloatE (x + y))
 binop Fsub (E (FloatE x)) (E (FloatE y)) = E (FloatE (x - y))
 binop Fmul (E (FloatE x)) (E (FloatE y)) = E (FloatE (x * y))
@@ -72,34 +67,34 @@ binop Fdiv (E (FloatE x)) (E (FloatE y)) = E (FloatE (x / y))
 binop op e1 e2                           = E $ BinopE op (unE e1) (unE e2)
 
 class IsBool a where
-    true :: a
+    true  :: a
     false :: a
 
-class IsEq a where
-    (.==.) :: a -> a -> Exp Bool
-    (./=.) :: a -> a -> Exp Bool
+class IsEq t a where
+    (.==.) :: a -> a -> Exp t Bool
+    (./=.) :: a -> a -> Exp t Bool
 
-class IsEq a => IsOrd a where
-    (.>.)  :: a -> a -> Exp Bool
-    (.>=.) :: a -> a -> Exp Bool
-    (.<.)  :: a -> a -> Exp Bool
-    (.<=.) :: a -> a -> Exp Bool
+class IsEq t a => IsOrd t a where
+    (.>.)  :: a -> a -> Exp t Bool
+    (.>=.) :: a -> a -> Exp t Bool
+    (.<.)  :: a -> a -> Exp t Bool
+    (.<=.) :: a -> a -> Exp t Bool
 
-instance IsBool (Exp Bool) where
+instance IsBool (Exp t Bool) where
     false = E (BoolE False)
     true  = E (BoolE True)
 
-instance IsEq (Exp a) where
+instance IsEq t (Exp t a) where
     e1 .==. e2 = binop Leq e1 e2
     e1 ./=. e2 = binop Lne e1 e2
 
-instance IsOrd (Exp a) where
+instance IsOrd t (Exp t a) where
     e1 .>. e2  = binop Lgt e1 e2
     e1 .>=. e2 = binop Lge e1 e2
     e1 .<. e2  = binop Llt e1 e2
     e1 .<=. e2 = binop Lle e1 e2
 
-instance Num (Exp Int32) where
+instance Num (Exp t Int32) where
     e1 + e2 = binop Iadd e1 e2
     e1 - e2 = binop Isub e1 e2
     e1 * e2 = binop Imul e1 e2
@@ -110,7 +105,7 @@ instance Num (Exp Int32) where
 
     fromInteger = E . Int32E . fromInteger
 
-instance Num (Exp Float) where
+instance Num (Exp t Float) where
     e1 + e2 = binop Fadd e1 e2
     e1 - e2 = binop Fsub e1 e2
     e1 * e2 = binop Fmul e1 e2
@@ -121,13 +116,13 @@ instance Num (Exp Float) where
 
     fromInteger = E . FloatE . fromInteger
 
-instance Fractional (Exp Float) where
+instance Fractional (Exp t Float) where
     e1 / e2 = binop Fdiv e1 e2
     recip e = E $ BinopE Fdiv (FloatE 1.0) (unE e)
 
     fromRational = E . FloatE . fromRational
 
-instance Floating (Exp Float) where
+instance Floating (Exp t Float) where
     pi            = E $ FloatE pi
     exp           = unop Fexp
     sqrt          = unop Fsqrt
@@ -147,87 +142,87 @@ instance Floating (Exp Float) where
     atanh         = unop Fatanh
     acosh         = unop Facosh
 
-(.&.) :: Exp Int32 -> Exp Int32 -> Exp Int32
+(.&.) :: Exp t Int32 -> Exp t Int32 -> Exp t Int32
 e1 .&. e2 = binop Band e1 e2
 
-(?) :: Exp Bool -> (Exp a, Exp a) -> Exp a
+(?) :: Exp t Bool -> (Exp t a, Exp t a) -> Exp t a
 test ? (thene, elsee) = E $
     IfteE (unE test) (unE thene) (unE elsee)
 
-map :: (Elt a, Elt b)
-    => (Exp a -> Exp b)
-    -> Exp (f a)
-    -> Exp (g b)
+map :: (Elt t a, Elt t b, IsVector t v1 a, IsVector t v2 a)
+    => (Exp t a -> Exp t b)
+    -> Exp t (v1 a)
+    -> Exp t (v2 b)
 map f v =
     E $ MapE (delayFun f) (unE v)
 
-mapM :: (Elt a, Elt b)
-     => (Exp a -> Exp b)
-     -> Exp (Vector a)
-     -> Exp (Vector b)
-     -> IO (Exp ())
+mapM :: (Elt t a, Elt t b, IsVector t v a)
+     => (Exp t a -> Exp t b)
+     -> Exp t (v a)
+     -> Exp t (v b)
+     -> IO (Exp t ())
 mapM f xs ys =
     return $ E $ MapME (delayFun f) (unE xs) (unE ys)
 
-permute :: Exp (f a) -> Exp (g Int32) -> Exp (h a)
+permute :: Exp t (f a) -> Exp t (g Int32) -> Exp t (h a)
 permute xs is =
     E $ PermuteE (unE xs) (unE is)
 
-permuteM :: Elt a
-         => Exp (Vector a)
-         -> Exp (Vector Int32)
-         -> Exp (Vector a)
-         -> IO (Exp ())
+permuteM :: (Elt t a, IsVector t v a)
+         => Exp t (v a)
+         -> Exp t (v Int32)
+         -> Exp t (v a)
+         -> IO (Exp t ())
 permuteM xs is ys =
     return $ E $ PermuteME (unE xs) (unE is) (unE ys)
 
-zipWith :: (Elt a, Elt b, Elt c)
-        => (Exp a -> Exp b -> Exp c)
-        -> Exp (f a)
-        -> Exp (g b)
-        -> Exp (h c)
+zipWith :: (Elt t a, Elt t b, Elt t c)
+        => (Exp t a -> Exp t b -> Exp t c)
+        -> Exp t (f a)
+        -> Exp t (g b)
+        -> Exp t (h c)
 zipWith f v1 v2 =
     E $ ZipWithE (delayFun f) (unE v1) (unE v2)
 
-zipWith3 :: (Elt a, Elt b, Elt c, Elt d)
-         => (Exp a -> Exp b -> Exp c -> Exp d)
-         -> Exp (f a)
-         -> Exp (g b)
-         -> Exp (h c)
-         -> Exp (i d)
+zipWith3 :: (Elt t a, Elt t b, Elt t c, Elt t d)
+         => (Exp t a -> Exp t b -> Exp t c -> Exp t d)
+         -> Exp t (f a)
+         -> Exp t (g b)
+         -> Exp t (h c)
+         -> Exp t (i d)
 zipWith3 f v1 v2 v3 =
     E $ ZipWith3E (delayFun f) (unE v1) (unE v2) (unE v3)
 
-zipWith3M :: (Elt a, Elt b, Elt c, Elt d)
-          => (Exp a -> Exp b -> Exp c -> Exp d)
-          -> Exp (Vector a)
-          -> Exp (Vector b)
-          -> Exp (Vector c)
-          -> Exp (Vector d)
-          -> IO (Exp ())
+zipWith3M :: (Elt t a, Elt t b, Elt t c, Elt t d, IsVector t v a)
+          => (Exp t a -> Exp t b -> Exp t c -> Exp t d)
+          -> Exp t (v a)
+          -> Exp t (v b)
+          -> Exp t (v c)
+          -> Exp t (v d)
+          -> IO (Exp t ())
 zipWith3M f xs ys zs results =
     return $ E $ ZipWith3ME (delayFun f) (unE xs) (unE ys) (unE zs) (unE results)
 
-blockedScanM :: (Elt a)
-             => (Exp a -> Exp a -> Exp a)
-             -> Exp a
-             -> Exp (Vector a)
-             -> IO (Exp (Vector a))
+blockedScanM :: (Elt t a, IsVector t v a)
+             => (Exp t a -> Exp t a -> Exp t a)
+             -> Exp t a
+             -> Exp t (v a)
+             -> IO (Exp t (v a))
 blockedScanM f z xs =
     return $ E $ BlockedScanME (delayFun f) (unE z) (unE xs)
 
-blockedNacsM :: (Elt a)
-             => (Exp a -> Exp a -> Exp a)
-             -> Exp a
-             -> Exp (Vector a)
-             -> IO (Exp (Vector a))
+blockedNacsM :: (Elt t a, IsVector t v a)
+             => (Exp t a -> Exp t a -> Exp t a)
+             -> Exp t a
+             -> Exp t (v a)
+             -> IO (Exp t (v a))
 blockedNacsM f z xs =
     return $ E $ BlockedNacsME (delayFun f) (unE z) (unE xs)
 
-blockedAddM :: (Elt a)
-            => Exp (Vector a)
-            -> Exp (Vector a)
-            -> IO (Exp ())
+blockedAddM :: (Elt t a, IsVector t v a)
+            => Exp t (v a)
+            -> Exp t (v a)
+            -> IO (Exp t ())
 blockedAddM xs sums =
     return $ E $ BlockedAddME (unE xs) (unE sums)
 

@@ -42,7 +42,7 @@ import qualified Data.Vector.Storable as V
 import System.Exit (exitFailure, exitSuccess)
 import Test.HUnit
 
-import Data.Array.Nikola
+import Data.Array.Nikola.Backend.CUDA
 
 main :: IO ()
 main = withNewContext $ \_ -> do

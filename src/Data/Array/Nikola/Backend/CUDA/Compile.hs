@@ -62,6 +62,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import Data.Array.Nikola.Backend.CUDA.CodeGen
 import Data.Array.Nikola.Backend.CUDA.Exec
 import qualified Data.Array.Nikola.Backend.CUDA.Nvcc as Nvcc
+import Data.Array.Nikola.Backend.CUDA.Target
 import Data.Array.Nikola.Quote
 import Data.Array.Nikola.Reify
 import Data.Array.Nikola.Representable
@@ -121,13 +122,14 @@ class CompileIO a where
 
     compilekIO :: IO (F a) -> (forall a . Ex a -> Ex a) -> IOFun a
 
-instance (Representable a,
-          Representable b) => CompileIO (Exp a -> Exp b) where
-    type IOFun (Exp a -> Exp b) = a -> IO b
+instance (t ~ CUDA,
+          Representable t a,
+          Representable t b) => CompileIO (Exp t a -> Exp t b) where
+    type IOFun (Exp t a -> Exp t b) = a -> IO b
 
     compileIO f = compilekIO sigma id
       where
-        sigma :: IO (F (Exp a -> Exp b))
+        sigma :: IO (F (Exp t a -> Exp t b))
         sigma = do
           F <$> reifyCompileAndLoad defaultROpts f
 
@@ -135,17 +137,18 @@ instance (Representable a,
         sigma' <- sigma
         flip evalEx (unF sigma') $
             args $
-            withArg x $
+            withArg (undefined :: t) x $
             launchKernel $
-            returnResult
+            returnResult (undefined :: t)
 
-instance (Representable a,
-          Representable b) => CompileIO (Exp a -> IO (Exp b)) where
-    type IOFun (Exp a -> IO (Exp b)) = a -> IO b
+instance (t ~ CUDA,
+          Representable t a,
+          Representable t b) => CompileIO (Exp t a -> IO (Exp t b)) where
+    type IOFun (Exp t a -> IO (Exp t b)) = a -> IO b
 
     compileIO f = compilekIO sigma id
       where
-        sigma :: IO (F (Exp a -> Exp b))
+        sigma :: IO (F (Exp t a -> Exp t b))
         sigma = do
           F <$> reifyCompileAndLoad defaultROpts f
 
@@ -153,21 +156,23 @@ instance (Representable a,
         sigma' <- sigma
         flip evalEx (unF sigma') $
             args $
-            withArg x $
+            withArg (undefined :: t) x $
             launchKernel $
-            returnResult
+            returnResult (undefined :: t)
 
-instance (Representable a,
-          ReifiableFun (Exp a) (b -> c),
-          CompileIO (b -> c)) => CompileIO (Exp a -> b -> c) where
-    type IOFun (Exp a -> b -> c) = a -> IOFun (b -> c)
+instance (t ~ CUDA,
+          Representable t a,
+          ReifiableFun (Exp t a) (b -> c),
+          CompileIO (b -> c)) => CompileIO (Exp t a -> b -> c) where
+    type IOFun (Exp t a -> b -> c) = a -> IOFun (b -> c)
 
     compileIO f = compilekIO sigma id
       where
-        sigma :: IO (F (Exp a -> b -> c))
+        sigma :: IO (F (Exp t a -> b -> c))
         sigma = F <$> reifyCompileAndLoad defaultROpts f
 
-    compilekIO sigma args = \x -> compilekIO sigma' (args . withArg x)
+    compilekIO sigma args =
+        \x -> compilekIO sigma' (args . withArg (undefined :: t) x)
       where
         sigma' ::  IO (F (b -> c))
         sigma' = castF <$> sigma
@@ -205,47 +210,53 @@ class Compile a where
              -> (forall a . Ex a -> Ex a)
              -> Fun a
 
-instance (Representable a, Representable b) => Compile (Exp a -> Exp b) where
-    type Fun (Exp a -> Exp b) = a -> b
+instance (t ~ CUDA,
+          Representable t a,
+          Representable t b) => Compile (Exp t a -> Exp t b) where
+    type Fun (Exp t a -> Exp t b) = a -> b
 
     compile f = compilek sigma id
       where
-        sigma :: F (Exp a -> Exp b)
+        sigma :: F (Exp t a -> Exp t b)
         sigma = F $ unsafePerformIO $ reifyCompileAndLoad defaultROpts f
 
     compilek sigma args = \x -> unsafePerformIO $
         flip evalEx (unF sigma) $
             args $
-            withArg x $
+            withArg (undefined :: t) x $
             launchKernel $
-            returnResult
+            returnResult (undefined :: t)
 
-instance (Representable a, Representable b) => Compile (Exp a -> IO (Exp b)) where
-    type Fun (Exp a -> IO (Exp b)) = a -> IO b
+instance (t ~ CUDA,
+          Representable t a,
+          Representable t b) => Compile (Exp t a -> IO (Exp t b)) where
+    type Fun (Exp t a -> IO (Exp t b)) = a -> IO b
 
     compile f = compilek sigma id
       where
-        sigma :: F (Exp a -> IO (Exp b))
+        sigma :: F (Exp t a -> IO (Exp t b))
         sigma = F $ unsafePerformIO $ reifyCompileAndLoad defaultROpts f
 
     compilek sigma args = \x ->
         flip evalEx (unF sigma) $
             args $
-            withArg x $
+            withArg (undefined :: t) x $
             launchKernel $
-            returnResult
+            returnResult (undefined :: t)
 
-instance (Representable a,
-          ReifiableFun (Exp a) (b -> c),
-          Compile (b -> c)) => Compile (Exp a -> b -> c) where
-    type Fun (Exp a -> b -> c) = a -> Fun (b -> c)
+instance (t ~ CUDA,
+          Representable t a,
+          ReifiableFun (Exp t a) (b -> c),
+          Compile (b -> c)) => Compile (Exp t a -> b -> c) where
+    type Fun (Exp t a -> b -> c) = a -> Fun (b -> c)
 
     compile f = compilek sigma id
       where
-        sigma :: F (Exp a -> b -> c)
+        sigma :: F (Exp t a -> b -> c)
         sigma = F $ unsafePerformIO $ reifyCompileAndLoad defaultROpts f
 
-    compilek sigma args = \x -> compilek sigma' (args . withArg x)
+    compilek sigma args =
+        \x -> compilek sigma' (args . withArg (undefined :: t) x)
       where
         sigma' :: F (b -> c)
         sigma' = castF sigma
@@ -294,37 +305,40 @@ class CompileLift a where
                  -> QExp (forall a . Ex a -> Ex a)
                  -> QExp (LiftFun a)
 
-instance (Representable a,
-          Representable b) => CompileLift (Exp a -> Exp b) where
-    type LiftFun (Exp a -> Exp b) = a -> b
+instance (t ~ CUDA,
+          Representable t a,
+          Representable t b) => CompileLift (Exp t a -> Exp t b) where
+    type LiftFun (Exp t a -> Exp t b) = a -> b
 
     compileLift ropts f = compilekLift sigma (QExp [|id|])
       where
-        sigma :: QExp (F (Exp a -> Exp b))
+        sigma :: QExp (F (Exp t a -> Exp t b))
         sigma = QExp [|F $ unsafePerformIO $(reifyCompileAndLoadTH ropts f)|]
 
     compilekLift sigma args = QExp [|\x ->
         unsafePerformIO $
         flip evalEx (unF $(unQExp sigma)) $
         $(unQExp args) $
-        withArg x $
+        withArg (undefined :: CUDA) x $
         launchKernel $
-        returnResult|]
+        returnResult (undefined :: CUDA)|]
 
-instance (Representable a, Representable b) => CompileLift (Exp a -> IO (Exp b)) where
-    type LiftFun (Exp a -> IO (Exp b)) = a -> IO b
+instance (t ~ CUDA,
+          Representable t a,
+          Representable t b) => CompileLift (Exp t a -> IO (Exp t b)) where
+    type LiftFun (Exp t a -> IO (Exp t b)) = a -> IO b
 
     compileLift ropts f = compilekLift sigma (QExp [|id|])
       where
-        sigma :: QExp (F (Exp a -> IO (Exp b)))
+        sigma :: QExp (F (Exp t a -> IO (Exp t b)))
         sigma = QExp [|F $ unsafePerformIO $(reifyCompileAndLoadTH ropts f)|]
 
     compilekLift sigma args = QExp [|\x ->
         flip evalEx (unF $(unQExp sigma)) $
         $(unQExp args) $
-        withArg x $
+        withArg (undefined :: CUDA) x $
         launchKernel $
-        returnResult|]
+        returnResult (undefined :: CUDA)|]
 
 instance (CompileLift (a -> b)) => CompileLift (CFun (a -> b)) where
     type LiftFun (CFun (a -> b)) = LiftFun (a -> b)
@@ -336,18 +350,18 @@ instance (CompileLift (a -> b)) => CompileLift (CFun (a -> b)) where
 
     compilekLift = compilekLift
 
-instance (Representable a,
-          ReifiableFun (Exp a) (b -> c),
-          CompileLift (b -> c)) => CompileLift (Exp a -> b -> c) where
-    type LiftFun (Exp a -> b -> c) = a -> LiftFun (b -> c)
+instance (Representable t a,
+          ReifiableFun (Exp t a) (b -> c),
+          CompileLift (b -> c)) => CompileLift (Exp t a -> b -> c) where
+    type LiftFun (Exp t a -> b -> c) = a -> LiftFun (b -> c)
 
     compileLift ropts f = compilekLift sigma (QExp [|id|])
       where
-        sigma :: QExp (F (Exp a -> b -> c))
+        sigma :: QExp (F (Exp t a -> b -> c))
         sigma = QExp [|F $ unsafePerformIO $(reifyCompileAndLoadTH ropts f)|]
 
     compilekLift sigma args =
-        QExp [|\x -> $(unQExp (compilekLift sigma' (QExp [|$(unQExp args) . withArg x|])))|]
+        QExp [|\x -> $(unQExp (compilekLift sigma' (QExp [|$(unQExp args) . withArg (undefined :: CUDA) x|])))|]
       where
         sigma' ::  QExp (F (b -> c))
         sigma' = QExp [|castF $(unQExp sigma)|]

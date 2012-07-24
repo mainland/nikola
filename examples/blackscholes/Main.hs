@@ -55,7 +55,8 @@ import Statistics.Sample
 import System.Environment
 import Text.Printf
 
-import Data.Array.Nikola
+import Data.Array.Nikola.Backend.CUDA
+import Data.Array.Nikola.Reify
 import Data.Array.Nikola.Util
 
 import qualified BlackScholes.CUDA as BSC

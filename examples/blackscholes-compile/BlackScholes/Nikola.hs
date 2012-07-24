@@ -4,7 +4,7 @@ module BlackScholes.Nikola (
 
 import Prelude hiding (zipWith3)
 
-import Data.Array.Nikola
+import Data.Array.Nikola.Backend.CUDA
 
 blackscholes :: Exp (Vector Float)
              -> Exp (Vector Float)

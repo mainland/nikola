@@ -25,41 +25,14 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Data.Array.Nikola (
-    module Data.Array.Nikola.Backend.CUDA.CodeGen,
-    module Data.Array.Nikola.Backend.CUDA.Compile,
-    module Data.Array.Nikola.Backend.CUDA.Exec,
     module Data.Array.Nikola.Language.Smart,
     module Data.Array.Nikola.Language.Syntax,
     module Data.Array.Nikola.Reify,
-    module Data.Array.Nikola.Representable,
-
-    withNewContext
+    module Data.Array.Nikola.Representable
  ) where
 
-import Prelude hiding (catch)
-
-import Control.Exception
-import qualified Foreign.CUDA.Driver as CU
-
-import Data.Array.Nikola.Backend.CUDA.CodeGen
-import Data.Array.Nikola.Backend.CUDA.Compile
-import Data.Array.Nikola.Backend.CUDA.Exec
 import Data.Array.Nikola.Language.Smart
 import Data.Array.Nikola.Language.Syntax
 import Data.Array.Nikola.Reify
 import Data.Array.Nikola.Representable
-
-withNewContext :: (CU.Context -> IO a) -> IO a
-withNewContext kont = do
-    CU.initialise []
-    ndevs <- CU.count
-    bracket (ctxCreate 0 ndevs) CU.destroy kont
-  where
-    ctxCreate :: Int -> Int -> IO CU.Context
-    ctxCreate i n | i >= n = CU.cudaError "Can't create a context"
-    ctxCreate i n =
-        (CU.device i >>= \dev -> CU.create dev [])
-      `catch` \(_ :: CU.CUDAException) -> ctxCreate (i+1) n

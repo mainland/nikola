@@ -70,7 +70,9 @@ import qualified Data.Symbol
 import qualified Language.C.Syntax
 #endif /* !MIN_VERSION_template_haskell(2,7,0) */
 
-import Data.Array.Nikola hiding (map)
+import Data.Array.Nikola.Backend.CUDA hiding (map)
+import Data.Array.Nikola.Backend.CUDA.CodeGen (CFun(..))
+import Data.Array.Nikola.Backend.CUDA.Exec (timeKernel)
 
 data GridVar = GridVar { gridDimIdx :: Int
                        , gridStrips :: Int

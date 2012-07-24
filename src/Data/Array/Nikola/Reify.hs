@@ -246,7 +246,7 @@ class Reifiable a where
 instance Reifiable DExp where
     reifyEx ropts e = runR ropts (reifyE e return)
 
-instance Reifiable (Exp a) where
+instance Reifiable (Exp t a) where
     reifyEx ropts = reifyEx ropts . unE
 
 -- Functions that are instances of @ReifiableFun@ are reified by calling
@@ -324,32 +324,32 @@ class (Typeable a, Typeable b) => ReifiableFun a b where
 -- The next two instances represent the base cases for function
 -- reification. They reify a function by gensym'ing a fresh variable name,
 -- passing it to the function, and then reifying the result by calling @reifyE@.
-instance (Representable a, Representable b) => ReifiableFun (Exp a)
-                                                            (Exp b) where
+instance (Representable t a,
+          Representable t b) => ReifiableFun (Exp t a) (Exp t b) where
     reifyFun f = do
         v          <- gensym "x"
         let fOfX   =  (unE . f . E) (VarE v)
-        let tau    =  embeddedType (undefined :: a) (ParamIdx 0)
+        let tau    =  embeddedType (undefined :: t) (undefined :: a) (ParamIdx 0)
         extendVars [(v, tau)] $ do
         return $ shiftLamE v tau fOfX
 
-instance (Representable a, Representable b) => ReifiableFun (Exp a)
-                                                            (IO (Exp b)) where
+instance (Representable t a,
+          Representable t b) => ReifiableFun (Exp t a) (IO (Exp t b)) where
     reifyFun f = do
         v          <- gensym "x"
         fOfX       <- liftIO $ unE <$> (f . E) (VarE v)
-        let tau    =  embeddedType (undefined :: a) (ParamIdx 0)
+        let tau    =  embeddedType (undefined :: t) (undefined :: a) (ParamIdx 0)
         extendVars [(v, tau)] $ do
         return $ shiftLamE v tau fOfX
 
 -- This is the inductive case. As with the base cases, we gensym a fresh
 -- variable and pass it to @f@ to yield @g@. We reify @g@---itself a
 -- function---by calling @reifyFun@.
-instance (Representable a, ReifiableFun b c) => ReifiableFun (Exp a)
-                                                             (b -> c) where
+instance (Representable t a,
+          ReifiableFun b c) => ReifiableFun (Exp t a) (b -> c) where
     reifyFun f = do
         v       <- gensym "x"
-        let tau =  embeddedType (undefined :: a) (ParamIdx 0)
+        let tau =  embeddedType (undefined :: t) (undefined :: a) (ParamIdx 0)
         let g   =  f (E (VarE v))
         extendVars [(v, tau)] $ do
         shiftLamE v tau <$> reifyFun g
@@ -365,8 +365,10 @@ class (ReifiableFun a b) => VApply a b where
 
     vapplyk :: DExp -> [DExp] -> a -> b
 
-instance (Representable a, Representable b) => VApply (Exp a) (Exp b) where
+instance (Representable t a,
+          Representable t b) => VApply (Exp t a) (Exp t b) where
     vapplyk f es = \e -> E $ AppE f (reverse (unE e : es))
 
-instance (Representable a, VApply b c) => VApply (Exp a) (b -> c) where
+instance (Representable t a,
+          VApply b c) => VApply (Exp t a) (b -> c) where
     vapplyk f es = \e -> vapplyk f (unE e : es)

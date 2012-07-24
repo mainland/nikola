@@ -1,4 +1,4 @@
--- Copyright (c) 2010
+-- Copyright (c) 2009-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -12,7 +12,7 @@
 -- 3. Neither the name of the University nor the names of its contributors
 --    may be used to endorse or promote products derived from this software
 --    without specific prior written permission.
-
+--
 -- THIS SOFTWARE IS PROVIDED BY THE UNIVERSITY AND CONTRIBUTORS ``AS IS'' AND
 -- ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 -- IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -25,31 +25,44 @@
 -- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 -- SUCH DAMAGE.
 
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE ImpredicativeTypes #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE UndecidableInstances #-}
 
-module Main where
+module Data.Array.Nikola.Backend.CUDA (
+    module Data.Array.Nikola.Backend.CUDA.Compile,
+    module Data.Array.Nikola.Backend.CUDA.Target,
+    module Data.Array.Nikola.Language.Smart,
+    module Data.Array.Nikola.Language.Syntax,
+    module Data.Array.Nikola.Representable,
 
-import Control.Monad.Trans (liftIO)
-import Text.PrettyPrint.Mainland
+    Exp,
+    vapply,
+    withNewContext
+  ) where
 
-import Data.Array.Nikola hiding (map)
-import Data.Array.Nikola.Backend.CUDA.CodeGen
+import Prelude hiding (catch)
 
-import qualified BlackScholes.Nikola as BSN
+import Control.Exception
+import qualified Foreign.CUDA.Driver as CU
 
-main :: IO ()
-main = do
-    cfun <- liftIO $ reify BSN.blackscholes >>= compileTopFun "blackscholes"
-    print $ stack (map ppr (cfunDefs cfun))
-    print (cfunExecConfig cfun)
+import Data.Array.Nikola.Backend.CUDA.Compile
+import Data.Array.Nikola.Backend.CUDA.Target
+import Data.Array.Nikola.Language.Smart
+import Data.Array.Nikola.Language.Syntax hiding (Exp)
+import qualified Data.Array.Nikola.Language.Syntax as S
+import Data.Array.Nikola.Reify (vapply)
+import Data.Array.Nikola.Representable
+
+type Exp a = S.Exp CUDA a
+
+withNewContext :: (CU.Context -> IO a) -> IO a
+withNewContext kont = do
+    CU.initialise []
+    ndevs <- CU.count
+    bracket (ctxCreate 0 ndevs) CU.destroy kont
+  where
+    ctxCreate :: Int -> Int -> IO CU.Context
+    ctxCreate i n | i >= n = CU.cudaError "Can't create a context"
+    ctxCreate i n =
+        (CU.device i >>= \dev -> CU.create dev [])
+      `catch` \(_ :: CU.CUDAException) -> ctxCreate (i+1) n

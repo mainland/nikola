@@ -28,8 +28,11 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Data.Array.Nikola.Language.Syntax (
+    Exp(..),
+
     ParamIdx(..),
     N(..),
     nmin,
@@ -50,8 +53,6 @@ module Data.Array.Nikola.Language.Syntax (
     Binop(..),
     DExp(..),
 
-    Exp(..),
-
     isScalarT,
     vectorArgT,
     matrixArgT,
@@ -67,6 +68,16 @@ import Text.PrettyPrint.Mainland
 
 import Data.Array.Nikola.Pretty
 import {-# SOURCE #-} Data.Array.Nikola.Reify.Monad
+
+-- | A wrapping of the core 'DExp' type that provides a phantom type parameter.
+newtype Exp t a = E { unE :: DExp }
+  deriving (Show, Typeable)
+
+instance Eq (Exp t a) where
+    _ == _ = error "Cannot compare values of type Exp a"
+
+instance Ord (Exp t a) where
+    _ `compare` _ = error "Cannot compare values of type Exp a"
 
 -- |Function parameter index.
 newtype ParamIdx = ParamIdx { unParamIdx :: Int }
@@ -276,10 +287,6 @@ data DExp = VarE Var
           | BlockedNacsME DExp DExp DExp
           | BlockedAddME DExp DExp
   deriving (Typeable)
-
--- | A wrapping of the core 'DExp' type that provides a phantom type parameter.
-newtype Exp a = E { unE :: DExp }
-  deriving (Show, Typeable)
 
 freeVars :: DExp -> Set.Set Var
 freeVars (VarE v)                   = Set.singleton v
