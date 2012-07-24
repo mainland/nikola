@@ -50,6 +50,7 @@ import Criterion.Environment
 import Criterion.Main
 import Criterion.Monad
 import Data.Bits (shiftL)
+import Data.Int
 import qualified Data.Vector.Algorithms.Radix as R
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as M
@@ -87,21 +88,21 @@ main = withNewContext $ \_ -> do
         mu         = mean samp
         (min, max) = minMax samp
 
-benchmarkIO :: (V.Vector Int -> IO a)
+benchmarkIO :: (V.Vector Int32 -> IO a)
             -> Int
             -> IO a
 benchmarkIO f n = do
     v <- randoms n
     f v
 
-radixNikola :: V.Vector Int
-            -> IO (V.Vector Int)
+radixNikola :: V.Vector Int32
+            -> IO (V.Vector Int32)
 radixNikola xs = do
     v <- toRep xs
     radixM v
     fromRep v
 
-radixM :: Vector Int
+radixM :: Vector Int32
        -> IO ()
 radixM xs@(Vector n _) =
     unsafeWithNewVector n $ \bits -> do
@@ -109,13 +110,13 @@ radixM xs@(Vector n _) =
         bitM (1 `shiftL` bit) xs bits
         splitM xs bits
 
-splitM :: Vector Int
-       -> Vector Int
+splitM :: Vector Int32
+       -> Vector Int32
        -> IO ()
 splitM a@(Vector n _) flags@(Vector _ _) =
-    unsafeWithNewVector n $ \(nflags :: Vector Int) ->
-    unsafeWithNewVector n $ \(up :: Vector Int) ->
-    unsafeWithNewVector n $ \(index :: Vector Int) -> do
+    unsafeWithNewVector n $ \(nflags :: Vector Int32) ->
+    unsafeWithNewVector n $ \(up :: Vector Int32) ->
+    unsafeWithNewVector n $ \(index :: Vector Int32) -> do
     let down = nflags
     copyM flags up
     notM flags nflags
@@ -125,79 +126,79 @@ splitM a@(Vector n _) flags@(Vector _ _) =
     -- dbg "down" down
     plusNacsM up
     -- dbg "up" up
-    flipM n up up
+    flipM (fromIntegral n) up up
     -- dbg "up" up
     chooseM flags up down index
     -- dbg "index" index
     permuteIntM a index a
 
-bitM :: Int
-     -> Vector Int
-     -> Vector Int
+bitM :: Int32
+     -> Vector Int32
+     -> Vector Int32
      -> IO ()
-bitM = compile (\b -> mapM (\x -> ((x .&. b) ./=. 0) ? (1, 0)))
+bitM = compile (\b  -> mapM (\x -> ((x .&. b) ./=. 0) ? (1, 0)))
 
-permuteIntM :: Vector Int
-            -> Vector Int
-            -> Vector Int
+permuteIntM :: Vector Int32
+            -> Vector Int32
+            -> Vector Int32
             -> IO ()
 permuteIntM = compile permuteM
 
-plusScanM :: Vector Int
+plusScanM :: Vector Int32
           -> IO ()
 plusScanM xs = do
     scan' xs
   where
-    scan' :: Vector Int -> IO ()
+    scan' :: Vector Int32 -> IO ()
     scan'  (Vector 0 _)  = return ()
     scan'  xs            = do  sums <- plusBlockedScanM xs
                                scan' sums
                                blockedSumM xs sums
                                unsafeFreeVector sums
 
-plusNacsM :: Vector Int
+plusNacsM :: Vector Int32
           -> IO ()
 plusNacsM xs = do
     nacs' xs
   where
-    nacs' :: Vector Int -> IO ()
+    nacs' :: Vector Int32 -> IO ()
     nacs'  (Vector 0 _)  = return ()
     nacs'  xs            = do  sums <- plusBlockedNacsM xs
                                nacs' sums
                                blockedSumM xs sums
                                unsafeFreeVector sums
 
-plusBlockedScanM :: Vector Int -> IO (Vector Int)
+plusBlockedScanM :: Vector Int32 -> IO (Vector Int32)
 plusBlockedScanM = compile (blockedScanM (+) 0)
 
-plusBlockedNacsM :: Vector Int -> IO (Vector Int)
+plusBlockedNacsM :: Vector Int32 -> IO (Vector Int32)
 plusBlockedNacsM = compile (blockedNacsM (+) 0)
 
-blockedSumM :: Vector Int -> Vector Int -> IO ()
+blockedSumM :: Vector Int32 -> Vector Int32 -> IO ()
 blockedSumM = compile blockedAddM
 
-copyM :: Vector Int -> Vector Int -> IO ()
+copyM :: Vector Int32 -> Vector Int32 -> IO ()
 copyM = compile (mapM id)
 
-notM :: Vector Int -> Vector Int -> IO ()
+notM :: Vector Int32 -> Vector Int32 -> IO ()
 notM = compile (mapM (\x -> (x .==. 0) ? (1, 0)))
 
-flipM :: Int -> Vector Int -> Vector Int -> IO ()
+flipM :: Int32 -> Vector Int32 -> Vector Int32 -> IO ()
 flipM = compile (\n -> mapM (\x -> n - 1 - x))
 
-chooseM :: Vector Int
-        -> Vector Int
-        -> Vector Int
-        -> Vector Int
+chooseM :: Vector Int32
+        -> Vector Int32
+        -> Vector Int32
+        -> Vector Int32
         -> IO ()
 chooseM = compile (zipWith3M (\ x y z -> (x ./=. 0) ? (y, z)))
 
-dbg :: String -> Vector Int -> IO ()
+dbg :: String -> Vector Int32 -> IO ()
 dbg msg xs = do
-    xs' :: [Int] <- fromRep xs
+    xs' :: [Int32] <- fromRep xs
     putStrLn $ msg ++ ": " ++ show xs'
 
-radixVector :: V.Vector Int
+radixVector :: V.Vector Int32
             -> IO ()
 radixVector xs = do
     xs' <- M.new (V.length xs)

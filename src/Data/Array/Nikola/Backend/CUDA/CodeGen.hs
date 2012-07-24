@@ -222,7 +222,7 @@ runCFun comp = do
 typeToC :: Tau -> C.Type
 typeToC UnitT            = [cty|void|]
 typeToC BoolT            = [cty|unsigned char|]
-typeToC IntT             = [cty|int|]
+typeToC Int32T           = [cty|typename int32_t|]
 typeToC FloatT           = [cty|float|]
 typeToC (ArrayT tau _ _) = [cty|$ty:(typeToC tau) *|]
 typeToC (FunT taus tau)  = [cty|$ty:(typeToC tau) (*)($params:params)|]
@@ -490,7 +490,7 @@ compileExp ctx (AppE f es) = do
 compileExp _ (BoolE False) = return (ScalarCExp [cexp|0|])
 compileExp _ (BoolE True)  = return (ScalarCExp [cexp|1|])
 
-compileExp _ (IntE n) =
+compileExp _ (Int32E n) =
     return (ScalarCExp [cexp|$int:i|])
   where
     i :: Integer

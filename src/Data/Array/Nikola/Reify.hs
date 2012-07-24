@@ -114,7 +114,7 @@ reifyE e kont = do
     go e@(BoolE {}) kont =
         kont e
 
-    go e@(IntE {}) kont =
+    go e@(Int32E {}) kont =
         kont e
 
     go e@(FloatE {}) kont =
@@ -225,7 +225,7 @@ cacheDExp x comp kont = do
          -> R DExp
     letE e@(VarE {})   kont = kont e
     letE e@(BoolE {})  kont = kont e
-    letE e@(IntE {})   kont = kont e
+    letE e@(Int32E {}) kont = kont e
     letE e@(FloatE {}) kont = kont e
 
     letE e kont = do
@@ -289,7 +289,7 @@ shiftLamE v tau (LamE vtaus e) =
     shiftType :: Tau -> Tau
     shiftType tau@(UnitT {})  = tau
     shiftType tau@(BoolT {})  = tau
-    shiftType tau@(IntT {})   = tau
+    shiftType tau@(Int32T {}) = tau
     shiftType tau@(FloatT {}) = tau
 
     shiftType (ArrayT tau ds ps) =

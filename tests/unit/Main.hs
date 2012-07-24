@@ -37,6 +37,7 @@ module Main where
 import Prelude hiding (map, zipWith)
 import qualified Prelude as P
 
+import Data.Int
 import qualified Data.Vector.Storable as V
 import System.Exit (exitFailure, exitSuccess)
 import Test.HUnit
@@ -51,7 +52,8 @@ main = withNewContext $ \_ -> do
       _ -> exitFailure
 
 tests :: Test
-tests = TestList [id_test, map_test, zip_test, scalar_test]
+tests = TestList [id_test, map_test, map_int_test
+                 ,zip_test, scalar_test]
 
 id_test :: Test
 id_test = g 1 ~?= 1
@@ -70,6 +72,16 @@ map_test =
     f v = map (\x -> x + 1) v
 
     g :: V.Vector Float -> V.Vector Float
+    g = compile f
+
+map_int_test :: Test
+map_int_test =
+    g (V.fromList [1..10]) ~?= V.map (+1) (V.fromList [1..10])
+  where
+    f :: Exp (V.Vector Int32) -> Exp (V.Vector Int32)
+    f v = map (\x -> x + 1) v
+
+    g :: V.Vector Int32 -> V.Vector Int32
     g = compile f
 
 zip_test :: Test

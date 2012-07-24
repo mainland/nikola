@@ -48,6 +48,8 @@ module Data.Array.Nikola.Language.Smart (
 
 import Prelude hiding (map, mapM, zipWith, zipWith3)
 
+import Data.Int
+
 import Data.Array.Nikola.Reify
 import Data.Array.Nikola.Representable
 import Data.Array.Nikola.Language.Syntax
@@ -97,7 +99,7 @@ instance IsOrd (Exp a) where
     e1 .<. e2  = binop Llt e1 e2
     e1 .<=. e2 = binop Lle e1 e2
 
-instance Num (Exp Int) where
+instance Num (Exp Int32) where
     e1 + e2 = binop Iadd e1 e2
     e1 - e2 = binop Isub e1 e2
     e1 * e2 = binop Imul e1 e2
@@ -106,7 +108,7 @@ instance Num (Exp Int) where
     abs    = unop Iabs
     signum = unop Isignum
 
-    fromInteger = E . IntE . fromInteger
+    fromInteger = E . Int32E . fromInteger
 
 instance Num (Exp Float) where
     e1 + e2 = binop Fadd e1 e2
@@ -145,7 +147,7 @@ instance Floating (Exp Float) where
     atanh         = unop Fatanh
     acosh         = unop Facosh
 
-(.&.) :: Exp Int -> Exp Int -> Exp Int
+(.&.) :: Exp Int32 -> Exp Int32 -> Exp Int32
 e1 .&. e2 = binop Band e1 e2
 
 (?) :: Exp Bool -> (Exp a, Exp a) -> Exp a
@@ -167,13 +169,13 @@ mapM :: (Elt a, Elt b)
 mapM f xs ys =
     return $ E $ MapME (delayFun f) (unE xs) (unE ys)
 
-permute :: Exp (f a) -> Exp (g Int) -> Exp (h a)
+permute :: Exp (f a) -> Exp (g Int32) -> Exp (h a)
 permute xs is =
     E $ PermuteE (unE xs) (unE is)
 
 permuteM :: Elt a
          => Exp (Vector a)
-         -> Exp (Vector Int)
+         -> Exp (Vector Int32)
          -> Exp (Vector a)
          -> IO (Exp ())
 permuteM xs is ys =

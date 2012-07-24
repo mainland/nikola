@@ -48,6 +48,7 @@ module Data.Array.Nikola.Representable (
 import Control.Applicative
 import Control.Exception
 import Control.Monad.Trans (liftIO)
+import Data.Int
 #if defined(HMATRIX)
 import Data.Packed.Development
 import Data.Packed.Matrix
@@ -138,28 +139,28 @@ instance Representable () where
 
 instance Elt () where
 
-instance Representable Int where
-    type Rep Int = CInt
+instance Representable Int32 where
+    type Rep Int32 = Int32
 
     toRep = return . fromIntegral
 
     fromRep = return . fromIntegral
 
-    embeddedType _ _ = IntT
+    embeddedType _ _ = Int32T
 
     withArg n act = do
-        pushArg (IntArg n)
+        pushArg (IntArg (fromIntegral n))
         act
 
     returnResult = do
-        devPtr :: CU.DevicePtr (Rep Int) <- (CU.castDevPtr . allocPtr) <$> popAlloc
+        devPtr :: CU.DevicePtr (Rep Int32) <- (CU.castDevPtr . allocPtr) <$> popAlloc
         x <- liftIO $ alloca $ \hostPtr -> do
              CU.peekArray 1 devPtr hostPtr
              peek hostPtr
         liftIO $ CU.free devPtr
         return (fromIntegral x)
 
-instance Elt Int where
+instance Elt Int32 where
 
 instance Representable Float where
     type Rep Float = CFloat
@@ -216,9 +217,10 @@ instance (Elt a, Storable a, Storable (Rep a))
         return result
 
     returnResult = do
-        count :: Int           <- returnResult
+        count :: Int32         <- returnResult
         ArrayAlloc _ _ devPtr  <- popAlloc
-        xs <- liftIO $ fromRep (Vector count (CU.castDevPtr devPtr))
+        xs <- liftIO $ fromRep (Vector (fromIntegral count)
+                                       (CU.castDevPtr devPtr))
         liftIO $ CU.free devPtr
         return xs
 
@@ -238,9 +240,9 @@ instance (Elt a, Storable a)
         act
 
     returnResult = do
-        count :: Int          <- returnResult
+        count :: Int32        <- returnResult
         ArrayAlloc _ _ devPtr <- popAlloc
-        return $ Vector count (CU.castDevPtr devPtr)
+        return $ Vector (fromIntegral count) (CU.castDevPtr devPtr)
 
 instance (Elt a, Storable a)
     => Representable (V.Vector a) where
@@ -274,9 +276,10 @@ instance (Elt a, Storable a)
         return result
 
     returnResult = do
-        count :: Int          <- returnResult
+        count :: Int32        <- returnResult
         ArrayAlloc _ _ devPtr <- popAlloc
-        xs <- liftIO $ fromRep (Vector count (CU.castDevPtr devPtr))
+        xs <- liftIO $ fromRep (Vector (fromIntegral count)
+                                       (CU.castDevPtr devPtr))
         liftIO $ CU.free devPtr
         return xs
 

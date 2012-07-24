@@ -76,7 +76,7 @@ check (AppE f es) = do
     return (phi rho)
 
 check (BoolE _)  = return BoolT
-check (IntE _)   = return IntT
+check (Int32E _) = return Int32T
 check (FloatE _) = return FloatT
 
 check (UnopE op e)      = checkUnop op e
@@ -110,14 +110,14 @@ check (MapME f v1 v2) = do
 check (PermuteE xs is) = do
     (tau1, n1) <- checkVector xs
     (tau2, n2) <- checkVector is
-    checkEqual tau2 IntT
+    checkEqual tau2 Int32T
     return $ vectorT tau1 (nmin n1 n2)
 
 check (PermuteME xs is xs') = do
     (tau1, _) <- checkVector xs
     (tau2, _) <- checkVector is
     (tau3, _) <- checkVector xs'
-    checkEqual tau2 IntT
+    checkEqual tau2 Int32T
     checkEqual tau3 tau1
     return UnitT
 
@@ -236,7 +236,7 @@ checkEqual rho1 rho2 =
 checkScalarType :: MonadCheck m => Tau -> m Tau
 checkScalarType UnitT    = return UnitT
 checkScalarType BoolT    = return BoolT
-checkScalarType IntT     = return IntT
+checkScalarType Int32T   = return Int32T
 checkScalarType FloatT   = return FloatT
 checkScalarType rho      = faildoc $
                            text "Expected scalar type but got" <+>

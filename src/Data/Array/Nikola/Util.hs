@@ -6,6 +6,7 @@ module Data.Array.Nikola.Util (
     randomsRange
   ) where
 
+import Data.Int
 import qualified Data.Vector.Fusion.Stream         as Stream
 import qualified Data.Vector.Fusion.Stream.Monadic as S
 import qualified Data.Vector.Fusion.Stream.Size    as S
@@ -60,6 +61,11 @@ class PureMTRandom a where
 
 instance PureMTRandom Int where
     random = R.randomInt
+
+instance PureMTRandom Int32 where
+    random g = let (i, g') = R.randomInt g
+               in
+                 (fromIntegral i, g')
 
 instance PureMTRandom Double where
     random = R.randomDouble

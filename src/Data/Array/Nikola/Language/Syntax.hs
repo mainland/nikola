@@ -61,6 +61,7 @@ module Data.Array.Nikola.Language.Syntax (
 ) where
 
 import Data.Generics (Data, Typeable)
+import Data.Int
 import qualified Data.Set as Set
 import Text.PrettyPrint.Mainland
 
@@ -169,7 +170,7 @@ nGridDimY n w_ =
 
 data Tau = UnitT
          | BoolT
-         | IntT
+         | Int32T
          | FloatT
          | ArrayT Tau  -- ^ Type of elements
                   [N]  -- ^ Shape of the array. An n-dimensional array will have
@@ -182,7 +183,7 @@ data Tau = UnitT
 isScalarT :: Tau -> Bool
 isScalarT UnitT   = True
 isScalarT BoolT   = True
-isScalarT IntT    = True
+isScalarT Int32T  = True
 isScalarT FloatT  = True
 isScalarT _       = False
 
@@ -258,7 +259,7 @@ data DExp = VarE Var
           | LamE [(Var, Tau)] DExp
           | AppE DExp [DExp]
           | BoolE Bool
-          | IntE Int
+          | Int32E Int32
           | FloatE Double
           | UnopE Unop DExp
           | BinopE Binop DExp DExp
@@ -290,7 +291,7 @@ freeVars (LamE _ _)                 = Set.empty
 freeVars (AppE f es)                = foldr Set.union (freeVars f)
                                       (map freeVars es)
 freeVars (BoolE _)                  = Set.empty
-freeVars (IntE _)                   = Set.empty
+freeVars (Int32E _)                 = Set.empty
 freeVars (FloatE _)                 = Set.empty
 freeVars (UnopE _ e)                = freeVars e
 freeVars (BinopE _ e1 e2)           = freeVars e1
@@ -396,7 +397,7 @@ arrowPrec = 0
 instance Pretty Tau where
     pprPrec _ UnitT  = text "Unit"
     pprPrec _ BoolT  = text "Bool"
-    pprPrec _ IntT   = text "Int"
+    pprPrec _ Int32T = text "Int32"
     pprPrec _ FloatT = text "Float"
 
     pprPrec p (ArrayT tau sh _) =
@@ -449,7 +450,7 @@ instance Pretty DExp where
     pprPrec _ (BoolE n) =
         (text . show) n
 
-    pprPrec _ (IntE n) =
+    pprPrec _ (Int32E n) =
         (text . show) n
 
     pprPrec _ (FloatE n) =

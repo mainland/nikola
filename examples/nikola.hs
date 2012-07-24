@@ -38,6 +38,7 @@ import Prelude hiding (map, zipWith)
 import qualified Prelude as P
 
 import Control.Monad.Trans
+import Data.Int
 import qualified Data.Packed.Vector as V
 import Text.PrettyPrint.Mainland
 
@@ -73,7 +74,7 @@ test1 = do
     print $ f 1 2
     print $ f 3 4
   where
-    add :: Exp Int -> Exp Int -> Exp Int
+    add :: Exp Int32 -> Exp Int32 -> Exp Int32
     add = (+)
 
 test2 :: IO ()
@@ -85,7 +86,7 @@ test2 = do
     withCompiledFunction f $ \f -> do
         compileIO f (V.fromList [1..10]) >>= print . V.toList
   where
-    f :: Exp (V.Vector Int) -> Exp (V.Vector Int)
+    f :: Exp (V.Vector Int32) -> Exp (V.Vector Int32)
     f v = map (\x -> x) v
 
 test3 :: IO ()
@@ -97,7 +98,7 @@ test3 = do
     withCompiledFunction f $ \f -> do
         compileIO f [1..32] >>= print
   where
-    f :: Exp [Int] -> Exp [Int]
+    f :: Exp [Int32] -> Exp [Int32]
     f v = map (\x -> x) v
 
 test4 :: IO ()
@@ -109,7 +110,7 @@ test4 = do
     withCompiledFunction f $ \f -> do
         compileIO f (V.fromList [1..32]) >>= print
   where
-    f :: Exp (V.Vector Int) -> Exp [Float]
+    f :: Exp (V.Vector Int32) -> Exp [Float]
     f v = map (\_ -> 1) v
 
 test5 :: IO ()

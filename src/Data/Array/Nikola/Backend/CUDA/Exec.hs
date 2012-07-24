@@ -206,7 +206,7 @@ alloc BoolT = do
     pushAlloc (IntAlloc (CU.castDevPtr devPtr))
     pushArg (PtrArg (CU.castDevPtr devPtr))
 
-alloc IntT = do
+alloc Int32T = do
     devPtr :: CU.DevicePtr Int <- liftIO $ CU.mallocArray 1
     pushAlloc (IntAlloc (CU.castDevPtr devPtr))
     pushArg (PtrArg (CU.castDevPtr devPtr))
@@ -217,7 +217,7 @@ alloc FloatT = do
     pushArg (PtrArg (CU.castDevPtr devPtr))
 
 -- Special case for matrix...
-alloc (ArrayT IntT nds@[_, _] nps@[_]) = do
+alloc (ArrayT Int32T nds@[_, _] nps@[_]) = do
     ds       <- mapM evalN nds
     ps       <- mapM evalN nps
     let size =  foldl' (*) (last ds) ps
@@ -236,7 +236,7 @@ alloc (ArrayT FloatT nds@[_, _] nps@[_]) = do
     pushAlloc (ArrayAlloc nds nps (CU.castDevPtr devPtr))
     pushArg (PtrArg (CU.castDevPtr devPtr))
 
-alloc (ArrayT IntT nds nps) = do
+alloc (ArrayT Int32T nds nps) = do
     ds       <- mapM evalN nds
     ps       <- mapM evalN nps
     let size =  foldl' (*) (last ds) ps
@@ -245,7 +245,7 @@ alloc (ArrayT IntT nds nps) = do
     pushAlloc (ArrayAlloc nds nps (CU.castDevPtr devPtr))
     pushArg (PtrArg (CU.castDevPtr devPtr))
     -- Push vector size
-    alloc IntT
+    alloc Int32T
 
 alloc (ArrayT FloatT nds nps) = do
     ds       <- mapM evalN nds
@@ -256,7 +256,7 @@ alloc (ArrayT FloatT nds nps) = do
     pushAlloc (ArrayAlloc nds nps (CU.castDevPtr devPtr))
     pushArg (PtrArg (CU.castDevPtr devPtr))
     -- Push vector size
-    alloc IntT
+    alloc Int32T
 
 alloc rho =
     faildoc $ text "Cannot allocate type" <+> ppr rho

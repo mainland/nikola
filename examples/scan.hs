@@ -49,6 +49,7 @@ import Criterion.Config
 import Criterion.Environment
 import Criterion.Main
 import Criterion.Monad
+import Data.Int
 import qualified Data.Vector.Generic as G
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Fusion.Stream         as Stream
@@ -89,49 +90,49 @@ main = withNewContext $ \_ -> do
         mu         = mean samp
         (min, max) = minMax samp
 
-benchmarkIO :: (V.Vector Int -> IO (V.Vector Int))
+benchmarkIO :: (V.Vector Int32 -> IO (V.Vector Int32))
             -> Int
-            -> IO (V.Vector Int)
+            -> IO (V.Vector Int32)
 benchmarkIO f n = do
     g <- liftIO newPureMT
     let flags = randomFlags g n
     f flags
 
-scanNikola :: V.Vector Int
-           -> IO (V.Vector Int)
+scanNikola :: V.Vector Int32
+           -> IO (V.Vector Int32)
 scanNikola flags = do
     v <- toRep flags
     scan' v
     fromRep v
   where
-    scan' :: Vector Int -> IO ()
+    scan' :: Vector Int32 -> IO ()
     scan'  (Vector 0 _)  = return ()
     scan'  xs            = do  sums <- bscan xs
                                scan' sums
                                badd xs sums
 
-    bscan :: Vector Int -> IO (Vector Int)
+    bscan :: Vector Int32 -> IO (Vector Int32)
     bscan = compile (blockedScanM (+) 0)
 
-    badd :: Vector Int -> Vector Int -> IO ()
+    badd :: Vector Int32 -> Vector Int32 -> IO ()
     badd = compile blockedAddM
 
-scanVector :: V.Vector Int
-           -> IO (V.Vector Int)
+scanVector :: V.Vector Int32
+           -> IO (V.Vector Int32)
 scanVector flags =
     return $! V.prescanl' (+) 0 flags
 
-randomFlags :: forall v . (G.Vector v Int)
+randomFlags :: forall v . (G.Vector v Int32)
             => PureMT
             -> Int
-            -> v Int
+            -> v Int32
 randomFlags g n =
     G.unstream (randomS g n)
   where
-    scale :: Int -> Int
-    scale x = x `mod` 2
+    scale :: Int -> Int32
+    scale x = fromIntegral (x `mod` 2)
 
-    randomS :: PureMT -> Int -> Stream.Stream Int
+    randomS :: PureMT -> Int -> Stream.Stream Int32
     {-# INLINE [1] randomS #-}
     randomS g n = S.Stream (return . step) (n, g) (S.Exact (delay_inline max n 0))
       where
