@@ -29,7 +29,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module Nikola.Pretty (
+module Data.Array.Nikola.Pretty (
     Fixity,
     infix_,
     infixl_,

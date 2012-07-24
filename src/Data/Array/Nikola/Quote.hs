@@ -41,7 +41,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Nikola.Quote (
+module Data.Array.Nikola.Quote (
     QuasiQuoter(..),
     dataToQa,
     dataToExpQ,

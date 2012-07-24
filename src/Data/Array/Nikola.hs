@@ -27,14 +27,14 @@
 
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Nikola (
-    module Nikola.Backend.CUDA.CodeGen,
-    module Nikola.Compile,
-    module Nikola.Exec,
-    module Nikola.Reify,
-    module Nikola.Representable,
-    module Nikola.Smart,
-    module Nikola.Syntax,
+module Data.Array.Nikola (
+    module Data.Array.Nikola.Backend.CUDA.CodeGen,
+    module Data.Array.Nikola.Backend.CUDA.Compile,
+    module Data.Array.Nikola.Backend.CUDA.Exec,
+    module Data.Array.Nikola.Language.Smart,
+    module Data.Array.Nikola.Language.Syntax,
+    module Data.Array.Nikola.Reify,
+    module Data.Array.Nikola.Representable,
 
     withNewContext
  ) where
@@ -44,13 +44,13 @@ import Prelude hiding (catch)
 import Control.Exception
 import qualified Foreign.CUDA.Driver as CU
 
-import Nikola.Backend.CUDA.CodeGen
-import Nikola.Compile
-import Nikola.Exec
-import Nikola.Reify
-import Nikola.Representable
-import Nikola.Smart
-import Nikola.Syntax
+import Data.Array.Nikola.Backend.CUDA.CodeGen
+import Data.Array.Nikola.Backend.CUDA.Compile
+import Data.Array.Nikola.Backend.CUDA.Exec
+import Data.Array.Nikola.Language.Smart
+import Data.Array.Nikola.Language.Syntax
+import Data.Array.Nikola.Reify
+import Data.Array.Nikola.Representable
 
 withNewContext :: (CU.Context -> IO a) -> IO a
 withNewContext kont = do

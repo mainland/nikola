@@ -37,7 +37,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Nikola.Nvcc (
+module Data.Array.Nikola.Backend.CUDA.Nvcc (
     compile
   ) where
 

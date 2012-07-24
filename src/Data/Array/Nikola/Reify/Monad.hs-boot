@@ -1,4 +1,4 @@
-module Nikola.Reify.Monad (
+module Data.Array.Nikola.Reify.Monad (
     REnv,
     R
   ) where

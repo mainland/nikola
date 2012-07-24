@@ -36,7 +36,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Nikola.Representable (
+module Data.Array.Nikola.Representable (
     Representable(..),
     Elt,
 
@@ -62,8 +62,8 @@ import Foreign.Marshal.Array
 import Foreign.Ptr
 import Foreign.Storable
 
-import Nikola.Exec
-import Nikola.Syntax
+import Data.Array.Nikola.Backend.CUDA.Exec
+import Data.Array.Nikola.Language.Syntax
 
 -- | Vectors whose contents exist in GPU memory
 data Vector a = Vector {-# UNPACK #-} !Int

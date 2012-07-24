@@ -4,7 +4,7 @@ module BlackScholes.Nikola (
 
 import Prelude hiding (zipWith3)
 
-import Nikola
+import Data.Array.Nikola
 
 blackscholes :: Exp (Vector Float)
              -> Exp (Vector Float)

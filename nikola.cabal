@@ -31,21 +31,21 @@ flag hmatrix
 
 library
   exposed-modules:
-    Nikola
-    Nikola.Backend.CUDA.CodeGen
-    Nikola.Backend.CUDA.Monad
-    Nikola.Check
-    Nikola.Compile
-    Nikola.Exec
-    Nikola.Nvcc
-    Nikola.Pretty
-    Nikola.Quote
-    Nikola.Reify
-    Nikola.Reify.Monad
-    Nikola.Representable
-    Nikola.Smart
-    Nikola.Syntax
-    Nikola.Util
+    Data.Array.Nikola
+    Data.Array.Nikola.Backend.CUDA.CodeGen
+    Data.Array.Nikola.Backend.CUDA.Compile
+    Data.Array.Nikola.Backend.CUDA.Exec
+    Data.Array.Nikola.Backend.CUDA.Monad
+    Data.Array.Nikola.Backend.CUDA.Nvcc
+    Data.Array.Nikola.Language.Check
+    Data.Array.Nikola.Language.Smart
+    Data.Array.Nikola.Language.Syntax
+    Data.Array.Nikola.Pretty
+    Data.Array.Nikola.Quote
+    Data.Array.Nikola.Reify
+    Data.Array.Nikola.Reify.Monad
+    Data.Array.Nikola.Representable
+    Data.Array.Nikola.Util
 
   build-depends:
     base >=4 && <5,

@@ -43,7 +43,7 @@ module Main where
 import Control.Monad.Trans (liftIO)
 import Text.PrettyPrint.Mainland
 
-import Nikola hiding (map)
+import Data.Array.Nikola hiding (map)
 
 import qualified BlackScholes.Nikola as BSN
 

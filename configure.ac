@@ -1,6 +1,6 @@
 AC_INIT([The Nikola embedded language], [0.2], [mainland@eecs.harvard.edu], [nikola])
 
-AC_CONFIG_SRCDIR([src/Nikola.hs])
+AC_CONFIG_SRCDIR([src/Data/Array/Nikola.hs])
 AC_CONFIG_FILES([include/Nikola.h])
 
 dnl--------------------------------------------------------------------

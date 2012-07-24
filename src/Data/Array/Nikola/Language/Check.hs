@@ -27,7 +27,7 @@
 
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Nikola.Check (
+module Data.Array.Nikola.Language.Check (
   MonadCheck(..),
   check,
   checkScalar,
@@ -42,7 +42,7 @@ import Data.List (foldl')
 import qualified Data.Map as Map
 import Text.PrettyPrint.Mainland
 
-import Nikola.Syntax
+import Data.Array.Nikola.Language.Syntax
 
 class (Functor m, Applicative m, Monad m) => MonadCheck m where
     lookupVar  :: Var -> m Tau

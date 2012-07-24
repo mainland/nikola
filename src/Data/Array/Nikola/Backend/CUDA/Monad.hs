@@ -35,7 +35,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Nikola.Backend.CUDA.Monad (
+module Data.Array.Nikola.Backend.CUDA.Monad (
     C,
     runC,
 
@@ -87,8 +87,8 @@ import qualified Data.Symbol
 import qualified Language.C.Syntax
 #endif /* !MIN_VERSION_template_haskell(2,7,0) */
 
-import Nikola.Check
-import Nikola.Syntax
+import Data.Array.Nikola.Language.Check
+import Data.Array.Nikola.Language.Syntax
 
 -- | A compiled expression.
 data CExp = ScalarCExp C.Exp

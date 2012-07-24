@@ -34,7 +34,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Nikola.Reify.Monad (
+module Data.Array.Nikola.Reify.Monad (
     ROpts(..),
     defaultROpts,
     REnv(..),
@@ -62,8 +62,8 @@ import qualified Data.Map as Map
 import System.Mem.StableName
 import Text.PrettyPrint.Mainland
 
-import Nikola.Check
-import Nikola.Syntax
+import Data.Array.Nikola.Language.Check
+import Data.Array.Nikola.Language.Syntax
 
 type StableNameHash = Int
 

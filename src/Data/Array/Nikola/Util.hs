@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Nikola.Util (
+module Data.Array.Nikola.Util (
     PureMTRandom(..),
     randoms,
     randomsRange

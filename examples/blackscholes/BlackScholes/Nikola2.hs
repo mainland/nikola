@@ -6,7 +6,7 @@ import Prelude hiding (zipWith3)
 
 import qualified Data.Vector.Storable as V
 
-import Nikola
+import Data.Array.Nikola
 
 blackscholes :: Exp (V.Vector Float)
              -> Exp (V.Vector Float)

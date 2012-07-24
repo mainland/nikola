@@ -29,7 +29,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module Nikola.Syntax (
+module Data.Array.Nikola.Language.Syntax (
     ParamIdx(..),
     N(..),
     nmin,
@@ -64,8 +64,8 @@ import Data.Generics (Data, Typeable)
 import qualified Data.Set as Set
 import Text.PrettyPrint.Mainland
 
-import Nikola.Pretty
-import {-# SOURCE #-} Nikola.Reify.Monad
+import Data.Array.Nikola.Pretty
+import {-# SOURCE #-} Data.Array.Nikola.Reify.Monad
 
 -- |Function parameter index.
 newtype ParamIdx = ParamIdx { unParamIdx :: Int }

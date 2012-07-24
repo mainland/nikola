@@ -32,7 +32,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Nikola.Reify (
+module Data.Array.Nikola.Reify (
     ROpts(..),
     defaultROpts,
 
@@ -53,10 +53,10 @@ import Data.Dynamic
 import System.Mem.StableName
 import Text.PrettyPrint.Mainland
 
-import Nikola.Check
-import Nikola.Representable
-import Nikola.Reify.Monad
-import Nikola.Syntax
+import Data.Array.Nikola.Language.Check
+import Data.Array.Nikola.Language.Syntax
+import Data.Array.Nikola.Representable
+import Data.Array.Nikola.Reify.Monad
 
 --prettyIO :: (MonadIO m) => Doc -> m ()
 --prettyIO = liftIO . putStrLn . pretty 80

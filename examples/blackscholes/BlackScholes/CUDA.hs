@@ -15,7 +15,7 @@ import qualified Data.Symbol
 import qualified Language.C.Syntax
 #endif /* !MIN_VERSION_template_haskell(2,7,0) */
 
-import Nikola
+import Data.Array.Nikola
 
 blackscholes :: CFun (   Exp (V.Vector Float)
                       -> Exp (V.Vector Float)

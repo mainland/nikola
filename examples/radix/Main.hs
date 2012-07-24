@@ -59,8 +59,8 @@ import System.Environment
 -- import Text.PrettyPrint.Mainland
 import Text.Printf
 
-import Nikola
-import Nikola.Util
+import Data.Array.Nikola
+import Data.Array.Nikola.Util
 
 main :: IO ()
 main = withNewContext $ \_ -> do

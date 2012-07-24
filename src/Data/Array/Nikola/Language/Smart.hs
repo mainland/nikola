@@ -28,7 +28,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Nikola.Smart (
+module Data.Array.Nikola.Language.Smart (
     IsBool(..),
     IsEq(..),
     IsOrd(..),
@@ -48,9 +48,9 @@ module Nikola.Smart (
 
 import Prelude hiding (map, mapM, zipWith, zipWith3)
 
-import Nikola.Reify
-import Nikola.Representable
-import Nikola.Syntax
+import Data.Array.Nikola.Reify
+import Data.Array.Nikola.Representable
+import Data.Array.Nikola.Language.Syntax
 
 instance Eq (Exp a) where
     _ == _ = error "Cannot compare values of type Exp a"

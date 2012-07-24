@@ -564,7 +564,7 @@ PACKAGE_STRING='The Nikola embedded language 0.2'
 PACKAGE_BUGREPORT='mainland@eecs.harvard.edu'
 PACKAGE_URL=''
 
-ac_unique_file="src/Nikola.hs"
+ac_unique_file="src/Data/Array/Nikola.hs"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 HC

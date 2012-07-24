@@ -36,7 +36,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 
-module Nikola.Exec (
+module Data.Array.Nikola.Backend.CUDA.Exec (
     ExState(..),
     emptyExState,
     Ex(..),
@@ -73,7 +73,7 @@ import qualified Foreign.CUDA.Driver.Stream as CU (Stream)
 import qualified Foreign.CUDA.Driver.Stream as CUStream
 import Text.PrettyPrint.Mainland
 
-import Nikola.Syntax
+import Data.Array.Nikola.Language.Syntax
 
 data Arg = IntArg    !Int
          | FloatArg  !Float

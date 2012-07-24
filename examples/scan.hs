@@ -1,4 +1,4 @@
--- Copyright (c) 2010
+-- Copyright (c) 2010-2012
 --         The President and Fellows of Harvard College.
 --
 -- Redistribution and use in source and binary forms, with or without
@@ -62,8 +62,8 @@ import System.Random.Mersenne.Pure64
 -- import Text.PrettyPrint.Mainland
 import Text.Printf
 
-import Nikola
-import Nikola.Util
+import Data.Array.Nikola
+import Data.Array.Nikola.Util
 
 main :: IO ()
 main = withNewContext $ \_ -> do

@@ -41,7 +41,7 @@ import Control.Monad.Trans
 import qualified Data.Packed.Vector as V
 import Text.PrettyPrint.Mainland
 
-import Nikola
+import Data.Array.Nikola
 
 main :: IO ()
 main = withNewContext $ \_ -> do

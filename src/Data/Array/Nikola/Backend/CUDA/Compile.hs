@@ -34,7 +34,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Nikola.Compile (
+module Data.Array.Nikola.Backend.CUDA.Compile (
     withCompiledCFun,
     withCompiledFunction,
     withCompiledFunctionEx,
@@ -59,13 +59,13 @@ import Language.Haskell.TH (Q,
 import Language.Haskell.TH.Syntax (Lift(..))
 import System.IO.Unsafe (unsafePerformIO)
 
-import Nikola.Backend.CUDA.CodeGen
-import Nikola.Exec
-import qualified Nikola.Nvcc as Nvcc
-import Nikola.Quote
-import Nikola.Reify
-import Nikola.Representable
-import Nikola.Syntax (Exp, Tau, ExecConfig)
+import Data.Array.Nikola.Backend.CUDA.CodeGen
+import Data.Array.Nikola.Backend.CUDA.Exec
+import qualified Data.Array.Nikola.Backend.CUDA.Nvcc as Nvcc
+import Data.Array.Nikola.Quote
+import Data.Array.Nikola.Reify
+import Data.Array.Nikola.Representable
+import Data.Array.Nikola.Language.Syntax (Exp, Tau, ExecConfig)
 
 withModuleFromByteString :: B.ByteString -> (CU.Module -> IO a) -> IO a
 withModuleFromByteString bs =

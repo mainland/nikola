@@ -32,7 +32,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Nikola.Backend.CUDA.CodeGen (
+module Data.Array.Nikola.Backend.CUDA.CodeGen (
     CFun(..),
     configToLaunchParams,
 
@@ -59,10 +59,10 @@ import qualified Data.Symbol
 import qualified Language.C.Syntax
 #endif /* !MIN_VERSION_template_haskell(2,7,0) */
 
-import Nikola.Backend.CUDA.Monad
-import Nikola.Check
-import Nikola.Syntax
-import qualified Nikola.Exec as Ex
+import Data.Array.Nikola.Backend.CUDA.Monad
+import qualified Data.Array.Nikola.Backend.CUDA.Exec as Ex
+import Data.Array.Nikola.Language.Check
+import Data.Array.Nikola.Language.Syntax
 
 vectorSize :: CExp -> C.Exp
 vectorSize (VectorCExp _ n) = n
