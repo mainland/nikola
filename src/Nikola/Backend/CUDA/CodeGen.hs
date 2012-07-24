@@ -1076,7 +1076,11 @@ compileTopFun fname e_f = do
         B.hPut h $ E.encodeUtf8 (prettyLazyText 200 (ppr e_f))
         hClose h
     case e_f of
-      LamE vtaus body -> runCFun (compile vtaus body)
+      -- Convert 'let v = e in v' to just 'e' before passing it to
+      -- 'compile'. When 'e' has unit type, the let form confuses the code
+      -- generator.
+      LamE vtaus (LetE v _ e (VarE v')) | v' == v  -> runCFun (compile vtaus e)
+      LamE vtaus e                                 -> runCFun (compile vtaus e)
       _ -> faildoc $ text "Cannot compile non-function:" <+/> ppr e_f
   where
     compile ::[(Var, Tau)] -> DExp -> C (String, [DevAlloc])
