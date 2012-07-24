@@ -195,7 +195,13 @@ class Compile a where
 
     compile  :: a -> Fun a
 
-    compilek :: IO (F a)
+    -- Note that |compilek| has a different type here than in the |CompileIO|
+    -- class---this is very important! It means that the function is reified and
+    -- compiled /once/ and then reused on future invocations. In the |compilek|
+    -- in |CompileIO|, the function is reified and compiled /after/ all
+    -- arguments have been supplied meaning it is compiled every time the
+    -- function is evaluated.
+    compilek :: F a
              -> (forall a . Ex a -> Ex a)
              -> Fun a
 
@@ -204,20 +210,30 @@ instance (Representable a, Representable b) => Compile (Exp a -> Exp b) where
 
     compile f = compilek sigma id
       where
-        sigma :: IO (F (Exp a -> Exp b))
-        sigma = F <$> reifyCompileAndLoad defaultROpts f
+        sigma :: F (Exp a -> Exp b)
+        sigma = F $ unsafePerformIO $ reifyCompileAndLoad defaultROpts f
 
-    compilek sigma args = unsafePerformIO . compilekIO sigma args
+    compilek sigma args = \x -> unsafePerformIO $
+        flip evalEx (unF sigma) $
+            args $
+            withArg x $
+            launchKernel $
+            returnResult
 
 instance (Representable a, Representable b) => Compile (Exp a -> IO (Exp b)) where
     type Fun (Exp a -> IO (Exp b)) = a -> IO b
 
     compile f = compilek sigma id
       where
-        sigma :: IO (F (Exp a -> IO (Exp b)))
-        sigma = F <$> reifyCompileAndLoad defaultROpts f
+        sigma :: F (Exp a -> IO (Exp b))
+        sigma = F $ unsafePerformIO $ reifyCompileAndLoad defaultROpts f
 
-    compilek sigma args = compilekIO sigma args
+    compilek sigma args = \x ->
+        flip evalEx (unF sigma) $
+            args $
+            withArg x $
+            launchKernel $
+            returnResult
 
 instance (Representable a,
           ReifiableFun (Exp a) (b -> c),
@@ -226,28 +242,28 @@ instance (Representable a,
 
     compile f = compilek sigma id
       where
-        sigma :: IO (F (Exp a -> b -> c))
-        sigma = F <$> reifyCompileAndLoad defaultROpts f
+        sigma :: F (Exp a -> b -> c)
+        sigma = F $ unsafePerformIO $ reifyCompileAndLoad defaultROpts f
 
     compilek sigma args = \x -> compilek sigma' (args . withArg x)
       where
-        sigma' :: IO (F (b -> c))
-        sigma' = castF <$> sigma
+        sigma' :: F (b -> c)
+        sigma' = castF sigma
 
 instance (Compile (a -> b)) => Compile (CFun (a -> b)) where
     type Fun (CFun (a -> b)) = Fun (a -> b)
 
     compile cfun = compilek f id
       where
-        f :: IO (F (a -> b))
-        f = F <$> compileAndLoad cfun
+        f :: F (a -> b)
+        f = F $ unsafePerformIO $ compileAndLoad cfun
 
     compilek = compilek
 
 instance (Compile (a -> b)) => Compile (F (a -> b)) where
     type Fun (F (a -> b)) = Fun (a -> b)
 
-    compile f = compilek (return f) id
+    compile f = compilek f id
 
     compilek = compilek
 
