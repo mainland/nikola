@@ -10,6 +10,7 @@ configure Nikola like this:
 ```
 cabal configure \
       --disable-library-profiling \
+      --enable-tests \
       --flags="hmatrix tests examples benchmarks" \
       --configure-option="--with-nvcc=/usr/local/cuda/4.2/cuda/bin/nvcc" \
       --configure-option="--with-nvcc-cc=/usr/bin/gcc-4.5"

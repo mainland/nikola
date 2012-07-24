@@ -17,6 +17,7 @@ GHC_FLAGS += -W -Werror \
 
 GHC_FLAGS += \
 	-hide-all-packages \
+	-package HUnit \
 	-package base \
 	-package bytestring \
 	-package containers \
@@ -40,7 +41,7 @@ GHC_FLAGS += \
 	-package vector \
 	-package vector-algorithms
 
-TARGETS		= demo search nikola blackscholes blackscholes-opt scan scan-opt radix radix-opt
+TARGETS		= demo search nikola blackscholes blackscholes-opt scan scan-opt radix radix-opt unit
 
 .PHONY : all
 all : $(TARGETS)
@@ -118,6 +119,12 @@ radix-opt : $(SOURCE) examples/radix/Main.hs
 test : $(SOURCE) test.hs
 	@echo "Compiling and linking" $@
 	$(_QUIET)$(GHC) --make test.hs \
+		-odir obj -hidir obj \
+		$(GHC_FLAGS) -o $@
+
+unit : $(SOURCE) tests/unit/Main.hs
+	@echo "Compiling and linking" $@
+	$(_QUIET)$(GHC) --make -itests/unit tests/unit/Main.hs \
 		-odir obj -hidir obj \
 		$(GHC_FLAGS) -o $@
 
