@@ -46,13 +46,10 @@ module Data.Array.Nikola.Backend.CUDA.Target (
     withCUDAArg,
     returnCUDAResult,
 
-    Vector(..),
-    unsafeWithNewVector,
-    unsafeFreeVector
+    Vector(..)
   ) where
 
 import Control.Applicative
-import Control.Exception
 import Control.Monad.Trans (liftIO)
 import Data.Int
 #if defined(HMATRIX)
@@ -73,6 +70,9 @@ import Data.Array.Nikola.Backend.CUDA.Exec
 import Data.Array.Nikola.Embed
 import Data.Array.Nikola.Language.Syntax
 
+import Data.Array.Repa
+import Data.Array.Repa.Repr.CUDA
+
 -- | Vectors whose contents exist in GPU memory
 data Vector a = Vector {-# UNPACK #-} !Int
                        {-# UNPACK #-} !(CU.DevicePtr (Rep a))
@@ -80,21 +80,6 @@ data Vector a = Vector {-# UNPACK #-} !Int
 
 instance Show (Vector a) where
   showsPrec n (Vector _ p) = showsPrec n p
-
-unsafeWithNewVector :: Storable (Rep a)
-                    => Int
-                    -> (Vector a -> IO b)
-                    -> IO b
-unsafeWithNewVector n =
-    bracket alloc free
-  where
-    alloc = Vector n <$> CU.mallocArray n
-
-    free (Vector _ ptr) = CU.free ptr
-
-unsafeFreeVector :: Vector a -> IO ()
-unsafeFreeVector (Vector _ devPtr) =
-    CU.free devPtr
 
 -- | The CUDA target
 data CUDA
@@ -163,7 +148,7 @@ instance Elt CUDA Int32 where
 instance Representable CUDA Float where
     type CallCtx CUDA = Ex
 
-    type Rep Float = CFloat
+    type Rep Float = Float
 
     toRep _ = return . realToFrac
 
@@ -253,6 +238,38 @@ instance (Elt CUDA a, Storable a)
 
 instance (Elt CUDA a, Storable a)
     => IsVector CUDA Vector a where
+
+deriving instance Typeable CU
+deriving instance Typeable Z
+deriving instance Typeable2 (:.)
+deriving instance Typeable3 Array
+
+instance (Elt CUDA a, Storable a)
+    => Representable CUDA (Array CU DIM1 a) where
+    type CallCtx CUDA = Ex
+
+    type Rep (Array CU DIM1 a) = Array CU DIM1 a
+
+    fromRep _ = return
+
+    toRep _ = return
+
+    embeddedType _ _ n =
+        vectorArgT (embeddedCUDAType (undefined :: a) n) n
+
+    withArg _ (ADevicePtr (Z:.n) _ devptr) act = do
+        pushArg (ArrayArg [n] [] (CU.castDevPtr devptr))
+        act
+
+    returnResult _ = do
+        count :: Int32        <- returnCUDAResult
+        ArrayAlloc _ _ devPtr <- popAlloc
+        return $ ADevicePtr (Z:.fromIntegral count)
+                            (fromIntegral count)
+                            (CU.castDevPtr devPtr)
+
+instance (Elt CUDA a, Storable a)
+    => IsVector CUDA (Array CU DIM1) a where
 
 instance (Elt CUDA a, Storable a)
     => Representable CUDA (V.Vector a) where

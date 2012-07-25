@@ -31,6 +31,7 @@ GHC_FLAGS += \
 	-package mersenne-random-pure64 \
 	-package mtl \
 	-package process \
+	-package repa \
 	-package srcloc \
 	-package statistics \
 	-package syb \

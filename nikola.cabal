@@ -48,6 +48,7 @@ library
     Data.Array.Nikola.Pretty
     Data.Array.Nikola.Quote
     Data.Array.Nikola.Util
+    Data.Array.Repa.Repr.CUDA
 
   build-depends:
     base >=4 && <5,
@@ -62,6 +63,7 @@ library
     mtl >=2 && <3,
     process >=1.0 && <1.2,
     random >=1.0 && <1.1,
+    repa >=3.2 && <3.3,
     srcloc >=0.2 && <0.3,
     syb >=0.3 && <0.4,
     symbol >=0.1 && <0.2,
