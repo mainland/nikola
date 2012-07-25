@@ -6,12 +6,15 @@ import Prelude hiding (zipWith3)
 
 import Data.Array.Nikola.Backend.CUDA
 
-blackscholes :: Exp (Vector Float)
-             -> Exp (Vector Float)
-             -> Exp (Vector Float)
+import Data.Array.Repa
+import Data.Array.Repa.Repr.CUDA
+
+blackscholes :: Exp (Array CU DIM1 Float)
+             -> Exp (Array CU DIM1 Float)
+             -> Exp (Array CU DIM1 Float)
              -> Exp Float
              -> Exp Float
-             -> Exp (Vector Float)
+             -> Exp (Array CU DIM1 Float)
 blackscholes ss xs ts r v =
     zipWith3 (\s x t -> blackscholes' True s x t r v) ss xs ts
 

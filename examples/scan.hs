@@ -62,6 +62,9 @@ import Text.Printf
 import Data.Array.Nikola.Backend.CUDA
 import Data.Array.Nikola.Util
 
+import Data.Array.Repa
+import Data.Array.Repa.Repr.CUDA
+
 main :: IO ()
 main = withNewContext $ \_ -> do
     (cfg, _) <- parseArgs defaultConfig defaultOptions =<< System.Environment.getArgs
@@ -101,16 +104,16 @@ scanNikola flags = do
     scan' v
     fromCUDARep v
   where
-    scan' :: Vector Int32 -> IO ()
-    scan'  (Vector 0 _)  = return ()
-    scan'  xs            = do  sums <- bscan xs
-                               scan' sums
-                               badd xs sums
+    scan' :: Array CU DIM1 Int32 -> IO ()
+    scan'  xs | extent xs == (Z:.0) = return ()
+    scan'  xs                       = do  sums <- bscan xs
+                                          scan' sums
+                                          badd xs sums
 
-    bscan :: Vector Int32 -> IO (Vector Int32)
+    bscan :: Array CU DIM1 Int32 -> IO (Array CU DIM1 Int32)
     bscan = compile (blockedScanM (+) 0)
 
-    badd :: Vector Int32 -> Vector Int32 -> IO ()
+    badd :: Array CU DIM1 Int32 -> Array CU DIM1 Int32 -> IO ()
     badd = compile blockedAddM
 
 scanVector :: V.Vector Int32

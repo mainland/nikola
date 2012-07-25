@@ -44,9 +44,7 @@ module Data.Array.Nikola.Backend.CUDA.Target (
     toCUDARep,
     embeddedCUDAType,
     withCUDAArg,
-    returnCUDAResult,
-
-    Vector(..)
+    returnCUDAResult
   ) where
 
 import Control.Applicative
@@ -72,14 +70,6 @@ import Data.Array.Nikola.Language.Syntax
 
 import Data.Array.Repa
 import Data.Array.Repa.Repr.CUDA
-
--- | Vectors whose contents exist in GPU memory
-data Vector a = Vector {-# UNPACK #-} !Int
-                       {-# UNPACK #-} !(CU.DevicePtr (Rep a))
-  deriving (Eq, Ord, Typeable)
-
-instance Show (Vector a) where
-  showsPrec n (Vector _ p) = showsPrec n p
 
 -- | The CUDA target
 data CUDA
@@ -174,21 +164,21 @@ instance (Elt CUDA a, Storable a, Storable (Rep a))
     => Representable CUDA [a] where
     type CallCtx CUDA = Ex
 
-    type Rep [a] = Vector a
+    type Rep [a] = Array CU DIM1 (Rep a)
 
     toRep _ xs = do
         devPtr <- liftIO $ CU.mallocArray n
         allocaArray n $ \(ptr :: Ptr (Rep a)) -> do
             mapM toCUDARep xs >>= pokeArray ptr
             CU.pokeArray n ptr devPtr
-        return (Vector n devPtr)
+        return (ADevicePtr (Z:.n) n devPtr)
       where
         n :: Int
         n = length xs
 
-    fromRep _ (Vector n devPtr) = do
+    fromRep _ (ADevicePtr _ n devPtr) = do
         xs <- allocaArray n $ \(ptr :: Ptr (Rep a)) -> do
-              CU.peekArray n (CU.castDevPtr devPtr) ptr
+              CU.peekArray n devPtr ptr
               peekArray n ptr
         mapM fromCUDARep xs
 
@@ -196,7 +186,7 @@ instance (Elt CUDA a, Storable a, Storable (Rep a))
         vectorArgT (embeddedCUDAType (undefined :: a) n) n
 
     withArg _ xs act = do
-        Vector n devPtr <- liftIO $ toCUDARep xs
+        ADevicePtr _ n devPtr <- liftIO $ toCUDARep xs
         pushArg (ArrayArg [n] [] (CU.castDevPtr devPtr))
 
         result <- act
@@ -204,40 +194,15 @@ instance (Elt CUDA a, Storable a, Storable (Rep a))
         return result
 
     returnResult _ = do
-        count :: Int32         <- returnCUDAResult
-        ArrayAlloc _ _ devPtr  <- popAlloc
-        xs <- liftIO $ fromCUDARep (Vector (fromIntegral count)
-                                           (CU.castDevPtr devPtr))
+        count :: Int32        <- returnCUDAResult
+        let n :: Int          =  fromIntegral count
+        ArrayAlloc _ _ devPtr <- popAlloc
+        xs <- liftIO $ fromCUDARep (ADevicePtr (Z:.n) n (CU.castDevPtr devPtr))
         liftIO $ CU.free devPtr
         return xs
 
 instance (Elt CUDA a, Storable a, Storable (Rep a))
     => IsVector CUDA [] a where
-
-instance (Elt CUDA a, Storable a)
-    => Representable CUDA (Vector a) where
-    type CallCtx CUDA = Ex
-
-    type Rep (Vector a) = Vector a
-
-    fromRep _ = return
-
-    toRep _ = return
-
-    embeddedType _ _ n =
-        vectorArgT (embeddedCUDAType (undefined :: a) n) n
-
-    withArg _ (Vector n devPtr) act = do
-        pushArg (ArrayArg [n] [] (CU.castDevPtr devPtr))
-        act
-
-    returnResult _ = do
-        count :: Int32        <- returnCUDAResult
-        ArrayAlloc _ _ devPtr <- popAlloc
-        return $ Vector (fromIntegral count) (CU.castDevPtr devPtr)
-
-instance (Elt CUDA a, Storable a)
-    => IsVector CUDA Vector a where
 
 deriving instance Typeable CU
 deriving instance Typeable Z
@@ -257,47 +222,45 @@ instance (Elt CUDA a, Storable a)
     embeddedType _ _ n =
         vectorArgT (embeddedCUDAType (undefined :: a) n) n
 
-    withArg _ (ADevicePtr (Z:.n) _ devptr) act = do
-        pushArg (ArrayArg [n] [] (CU.castDevPtr devptr))
+    withArg _ (ADevicePtr _ n devPtr) act = do
+        pushArg (ArrayArg [n] [] (CU.castDevPtr devPtr))
         act
 
     returnResult _ = do
         count :: Int32        <- returnCUDAResult
+        let n :: Int          =  fromIntegral count
         ArrayAlloc _ _ devPtr <- popAlloc
-        return $ ADevicePtr (Z:.fromIntegral count)
-                            (fromIntegral count)
-                            (CU.castDevPtr devPtr)
+        return $ ADevicePtr (Z:.n) n (CU.castDevPtr devPtr)
 
 instance (Elt CUDA a, Storable a)
     => IsVector CUDA (Array CU DIM1) a where
 
-instance (Elt CUDA a, Storable a)
+instance (Elt CUDA a, Storable a, a ~ Rep a)
     => Representable CUDA (V.Vector a) where
     type CallCtx CUDA = Ex
 
-    type Rep (V.Vector a) = Vector a
+    type Rep (V.Vector a) = Array CU DIM1 a
 
     toRep _ v = do
         devPtr <- liftIO $ CU.mallocArray n
         liftIO $ V.unsafeWith v $ \ptr ->
                  CU.pokeArray n ptr devPtr
-        return (Vector n (CU.castDevPtr devPtr))
+        return $ ADevicePtr (Z:.n) n devPtr
       where
         n :: Int
         n = V.length v
 
-    fromRep _ (Vector n devPtr) = do
+    fromRep _ (ADevicePtr _ n devPtr) = do
         fptr <- mallocForeignPtrArray n
         withForeignPtr fptr $ \ptr ->
-            CU.peekArray n (CU.castDevPtr devPtr) ptr
+            CU.peekArray n devPtr ptr
         return $ V.unsafeFromForeignPtr fptr 0 n
 
     embeddedType _ _ n =
         vectorArgT (embeddedCUDAType (undefined :: a) n) n
 
     withArg _ v act = do
-        Vector n devPtr <- liftIO $ toCUDARep v
-
+        ADevicePtr _ n devPtr <- liftIO $ toCUDARep v
         pushArg (ArrayArg [n] [] (CU.castDevPtr devPtr))
 
         result <- act
@@ -306,13 +269,13 @@ instance (Elt CUDA a, Storable a)
 
     returnResult _ = do
         count :: Int32        <- returnCUDAResult
+        let n :: Int          =  fromIntegral count
         ArrayAlloc _ _ devPtr <- popAlloc
-        xs <- liftIO $ fromCUDARep (Vector (fromIntegral count)
-                                           (CU.castDevPtr devPtr))
+        xs <- liftIO $ fromCUDARep (ADevicePtr (Z:.n) n (CU.castDevPtr devPtr))
         liftIO $ CU.free devPtr
         return xs
 
-instance (Elt CUDA a, Storable a)
+instance (Elt CUDA a, Storable a, a ~ Rep a)
     => IsVector CUDA V.Vector a where
 
 #if defined(HMATRIX)

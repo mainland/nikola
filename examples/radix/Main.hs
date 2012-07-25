@@ -54,6 +54,8 @@ import Data.Int
 import qualified Data.Vector.Algorithms.Radix as R
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as M
+import Foreign.CUDA.Driver.Marshal
+import Foreign.Storable
 import Statistics.Function
 import Statistics.Sample
 import System.Environment
@@ -62,6 +64,9 @@ import Text.Printf
 
 import Data.Array.Nikola.Backend.CUDA
 import Data.Array.Nikola.Util
+
+import Data.Array.Repa hiding ((++))
+import Data.Array.Repa.Repr.CUDA
 
 main :: IO ()
 main = withNewContext $ \_ -> do
@@ -102,21 +107,26 @@ radixNikola xs = do
     radixM v
     fromCUDARep v
 
-radixM :: Vector Int32
+withNewCUDAArray :: Storable a => Int -> (Array CU DIM1 a -> IO b) -> IO b
+withNewCUDAArray n kont  =
+    allocaArray n $ \devptr -> do
+    kont (fromDevicePtr (Z:.n) devptr)
+
+radixM :: Array CU DIM1 Int32
        -> IO ()
-radixM xs@(Vector n _) =
-    unsafeWithNewVector n $ \bits -> do
+radixM xs@(ADevicePtr _ n _) =
+    withNewCUDAArray n $ \bits -> do
     forM_ [0..31] $ \bit -> do
         bitM (1 `shiftL` bit) xs bits
         splitM xs bits
 
-splitM :: Vector Int32
-       -> Vector Int32
+splitM :: Array CU DIM1 Int32
+       -> Array CU DIM1 Int32
        -> IO ()
-splitM a@(Vector n _) flags@(Vector _ _) =
-    unsafeWithNewVector n $ \(nflags :: Vector Int32) ->
-    unsafeWithNewVector n $ \(up :: Vector Int32) ->
-    unsafeWithNewVector n $ \(index :: Vector Int32) -> do
+splitM a@(ADevicePtr _ n _) flags =
+    withNewCUDAArray n $ \(nflags :: Array CU DIM1 Int32) ->
+    withNewCUDAArray n $ \(up :: Array CU DIM1 Int32) ->
+    withNewCUDAArray n $ \(index :: Array CU DIM1 Int32) -> do
     let down = nflags
     copyM flags up
     notM flags nflags
@@ -133,67 +143,65 @@ splitM a@(Vector n _) flags@(Vector _ _) =
     permuteIntM a index a
 
 bitM :: Int32
-     -> Vector Int32
-     -> Vector Int32
+     -> Array CU DIM1 Int32
+     -> Array CU DIM1 Int32
      -> IO ()
 bitM = compile (\b  -> mapM (\x -> ((x .&. b) ./=. 0) ? (1, 0)))
 
-permuteIntM :: Vector Int32
-            -> Vector Int32
-            -> Vector Int32
+permuteIntM :: Array CU DIM1 Int32
+            -> Array CU DIM1 Int32
+            -> Array CU DIM1 Int32
             -> IO ()
 permuteIntM = compile permuteM
 
-plusScanM :: Vector Int32
+plusScanM :: Array CU DIM1 Int32
           -> IO ()
 plusScanM xs = do
     scan' xs
   where
-    scan' :: Vector Int32 -> IO ()
-    scan'  (Vector 0 _)  = return ()
-    scan'  xs            = do  sums <- plusBlockedScanM xs
-                               scan' sums
-                               blockedSumM xs sums
-                               unsafeFreeVector sums
+    scan' :: Array CU DIM1 Int32 -> IO ()
+    scan'  xs | extent xs == (Z:.0) = return ()
+    scan'  xs                       = do  sums <- plusBlockedScanM xs
+                                          scan' sums
+                                          blockedSumM xs sums
 
-plusNacsM :: Vector Int32
+plusNacsM :: Array CU DIM1 Int32
           -> IO ()
 plusNacsM xs = do
     nacs' xs
   where
-    nacs' :: Vector Int32 -> IO ()
-    nacs'  (Vector 0 _)  = return ()
-    nacs'  xs            = do  sums <- plusBlockedNacsM xs
-                               nacs' sums
-                               blockedSumM xs sums
-                               unsafeFreeVector sums
+    nacs' :: Array CU DIM1 Int32 -> IO ()
+    nacs'  xs | extent xs == (Z:.0) = return ()
+    nacs'  xs                       = do  sums <- plusBlockedNacsM xs
+                                          nacs' sums
+                                          blockedSumM xs sums
 
-plusBlockedScanM :: Vector Int32 -> IO (Vector Int32)
+plusBlockedScanM :: Array CU DIM1 Int32 -> IO (Array CU DIM1 Int32)
 plusBlockedScanM = compile (blockedScanM (+) 0)
 
-plusBlockedNacsM :: Vector Int32 -> IO (Vector Int32)
+plusBlockedNacsM :: Array CU DIM1 Int32 -> IO (Array CU DIM1 Int32)
 plusBlockedNacsM = compile (blockedNacsM (+) 0)
 
-blockedSumM :: Vector Int32 -> Vector Int32 -> IO ()
+blockedSumM :: Array CU DIM1 Int32 -> Array CU DIM1 Int32 -> IO ()
 blockedSumM = compile blockedAddM
 
-copyM :: Vector Int32 -> Vector Int32 -> IO ()
+copyM :: Array CU DIM1 Int32 -> Array CU DIM1 Int32 -> IO ()
 copyM = compile (mapM id)
 
-notM :: Vector Int32 -> Vector Int32 -> IO ()
+notM :: Array CU DIM1 Int32 -> Array CU DIM1 Int32 -> IO ()
 notM = compile (mapM (\x -> (x .==. 0) ? (1, 0)))
 
-flipM :: Int32 -> Vector Int32 -> Vector Int32 -> IO ()
+flipM :: Int32 -> Array CU DIM1 Int32 -> Array CU DIM1 Int32 -> IO ()
 flipM = compile (\n -> mapM (\x -> n - 1 - x))
 
-chooseM :: Vector Int32
-        -> Vector Int32
-        -> Vector Int32
-        -> Vector Int32
+chooseM :: Array CU DIM1 Int32
+        -> Array CU DIM1 Int32
+        -> Array CU DIM1 Int32
+        -> Array CU DIM1 Int32
         -> IO ()
 chooseM = compile (zipWith3M (\ x y z -> (x ./=. 0) ? (y, z)))
 
-dbg :: String -> Vector Int32 -> IO ()
+dbg :: String -> Array CU DIM1 Int32 -> IO ()
 dbg msg xs = do
     xs' :: [Int32] <- fromCUDARep xs
     putStrLn $ msg ++ ": " ++ show xs'
