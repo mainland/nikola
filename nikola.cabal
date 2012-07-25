@@ -39,14 +39,14 @@ library
     Data.Array.Nikola.Backend.CUDA.Monad
     Data.Array.Nikola.Backend.CUDA.Nvcc
     Data.Array.Nikola.Backend.CUDA.Target
+    Data.Array.Nikola.Embed
     Data.Array.Nikola.Language.Check
+    Data.Array.Nikola.Language.Reify
+    Data.Array.Nikola.Language.Reify.Monad
     Data.Array.Nikola.Language.Smart
     Data.Array.Nikola.Language.Syntax
     Data.Array.Nikola.Pretty
     Data.Array.Nikola.Quote
-    Data.Array.Nikola.Reify
-    Data.Array.Nikola.Reify.Monad
-    Data.Array.Nikola.Representable
     Data.Array.Nikola.Util
 
   build-depends:

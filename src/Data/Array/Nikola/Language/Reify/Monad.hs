@@ -34,7 +34,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Data.Array.Nikola.Reify.Monad (
+module Data.Array.Nikola.Language.Reify.Monad (
     ROpts(..),
     defaultROpts,
     REnv(..),

@@ -51,8 +51,7 @@ import Prelude hiding (map, mapM, zipWith, zipWith3)
 
 import Data.Int
 
-import Data.Array.Nikola.Reify
-import Data.Array.Nikola.Representable
+import Data.Array.Nikola.Embed
 import Data.Array.Nikola.Language.Syntax
 
 unop :: Unop -> Exp t a -> Exp t b

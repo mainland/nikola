@@ -31,8 +31,6 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module Data.Array.Nikola.Language.Syntax (
-    Exp(..),
-
     ParamIdx(..),
     N(..),
     nmin,
@@ -67,17 +65,7 @@ import qualified Data.Set as Set
 import Text.PrettyPrint.Mainland
 
 import Data.Array.Nikola.Pretty
-import {-# SOURCE #-} Data.Array.Nikola.Reify.Monad
-
--- | A wrapping of the core 'DExp' type that provides a phantom type parameter.
-newtype Exp t a = E { unE :: DExp }
-  deriving (Show, Typeable)
-
-instance Eq (Exp t a) where
-    _ == _ = error "Cannot compare values of type Exp a"
-
-instance Ord (Exp t a) where
-    _ `compare` _ = error "Cannot compare values of type Exp a"
+import {-# SOURCE #-} Data.Array.Nikola.Language.Reify.Monad
 
 -- |Function parameter index.
 newtype ParamIdx = ParamIdx { unParamIdx :: Int }

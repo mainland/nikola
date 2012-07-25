@@ -32,22 +32,16 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Data.Array.Nikola.Reify (
+module Data.Array.Nikola.Language.Reify (
     ROpts(..),
     defaultROpts,
 
-    Reifiable,
-    reify,
-    reifyEx,
-
-    ReifiableFun,
-    reifyLam,
-
-    VApply,
-    vapply
+    reifyE,
+    cacheDExp,
+    reifyBareLamE,
+    shiftLamE
   ) where
 
-import Control.Applicative
 import Control.Monad.State
 import Data.Dynamic
 import System.Mem.StableName
@@ -55,8 +49,7 @@ import Text.PrettyPrint.Mainland
 
 import Data.Array.Nikola.Language.Check
 import Data.Array.Nikola.Language.Syntax
-import Data.Array.Nikola.Representable
-import Data.Array.Nikola.Reify.Monad
+import Data.Array.Nikola.Language.Reify.Monad
 
 --prettyIO :: (MonadIO m) => Doc -> m ()
 --prettyIO = liftIO . putStrLn . pretty 80
@@ -136,12 +129,12 @@ reifyE e kont = do
         kont $ IfteE e1' e2' e3'
 
     go (MapE f e) kont = do
-        f' <- reifyBareLam f
+        f' <- reifyBareLamE f
         reifyE e $ \e' -> do
         kont $ MapE f' e'
 
     go (MapME f xs ys) kont = do
-        f' <- reifyBareLam f
+        f' <- reifyBareLamE f
         reifyE xs $ \xs' -> do
         reifyE ys $ \ys' -> do
         kont $ MapME f' xs' ys'
@@ -158,20 +151,20 @@ reifyE e kont = do
         kont $ PermuteME xs' is' ys'
 
     go (ZipWithE f e1 e2) kont = do
-        f' <- reifyBareLam f
+        f' <- reifyBareLamE f
         reifyE e1 $ \e1' -> do
         reifyE e2 $ \e2' -> do
         kont $ ZipWithE f' e1' e2'
 
     go (ZipWith3E f e1 e2 e3) kont = do
-        f' <- reifyBareLam  f
+        f' <- reifyBareLamE  f
         reifyE e1 $ \e1' -> do
         reifyE e2 $ \e2' -> do
         reifyE e3 $ \e3' -> do
         kont $ ZipWith3E f' e1' e2' e3'
 
     go (ZipWith3ME f e1 e2 e3 e4) kont = do
-        f' <- reifyBareLam f
+        f' <- reifyBareLamE f
         reifyE e1 $ \e1' -> do
         reifyE e2 $ \e2' -> do
         reifyE e3 $ \e3' -> do
@@ -179,19 +172,19 @@ reifyE e kont = do
         kont $ ZipWith3ME f' e1' e2' e3' e4'
 
     go (ScanE f z e) kont = do
-        f' <- reifyBareLam f
+        f' <- reifyBareLamE f
         reifyE z $ \z' -> do
         reifyE e $ \e' -> do
         kont $ ScanE f' z' e'
 
     go (BlockedScanME f z e) kont = do
-        f' <- reifyBareLam f
+        f' <- reifyBareLamE f
         reifyE z $ \z' -> do
         reifyE e $ \e' -> do
         kont $ BlockedScanME f' z' e'
 
     go (BlockedNacsME f z e) kont = do
-        f' <- reifyBareLam f
+        f' <- reifyBareLamE f
         reifyE z $ \z' -> do
         reifyE e $ \e' -> do
         kont $ BlockedNacsME f' z' e'
@@ -235,38 +228,11 @@ cacheDExp x comp kont = do
                 kont (VarE v)
         return (LetE v tau e body)
 
--- | The @Reifiable@ class tells us what types can be reified to a @DExp@.
-class Reifiable a where
-    reify :: a -> IO DExp
-    reify = reifyEx defaultROpts
-
-    reifyEx :: ROpts -> a -> IO DExp
-
--- @DExp@'s and @Exp@'s are reified by running them through @reifyE@.
-instance Reifiable DExp where
-    reifyEx ropts e = runR ropts (reifyE e return)
-
-instance Reifiable (Exp t a) where
-    reifyEx ropts = reifyEx ropts . unE
-
--- Functions that are instances of @ReifiableFun@ are reified by calling
--- @reifyFun@.
-instance ReifiableFun a b => Reifiable (a -> b) where
-    reifyEx ropts f = runR ropts (reifyFun f >>= reifyBareLam)
-
-reifyLam :: ReifiableFun a b
-         => (a -> b)
-         -> (DExp -> R DExp)
-         -> R DExp
-reifyLam f kont = do
-    e <- reifyFun f
-    reifyE e kont
-
 -- Reification let-binds all non-"simple" intermediate expressions, including
 -- lambdas, but when we reify a function we /want/ the lambda. Therefore we
 -- unwrap the let binding returned by @reifyE@.
-reifyBareLam :: DExp -> R DExp
-reifyBareLam f = do
+reifyBareLamE :: DExp -> R DExp
+reifyBareLamE f = do
     e <- reifyE f return
     case e of
       LamE {} -> return e
@@ -315,60 +281,3 @@ shiftLamE v tau (LamE vtaus e) =
 
 shiftLamE v tau e =
     LamE [(v, tau)] e
-
--- | @reifyFun f kont@ reifies the function @f@ and passes the parameters and
--- body of the reified function to @kont@
-class (Typeable a, Typeable b) => ReifiableFun a b where
-    reifyFun :: (a -> b) -> R DExp
-
--- The next two instances represent the base cases for function
--- reification. They reify a function by gensym'ing a fresh variable name,
--- passing it to the function, and then reifying the result by calling @reifyE@.
-instance (Representable t a,
-          Representable t b) => ReifiableFun (Exp t a) (Exp t b) where
-    reifyFun f = do
-        v          <- gensym "x"
-        let fOfX   =  (unE . f . E) (VarE v)
-        let tau    =  embeddedType (undefined :: t) (undefined :: a) (ParamIdx 0)
-        extendVars [(v, tau)] $ do
-        return $ shiftLamE v tau fOfX
-
-instance (Representable t a,
-          Representable t b) => ReifiableFun (Exp t a) (IO (Exp t b)) where
-    reifyFun f = do
-        v          <- gensym "x"
-        fOfX       <- liftIO $ unE <$> (f . E) (VarE v)
-        let tau    =  embeddedType (undefined :: t) (undefined :: a) (ParamIdx 0)
-        extendVars [(v, tau)] $ do
-        return $ shiftLamE v tau fOfX
-
--- This is the inductive case. As with the base cases, we gensym a fresh
--- variable and pass it to @f@ to yield @g@. We reify @g@---itself a
--- function---by calling @reifyFun@.
-instance (Representable t a,
-          ReifiableFun b c) => ReifiableFun (Exp t a) (b -> c) where
-    reifyFun f = do
-        v       <- gensym "x"
-        let tau =  embeddedType (undefined :: t) (undefined :: a) (ParamIdx 0)
-        let g   =  f (E (VarE v))
-        extendVars [(v, tau)] $ do
-        shiftLamE v tau <$> reifyFun g
-
--- | @vapply@ is a bit tricky... We first build a @DelayedE@ AST node containing
--- an action that reifies the lambda. Then we wrap the result in enough
--- (Haskell) lambdas and (Nikola) @AppE@ constructors to turn in back into a
--- Haskell function (at the original type) whose body is a Nikola application
--- term.
-class (ReifiableFun a b) => VApply a b where
-    vapply :: (a -> b) -> a -> b
-    vapply f = vapplyk (DelayedE (cacheDExp f (reifyLam f))) []
-
-    vapplyk :: DExp -> [DExp] -> a -> b
-
-instance (Representable t a,
-          Representable t b) => VApply (Exp t a) (Exp t b) where
-    vapplyk f es = \e -> E $ AppE f (reverse (unE e : es))
-
-instance (Representable t a,
-          VApply b c) => VApply (Exp t a) (b -> c) where
-    vapplyk f es = \e -> vapplyk f (unE e : es)

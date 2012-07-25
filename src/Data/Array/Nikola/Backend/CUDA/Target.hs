@@ -70,8 +70,8 @@ import Foreign.Ptr
 import Foreign.Storable
 
 import Data.Array.Nikola.Backend.CUDA.Exec
+import Data.Array.Nikola.Embed
 import Data.Array.Nikola.Language.Syntax
-import Data.Array.Nikola.Representable
 
 -- | Vectors whose contents exist in GPU memory
 data Vector a = Vector {-# UNPACK #-} !Int

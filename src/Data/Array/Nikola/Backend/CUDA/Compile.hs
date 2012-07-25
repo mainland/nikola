@@ -63,10 +63,10 @@ import Data.Array.Nikola.Backend.CUDA.CodeGen
 import Data.Array.Nikola.Backend.CUDA.Exec
 import qualified Data.Array.Nikola.Backend.CUDA.Nvcc as Nvcc
 import Data.Array.Nikola.Backend.CUDA.Target
+import Data.Array.Nikola.Embed
+import Data.Array.Nikola.Language.Reify
+import Data.Array.Nikola.Language.Syntax (Tau, ExecConfig)
 import Data.Array.Nikola.Quote
-import Data.Array.Nikola.Reify
-import Data.Array.Nikola.Representable
-import Data.Array.Nikola.Language.Syntax (Exp, Tau, ExecConfig)
 
 withModuleFromByteString :: B.ByteString -> (CU.Module -> IO a) -> IO a
 withModuleFromByteString bs =

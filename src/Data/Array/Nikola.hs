@@ -26,13 +26,9 @@
 -- SUCH DAMAGE.
 
 module Data.Array.Nikola (
-    module Data.Array.Nikola.Language.Smart,
-    module Data.Array.Nikola.Language.Syntax,
-    module Data.Array.Nikola.Reify,
-    module Data.Array.Nikola.Representable
+    module Data.Array.Nikola.Embed,
+    module Data.Array.Nikola.Language.Smart
  ) where
 
+import Data.Array.Nikola.Embed
 import Data.Array.Nikola.Language.Smart
-import Data.Array.Nikola.Language.Syntax
-import Data.Array.Nikola.Reify
-import Data.Array.Nikola.Representable

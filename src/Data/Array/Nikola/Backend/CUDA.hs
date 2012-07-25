@@ -29,14 +29,20 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Data.Array.Nikola.Backend.CUDA (
-    module Data.Array.Nikola.Backend.CUDA.Compile,
     module Data.Array.Nikola.Backend.CUDA.Target,
+    module Data.Array.Nikola.Embed,
     module Data.Array.Nikola.Language.Smart,
     module Data.Array.Nikola.Language.Syntax,
-    module Data.Array.Nikola.Representable,
+
+    ROpts(..),
+    compile,
+    compileIO,
+    compileTH,
+    compileTHEx,
+    withCompiledFunction,
+    withCompiledCFun,
 
     Exp,
-    vapply,
     withNewContext
   ) where
 
@@ -47,13 +53,13 @@ import qualified Foreign.CUDA.Driver as CU
 
 import Data.Array.Nikola.Backend.CUDA.Compile
 import Data.Array.Nikola.Backend.CUDA.Target
+import qualified Data.Array.Nikola.Embed as Embed
+import Data.Array.Nikola.Embed hiding (Exp)
+import Data.Array.Nikola.Language.Reify
 import Data.Array.Nikola.Language.Smart
-import Data.Array.Nikola.Language.Syntax hiding (Exp)
-import qualified Data.Array.Nikola.Language.Syntax as S
-import Data.Array.Nikola.Reify (vapply)
-import Data.Array.Nikola.Representable
+import Data.Array.Nikola.Language.Syntax
 
-type Exp a = S.Exp CUDA a
+type Exp a = Embed.Exp CUDA a
 
 withNewContext :: (CU.Context -> IO a) -> IO a
 withNewContext kont = do

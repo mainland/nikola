@@ -37,7 +37,6 @@ import Text.PrettyPrint.Mainland
 
 import Data.Array.Nikola.Backend.CUDA
 import Data.Array.Nikola.Backend.CUDA.CodeGen
-import Data.Array.Nikola.Reify
 
 main :: IO ()
 main = withNewContext $ \_ -> do
