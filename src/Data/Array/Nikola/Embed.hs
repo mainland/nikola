@@ -57,7 +57,6 @@ module Data.Array.Nikola.Embed (
 import Control.Applicative
 import Control.Monad.Trans (liftIO)
 import Data.Typeable
-import Foreign.Storable
 
 import Data.Array.Nikola.Language.Check
 import Data.Array.Nikola.Language.Reify
@@ -65,7 +64,7 @@ import Data.Array.Nikola.Language.Reify.Monad
 import Data.Array.Nikola.Language.Syntax
 
 -- | 'Representable t a' means that 'a' can be represented on target 't'.
-class (Typeable t, Typeable a, Storable (Rep a)) => Representable t a where
+class (Typeable t, Typeable a) => Representable t a where
     -- | 'CallCtx t' is a monad for constructing the call context for the target
     -- 't'.
     type CallCtx t :: * -> *

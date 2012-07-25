@@ -81,12 +81,6 @@ data Vector a = Vector {-# UNPACK #-} !Int
 instance Show (Vector a) where
   showsPrec n (Vector _ p) = showsPrec n p
 
-instance Storable (Vector a) where
-  sizeOf _            = sizeOf    (undefined :: Ptr a)
-  alignment _         = alignment (undefined :: Ptr a)
-  peek p              = Vector 1 `fmap` peek (castPtr p)
-  poke p (Vector _ d) = poke (castPtr p) (CU.useDevicePtr d)
-
 unsafeWithNewVector :: Storable (Rep a)
                     => Int
                     -> (Vector a -> IO b)
