@@ -1,17 +1,15 @@
-* Configuring on Linux
+* Configuring on Linux, Ubuntu 12.04 LTS x86_64, CUDA 4.2 SDK
 
-Here is how I install and run Nikola on Ubuntu 12.04. I have CUDA 4.2 installed
-at /usr/local/cuda/4.2/cuda (and the 4.2 SDK at
+I have CUDA 4.2 installed at /usr/local/cuda/4.2/cuda (and the 4.2 SDK at
 /usr/local/cuda/4.2/sdk). ```nvcc``` is not happy with GCC 4.6, which is the
-default on Ubuntu 12.04, so I have also installed the gcc-4.5 and g++-4.5
-packages (yes, you need g++-4.5). Also, I am running an x86_64 system. I
-configure Nikola like this:
+default on Ubuntu 12.04, so youy must install the gcc-4.5 and g++-4.5 packages
+(yes, you need g++-4.5). I configure Nikola like this:
 
 ```
 cabal configure \
       --disable-library-profiling \
       --enable-tests \
-      --flags="hmatrix tests examples benchmarks" \
+      --flags="examples" \
       --configure-option="--with-nvcc=/usr/local/cuda/4.2/cuda/bin/nvcc" \
       --configure-option="--with-nvcc-cc=/usr/bin/gcc-4.5"
 ```

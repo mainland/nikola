@@ -1,11 +1,12 @@
 name:           nikola
-version:        0.2.1
+version:        0.9
 cabal-version:  >= 1.10
 license:        BSD3
 license-file:   LICENSE
-copyright:      (c) 2006-2012 Harvard University
-author:         Geoffrey Mainland <mainland@eecs.harvard.edu>
-maintainer:     mainland@eecs.harvard.edu
+copyright:      (c) 2009-2010 Harvard University
+		(c) 2011-2012 Geoffrey Mainland
+author:         Geoffrey Mainland <mainland@apeiron.net>
+maintainer:     mainland@apeiron.net
 stability:      alpha
 homepage:       http://www.eecs.harvard.edu/~mainland/projects/nikola
 category:       Language
@@ -13,48 +14,71 @@ synopsis:       Embedded language for GPU computation
 
 build-type:     Custom
 
-flag benchmarks
-  description: Build benchmark programs.
-  default:     False
-
-flag tests
-  description: Build test programs.
-  default:     False
+extra-source-files:
+  internal/GenUnboxTuple.hs
+  internal/unbox-tuple-instances
 
 flag examples
   description: Build example programs.
   default:     False
 
-flag hmatrix
-  description: Build classes necessary for Hmatrix itegration.
-  default:     False
-
 library
   exposed-modules:
-    Data.Array.Nikola
+    Data.Array.Nikola.Array
+    Data.Array.Nikola.Backend.C.Codegen
+    Data.Array.Nikola.Backend.C.Monad
+    Data.Array.Nikola.Backend.C.Quoters
     Data.Array.Nikola.Backend.CUDA
-    Data.Array.Nikola.Backend.CUDA.CodeGen
-    Data.Array.Nikola.Backend.CUDA.Compile
-    Data.Array.Nikola.Backend.CUDA.Exec
-    Data.Array.Nikola.Backend.CUDA.Monad
+    Data.Array.Nikola.Backend.CUDA.Haskell
+    Data.Array.Nikola.Backend.CUDA.Haskell.Compile
+    Data.Array.Nikola.Backend.CUDA.Haskell.Ex
     Data.Array.Nikola.Backend.CUDA.Nvcc
-    Data.Array.Nikola.Backend.CUDA.Target
-    Data.Array.Nikola.Embed
+    Data.Array.Nikola.Backend.CUDA.TH
+    Data.Array.Nikola.Backend.CUDA.TH.Compile
+    Data.Array.Nikola.Backend.CUDA.TH.Util
+    Data.Array.Nikola.Backend.Flags
+    Data.Array.Nikola.Backend.Main
+    Data.Array.Nikola.Exp
     Data.Array.Nikola.Language.Check
+    Data.Array.Nikola.Language.Generic
+    Data.Array.Nikola.Language.Monad
+    Data.Array.Nikola.Language.Optimize
     Data.Array.Nikola.Language.Reify
-    Data.Array.Nikola.Language.Reify.Monad
-    Data.Array.Nikola.Language.Smart
+    Data.Array.Nikola.Language.Sharing
     Data.Array.Nikola.Language.Syntax
-    Data.Array.Nikola.Pretty
-    Data.Array.Nikola.Quote
-    Data.Array.Nikola.Util
-    Data.Array.Repa.Repr.CUDA
+    Data.Array.Nikola.Operators.IndexSpace
+    Data.Array.Nikola.Operators.Mapping
+    Data.Array.Nikola.Operators.Reduction
+    Data.Array.Nikola.Program
+    Data.Array.Nikola.Repr.Delayed
+    Data.Array.Nikola.Repr.Manifest
+    Data.Array.Nikola.Repr.Push
+    Data.Array.Nikola.Shape
+    Data.Array.Nikola.Util.Bool
+    Data.Array.Nikola.Util.Generic
+    Data.Array.Nikola.Util.Pretty
+    Data.Array.Nikola.Util.Quote
+    Data.Array.Nikola.Util.Random
+    Data.Array.Repa.Repr.CUDA.ForeignPtr
+    Data.Array.Repa.Repr.CUDA.UnboxedForeign
+    Data.Array.Repa.Repr.UnboxedForeign
+    Data.Vector.CUDA.Storable
+    Data.Vector.CUDA.Storable.Internal
+    Data.Vector.CUDA.Storable.Mutable
+    Data.Vector.CUDA.UnboxedForeign
+    Data.Vector.CUDA.UnboxedForeign.Base
+    Data.Vector.CUDA.UnboxedForeign.Mutable
+    Data.Vector.UnboxedForeign
+    Data.Vector.UnboxedForeign.Base
+    Data.Vector.UnboxedForeign.Mutable
+    Foreign.CUDA.ForeignPtr
+    Foreign.CUDA.Storable
 
   build-depends:
     base >=4 && <5,
     bytestring >=0.9 && <0.10,
     containers >=0.4 && <0.5,
-    cuda ==0.4.*,
+    cuda ==0.4.1.2,
     exception-mtl >=0.3 && <0.4,
     exception-transformers >=0.3 && <0.4,
     language-c-quote >=0.4 && <0.5,
@@ -62,12 +86,14 @@ library
     mersenne-random-pure64 >=0.2 && <0.3,
     mtl >=2 && <3,
     process >=1.0 && <1.2,
+    primitive >=0.4 && <0.5,
     random >=1.0 && <1.1,
     repa >=3.2 && <3.3,
     srcloc >=0.2 && <0.3,
     syb >=0.3 && <0.4,
     symbol >=0.1 && <0.2,
     text >=0.11 && <0.12,
+    transformers >=0.2 && <0.4,
     vector >=0.9 && <0.10
 
   default-language: Haskell98
@@ -80,37 +106,8 @@ library
     build-depends:
       template-haskell >=2.7 && <2.8
 
-  if flag(hmatrix)
-    build-depends:
-      hmatrix >=0.14 && <0.15
-
-    cpp-options: -DHMATRIX
-
   hs-source-dirs:  src
-  include-dirs:	   include
-
-executable blackscholes
-  build-depends:
-    base >=4 && <5,
-    criterion >=0.6 && <0.7,
-    language-c-quote >=0.4 && <0.5,
-    mtl >=2 && <3,
-    nikola >=0.2 && <0.3,
-    mainland-pretty >=0.2.1 && <0.3,
-    repa >=3.2 && <3.3,
-    srcloc >=0.2 && <0.3,
-    statistics >=0.10 && <0.11,
-    symbol >=0.1 && <0.2,
-    vector >=0.9 && <0.10
-
-  main-is: 	    Main.hs
-  hs-source-dirs:   examples/blackscholes
-  default-language: Haskell98
-
-  if flag(examples)
-    buildable: True
-  else
-    buildable: False
+  include-dirs:	   include, internal
 
 executable blackscholes-compile
   build-depends:
@@ -118,7 +115,7 @@ executable blackscholes-compile
     criterion >=0.6 && <0.7,
     language-c-quote >=0.4 && <0.5,
     mtl >=2 && <3,
-    nikola >=0.2 && <0.3,
+    nikola >=0.9 && <0.10,
     mainland-pretty >=0.2.1 && <0.3,
     repa >=3.2 && <3.3,
     statistics >=0.10 && <0.11,
@@ -133,20 +130,20 @@ executable blackscholes-compile
   else
     buildable: False
 
-executable radix
+executable append-delayed
   build-depends:
     base >=4 && <5,
     criterion >=0.6 && <0.7,
-    cuda ==0.4.*,
+    cuda ==0.4.1.2,
     mtl >=2 && <3,
-    nikola >=0.2 && <0.3,
+    nikola >=0.9 && <0.10,
     repa >=3.2 && <3.3,
     statistics >=0.10 && <0.11,
     vector >=0.9 && <0.10,
     vector-algorithms >=0.5 && <0.6
 
   main-is: 	    Main.hs
-  hs-source-dirs:   examples/radix
+  hs-source-dirs:   examples/append-delayed
   default-language: Haskell98
 
   if flag(examples)
@@ -154,32 +151,23 @@ executable radix
   else
     buildable: False
 
-executable search
+executable append-push
   build-depends:
     base >=4 && <5,
-    containers >=0.4 && <0.5,
-    cuda ==0.4.*,
-    language-c-quote >=0.4 && <0.5,
-    logict >=0.5 && <0.6,
-    mainland-pretty >=0.2.1 && <0.3,
+    criterion >=0.6 && <0.7,
+    cuda ==0.4.1.2,
     mtl >=2 && <3,
-    nikola >=0.2 && <0.3,
-    srcloc >=0.2 && <0.3,
+    nikola >=0.9 && <0.10,
+    repa >=3.2 && <3.3,
     statistics >=0.10 && <0.11,
-    symbol >=0.1 && <0.2,
-    uniplate >=1.5 && <1.7,
-    vector >=0.9 && <0.10
+    vector >=0.9 && <0.10,
+    vector-algorithms >=0.5 && <0.6
 
   main-is: 	    Main.hs
-  hs-source-dirs:   examples/search
+  hs-source-dirs:   examples/append-push
   default-language: Haskell98
 
-  ghc-options: -W -Werror
-
-  if flag(hmatrix) && flag(examples)
-    build-depends:
-      hmatrix >=0.14 && <0.15
-
+  if flag(examples)
     buildable: True
   else
     buildable: False
@@ -193,8 +181,10 @@ test-suite unit
   build-depends:
     HUnit >=1.2 && <1.3,
     base >=4 && <5,
+    cuda ==0.4.1.2,
     mtl >=2 && <3,
-    nikola >=0.2 && <0.3,
+    nikola >=0.9 && <0.10,
+    repa >=3.2 && <3.3,
     vector >=0.9 && <0.10
 
 source-repository head

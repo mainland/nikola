@@ -1,74 +1,145 @@
--- Copyright (c) 2009-2012
---         The President and Fellows of Harvard College.
---
--- Redistribution and use in source and binary forms, with or without
--- modification, are permitted provided that the following conditions
--- are met:
--- 1. Redistributions of source code must retain the above copyright
---    notice, this list of conditions and the following disclaimer.
--- 2. Redistributions in binary form must reproduce the above copyright
---    notice, this list of conditions and the following disclaimer in the
---    documentation and/or other materials provided with the distribution.
--- 3. Neither the name of the University nor the names of its contributors
---    may be used to endorse or promote products derived from this software
---    without specific prior written permission.
---
--- THIS SOFTWARE IS PROVIDED BY THE UNIVERSITY AND CONTRIBUTORS ``AS IS'' AND
--- ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
--- IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
--- ARE DISCLAIMED.  IN NO EVENT SHALL THE UNIVERSITY OR CONTRIBUTORS BE LIABLE
--- FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
--- DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
--- OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
--- HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
--- LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
--- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
--- SUCH DAMAGE.
-
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+
+-- |
+-- Module      : Data.Array.Nikola.Backend.CUDA
+-- Copyright   : (c) Geoffrey Mainland 2012
+-- License     : BSD-style
+--
+-- Maintainer  : Geoffrey Mainland <mainland@apeiron.net>
+-- Stability   : experimental
+-- Portability : non-portable
 
 module Data.Array.Nikola.Backend.CUDA (
-    module Data.Array.Nikola.Backend.CUDA.Target,
-    module Data.Array.Nikola.Embed,
-    module Data.Array.Nikola.Language.Smart,
-    module Data.Array.Nikola.Language.Syntax,
+    module Data.Array.Nikola.Backend.C.Codegen,
 
-    ROpts(..),
-    compile,
-    compileIO,
-    compileTH,
-    compileTHEx,
-    withCompiledFunction,
-    withCompiledCFun,
+    module Data.Array.Nikola.Array,
+    module Data.Array.Nikola.Exp,
+    module Data.Array.Nikola.Operators.IndexSpace,
+    module Data.Array.Nikola.Operators.Mapping,
+    -- module Data.Array.Nikola.Operators.Reduction,
+    module Data.Array.Nikola.Program,
+    module Data.Array.Nikola.Repr.Delayed,
+    module Data.Array.Nikola.Repr.Manifest,
+    module Data.Array.Nikola.Repr.Push,
+
+    currentContext,
+
+    CUDA,
+
+    sizeOfT,
 
     Exp,
-    withNewContext
+
+    DIM0,
+    DIM1,
+    DIM2,
+    Sh.Shape(..),
+    Sh.Z(..),
+    (Sh.:.)(..),
+    Sh.Rsh,
+
+    defaultMain,
+
+    vapply
   ) where
 
+import qualified Prelude as P
 import Prelude hiding (catch)
 
 import Control.Exception
+import Data.Int
+import Data.Typeable (Typeable)
+import Data.Word
 import qualified Foreign.CUDA.Driver as CU
+import Foreign.Storable (sizeOf)
+import System.IO.Unsafe (unsafePerformIO)
 
-import Data.Array.Nikola.Backend.CUDA.Compile
-import Data.Array.Nikola.Backend.CUDA.Target
-import qualified Data.Array.Nikola.Embed as Embed
-import Data.Array.Nikola.Embed hiding (Exp)
+import Data.Array.Nikola.Backend.Main
+import Data.Array.Nikola.Backend.C.Codegen
+
+import Data.Array.Nikola.Array
+import qualified Data.Array.Nikola.Exp as E
+import Data.Array.Nikola.Exp hiding (Exp)
+import Data.Array.Nikola.Operators.IndexSpace
+import Data.Array.Nikola.Operators.Mapping
+--import Data.Array.Nikola.Operators.Reduction
+import Data.Array.Nikola.Program
+import Data.Array.Nikola.Repr.Delayed
+import Data.Array.Nikola.Repr.Manifest
+import Data.Array.Nikola.Repr.Push
+import qualified Data.Array.Nikola.Shape as Sh
+
 import Data.Array.Nikola.Language.Reify
-import Data.Array.Nikola.Language.Smart
-import Data.Array.Nikola.Language.Syntax
+import Data.Array.Nikola.Language.Syntax hiding (Exp)
 
-type Exp a = Embed.Exp CUDA a
-
-withNewContext :: (CU.Context -> IO a) -> IO a
-withNewContext kont = do
+currentContext :: CU.Context
+currentContext = unsafePerformIO $ do
     CU.initialise []
     ndevs <- CU.count
-    bracket (ctxCreate 0 ndevs) CU.destroy kont
+    ctxCreate 0 ndevs
   where
     ctxCreate :: Int -> Int -> IO CU.Context
     ctxCreate i n | i >= n = CU.cudaError "Can't create a context"
     ctxCreate i n =
         (CU.device i >>= \dev -> CU.create dev [])
       `catch` \(_ :: CU.CUDAException) -> ctxCreate (i+1) n
+
+-- | The CUDA target
+data CUDA
+  deriving (Typeable)
+
+instance IsElem (E.Exp CUDA Int32) where
+    type Rep (E.Exp CUDA Int32) = Int32
+
+    typeOf _ = Int32T
+
+    indexElem arr ix = E $ indexScalar (unE arr) (unE ix)
+
+    writeElem arr ix x = writeScalar (unE arr) (unE ix) (unE x)
+
+instance IsElem (Exp Float) where
+    type Rep (Exp Float) = Float
+
+    typeOf _ = FloatT
+
+    indexElem arr ix = E $ indexScalar (unE arr) (unE ix)
+
+    writeElem arr ix x = writeScalar (unE arr) (unE ix) (unE x)
+
+instance IsElem (Exp Double) where
+    type Rep (Exp Double) = Double
+
+    typeOf _ = DoubleT
+
+    indexElem arr ix = E $ indexScalar (unE arr) (unE ix)
+
+    writeElem arr ix x = writeScalar (unE arr) (unE ix) (unE x)
+
+type Exp a = E.Exp CUDA a
+
+sizeOfT :: ScalarType -> Int
+sizeOfT UnitT   = 0
+sizeOfT BoolT   = sizeOf (undefined :: Word8)
+sizeOfT Int8T   = sizeOf (undefined :: Int8)
+sizeOfT Int16T  = sizeOf (undefined :: Int16)
+sizeOfT Int32T  = sizeOf (undefined :: Int32)
+sizeOfT Int64T  = sizeOf (undefined :: Int64)
+sizeOfT Word8T  = sizeOf (undefined :: Word8)
+sizeOfT Word16T = sizeOf (undefined :: Word16)
+sizeOfT Word32T = sizeOf (undefined :: Word32)
+sizeOfT Word64T = sizeOf (undefined :: Word64)
+sizeOfT FloatT  = sizeOf (undefined :: Float)
+sizeOfT DoubleT = sizeOf (undefined :: Double)
+sizeOfT tau     = error ("Cannot determine size of type " P.++ show tau)
+
+-- Common dimensions
+type DIM0 = Sh.DIM0 CUDA
+type DIM1 = Sh.DIM1 CUDA
+type DIM2 = Sh.DIM2 CUDA

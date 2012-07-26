@@ -1,0 +1,22 @@
+HAPPY=happy 
+HAPPY_ARGS=-agci
+
+ALEX=alex 
+ALEX_ARGS=-gi
+
+%.hs : %.y
+	$(HAPPY) $(HAPPY_FLAGS) -o $@ $<
+
+%.hs : %.x
+	$(ALEX) $(ALEX_FLAGS) -o $@ $<
+
+GHC_FLAGS += \
+	-package array \
+	-package haskell-src-meta
+
+GHC_FLAGS += -i$(HOME)/projects/language-c-quote
+
+SOURCE += \
+	$(shell find $(HOME)/projects/language-c-quote -type f) \
+	$(HOME)/projects/language-c-quote/Language/C/Parser/Parser.y \
+	$(HOME)/projects/language-c-quote/Language/C/Parser/Lexer.x

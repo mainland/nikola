@@ -1,55 +1,61 @@
--- Copyright (c) 2010
---         The President and Fellows of Harvard College.
---
--- Redistribution and use in source and binary forms, with or without
--- modification, are permitted provided that the following conditions
--- are met:
--- 1. Redistributions of source code must retain the above copyright
---    notice, this list of conditions and the following disclaimer.
--- 2. Redistributions in binary form must reproduce the above copyright
---    notice, this list of conditions and the following disclaimer in the
---    documentation and/or other materials provided with the distribution.
--- 3. Neither the name of the University nor the names of its contributors
---    may be used to endorse or promote products derived from this software
---    without specific prior written permission.
-
--- THIS SOFTWARE IS PROVIDED BY THE UNIVERSITY AND CONTRIBUTORS ``AS IS'' AND
--- ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
--- IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
--- ARE DISCLAIMED.  IN NO EVENT SHALL THE UNIVERSITY OR CONTRIBUTORS BE LIABLE
--- FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
--- DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
--- OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
--- HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
--- LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
--- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
--- SUCH DAMAGE.
-
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Main where
 
-import Control.Monad.Trans (liftIO)
-import Text.PrettyPrint.Mainland
+import Prelude hiding ((++), map, replicate, reverse, zipWith3)
 
-import Data.Array.Nikola hiding (map)
-import Data.Array.Nikola.Backend.CUDA.CodeGen
-
-import qualified BlackScholes.Nikola as BSN
+import Data.Array.Nikola.Backend.CUDA
 
 main :: IO ()
-main = do
-    cfun <- liftIO $ reify BSN.blackscholes >>= compileTopFun "blackscholes"
-    print $ stack (map ppr (cfunDefs cfun))
-    print (cfunExecConfig cfun)
+main =
+    defaultMain blackscholes
+
+blackscholes :: Array M DIM1 (Exp Double)
+             -> Array M DIM1 (Exp Double)
+             -> Array M DIM1 (Exp Double)
+             -> Exp Double
+             -> Exp Double
+             -> Array D DIM1 (Exp Double)
+blackscholes ss xs ts r v =
+    zipWith3 (\s x t -> blackscholes1 True s x t r v) ss xs ts
+
+blackscholes1 :: Bool       -- @True@ for call, @False@ for put
+              -> Exp Double -- Stock price
+              -> Exp Double -- Option strike
+              -> Exp Double -- Option years
+              -> Exp Double -- Riskless rate
+              -> Exp Double -- Volatility rate
+              -> Exp Double
+blackscholes1 isCall s x t r v | isCall    = call
+                               | otherwise = put
+  where
+    call = s * vapply normcdf d1 - x*exp (-r*t) * vapply normcdf d2
+    put  = x * exp (-r*t) * vapply normcdf (-d2) - s * vapply normcdf (-d1)
+    d1   = (log(s/x) + (r+v*v/2)*t)/(v*sqrt t)
+    d2   = d1 - v*sqrt t
+
+normcdf :: Exp Double -> Exp Double
+normcdf x = if x .<. 0 then 1 - w else w
+  where
+    w = 1.0 - 1.0 / sqrt (2.0 * pi) * exp(-l*l / 2.0) * poly k
+    k = 1.0 / (1.0 + 0.2316419 * l)
+    l = abs x
+    poly = horner coeff
+    coeff = [0.0,0.31938153,-0.356563782,1.781477937,-1.821255978,1.330274429]
+
+horner :: Num a => [a] -> a -> a
+horner coeff x = foldr1 madd coeff
+  where
+    madd a b = b*x + a
