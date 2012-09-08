@@ -1,4 +1,5 @@
-* Configuring on Linux, Ubuntu 12.04 LTS x86_64, CUDA 4.2 SDK
+Configuring on Linux, Ubuntu 12.04 LTS x86_64, CUDA 4.2 SDK
+-----------------------------------------------------------
 
 I have CUDA 4.2 installed at /usr/local/cuda/4.2/cuda (and the 4.2 SDK at
 /usr/local/cuda/4.2/sdk). ```nvcc``` is not happy with GCC 4.6, which is the
@@ -14,7 +15,10 @@ cabal configure \
       --configure-option="--with-nvcc-cc=/usr/bin/gcc-4.5"
 ```
 
-* Running the benchmarks
+Running the benchmarks
+----------------------
+
+Note: the blackscholes benchmark isn't currently working.
 
 The blackscholes and radix examples are from the paper [Nikola: Embedding
 Compiled GPU Functions in
