@@ -1,5 +1,8 @@
-Configuring on Linux, Ubuntu 12.04 LTS x86_64, CUDA 4.2 SDK
------------------------------------------------------------
+Configuring
+-----------
+
+Linux, Ubuntu 12.04 LTS x86_64, CUDA 4.2 SDK
+============================================
 
 I have CUDA 4.2 installed at /usr/local/cuda/4.2/cuda (and the 4.2 SDK at
 /usr/local/cuda/4.2/sdk). ```nvcc``` is not happy with GCC 4.6, which is the
@@ -14,6 +17,13 @@ cabal configure \
       --configure-option="--with-nvcc=/usr/local/cuda/4.2/cuda/bin/nvcc" \
       --configure-option="--with-nvcc-cc=/usr/bin/gcc-4.5"
 ```
+
+Known Issues
+------------
+
+Versions of the ```cuda``` package prior to version 5, which is not yet on
+hackage, can corrupt device memory pointers in some cases. If you experience
+CUDA errors, please install the ```cuda``` package directly from github.
 
 Running the benchmarks
 ----------------------
