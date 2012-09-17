@@ -111,7 +111,7 @@ extendVars vtaus act = do
     modify $ \s -> s { cexVarTypes = foldl' insert (cexVarTypes s) vtaus
                      , cexVarIdxs  = foldl' insert
                                        (Map.map (+n) (cexVarIdxs s))
-                                       (map fst vtaus `zip` reverse [0..n-1])
+                                       (map fst vtaus `zip` [0..n-1])
                      }
     x  <- act
     modify $ \s -> s { cexVarTypes = old_vars
