@@ -162,8 +162,8 @@ takeLamVar :: NQ (Var, Type)
 takeLamVar = do
     vtaus <- gets nqLamVars
     vtau  <- case vtaus of
-               [vtau] -> return vtau
-               _      -> fail "takeLamVar: to lambdas left!"
+               vtau:_ -> return vtau
+               _      -> fail "internal error in takeLamVar: no lambdas left!"
     modify $ \s -> s { nqLamVars = tail (nqLamVars s) }
     return vtau
 
