@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeOperators #-}
 
 -- |
 -- Module      : Data.Array.Nikola.Backend.CUDA.TH.Util
@@ -73,12 +74,12 @@ firstTup n qe = do
 data NikolaArray ptrs sh = NArray !ptrs !sh
 
 class ToFunParams a where
-    toFunParams :: a -> [CU.FunParam]
+    toFunParams :: a -> ([CU.FunParam] -> IO b) -> IO b
 
-#define baseTypeToFunParams(ty) \
-instance ToFunParams ty where { \
-; {-# INLINE toFunParams #-}    \
-; toFunParams x = [CU.VArg x]   \
+#define baseTypeToFunParams(ty)         \
+instance ToFunParams ty where {         \
+; {-# INLINE toFunParams #-}            \
+; toFunParams x kont = kont [CU.VArg x] \
 }
 
 baseTypeToFunParams(Int8)
@@ -103,13 +104,31 @@ instance ToFunParams Bool where
 
 instance (Storable a) => ToFunParams (CU.ForeignDevicePtr a) where
     {-# INLINE toFunParams #-}
-    toFunParams fdptr = [CU.VArg (CU.unsafeForeignDevPtrToDevPtr fdptr)]
+    toFunParams fdptr kont =
+        CU.withForeignDevPtr fdptr $ \dptr ->
+        kont [CU.VArg dptr]
 
-instance (ToFunParams ptrs, R.Shape sh) => ToFunParams (NikolaArray ptrs sh) where
+instance ToFunParams R.Z where
     {-# INLINE toFunParams #-}
-    toFunParams (NArray ptrs sh) =
-        toFunParams ptrs ++ concatMap toFunParams (R.listOfShape sh)
+    toFunParams R.Z kont = kont []
+
+instance ToFunParams sh => ToFunParams (sh R.:. Int) where
+    {-# INLINE toFunParams #-}
+    toFunParams (sh R.:. i) kont =
+        toFunParams sh $ \fparams_sh -> do
+        toFunParams i  $ \fparams_i  -> do
+        kont (fparams_sh ++ fparams_i)
+
+instance (ToFunParams ptrs, ToFunParams sh) => ToFunParams (NikolaArray ptrs sh) where
+    {-# INLINE toFunParams #-}
+    toFunParams (NArray ptrs sh) kont =
+        toFunParams ptrs $ \fparams_ptrs -> do
+        toFunParams sh   $ \fparams_sh -> do
+        kont (fparams_ptrs ++ fparams_sh)
 
 instance (ToFunParams a, ToFunParams b) => ToFunParams (a, b) where
     {-# INLINE toFunParams #-}
-    toFunParams (a, b) = concat [toFunParams a, toFunParams b]
+    toFunParams (a, b) kont =
+        toFunParams a $ \fparams_a -> do
+        toFunParams b $ \fparams_b -> do
+        kont (fparams_a ++ fparams_b)

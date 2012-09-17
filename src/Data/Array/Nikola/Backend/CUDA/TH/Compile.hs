@@ -248,8 +248,9 @@ compileKernelCall fname qidxs qargs = do
                                               , let bs = boundsOf dim qidxs
                                               , not (null bs)]
     (qtdims, qgdims) <- cudaGridDims cudaIdxs
-    return [|CU.launchKernel $(TH.varE (TH.mkName fname)) $qtdims $qgdims 0 Nothing
-                             (concat $(TH.listE [[|toFunParams $qe|] | (qe, _) <- qargs]))
+    return [|do { $(allFunParams qargs) $ \fparams ->
+                  CU.launchKernel $(TH.varE (TH.mkName fname)) $qtdims $qgdims 0 Nothing fparams
+                }
             |]
   where
     -- Given a list of CUDA dimensiions (x, y, z) and their bounds (each
@@ -265,6 +266,12 @@ compileKernelCall fname qidxs qargs = do
     -- bounds, return the list of bounds for the given CUDA dimension.
     boundsOf :: CudaDim -> [(Idx, ExpQ)] -> [ExpQ]
     boundsOf dim idxs = [val | (CudaThreadIdx dim', val) <- idxs, dim' == dim]
+
+    allFunParams :: [(ExpQ, Type)] -> ExpQ
+    allFunParams []           = [|\kont -> kont []|]
+    allFunParams ((qe,_):qes) = [|\kont -> toFunParams $qe     $ \fparams1 ->
+                                           $(allFunParams qes) $ \fparams2 ->
+                                           kont (fparams1 ++ fparams2)|]
 
 instance Pretty CU.FunParam where
     ppr (CU.IArg i)  = text "IArg" <+> ppr i
