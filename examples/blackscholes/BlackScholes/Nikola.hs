@@ -1,29 +1,42 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RebindableSyntax #-}
+
+-- |
+-- Module      : BlackScholes.Nikola
+-- Copyright   : (c) The President and Fellows of Harvard College 2009-2010
+-- Copyright   : (c) Geoffrey Mainland 2012
+-- License     : BSD-style
+--
+-- Maintainer  : Geoffrey Mainland <mainland@apeiron.net>
+-- Stability   : experimental
+-- Portability : non-portable
+
 module BlackScholes.Nikola (
     blackscholes
   ) where
 
 import Prelude hiding (zipWith3)
 
-import qualified Data.Vector.Storable as V
-
 import Data.Array.Nikola.Backend.CUDA
 
-blackscholes :: Exp (V.Vector Float)
-             -> Exp (V.Vector Float)
-             -> Exp (V.Vector Float)
-             -> Exp Float
-             -> Exp Float
-             -> Exp (V.Vector Float)
+type F = Float
+
+blackscholes :: Array M DIM1 (Exp F)
+             -> Array M DIM1 (Exp F)
+             -> Array M DIM1 (Exp F)
+             -> Exp F
+             -> Exp F
+             -> Array D DIM1 (Exp F)
 blackscholes ss xs ts r v =
     zipWith3 (\s x t -> blackscholes' True s x t r v) ss xs ts
 
-blackscholes' :: Bool      -- @True@ for call, @False@ for put
-              -> Exp Float -- Stock price
-              -> Exp Float -- Option strike
-              -> Exp Float -- Option years
-              -> Exp Float -- Riskless rate
-              -> Exp Float -- Volatility rate
-              -> Exp Float
+blackscholes' :: Bool  -- @True@ for call, @False@ for put
+              -> Exp F -- Stock price
+              -> Exp F -- Option strike
+              -> Exp F -- Option years
+              -> Exp F -- Riskless rate
+              -> Exp F -- Volatility rate
+              -> Exp F
 blackscholes' isCall s x t r v | isCall    = call
                                | otherwise = put
   where
@@ -32,10 +45,10 @@ blackscholes' isCall s x t r v | isCall    = call
     d1   = (log(s/x) + (r+v*v/2)*t)/(v*sqrt t)
     d2   = d1 - v*sqrt t
 
-normcdf :: Exp Float -> Exp Float
+normcdf :: Exp F -> Exp F
 normcdf = vapply normcdf'
   where
-    normcdf' x = (x .<. 0) ? (1 - w, w)
+    normcdf' x = if x .<. 0 then 1 - w else w
       where
         w = 1.0 - 1.0 / sqrt (2.0 * pi) * exp(-l*l / 2.0) * poly k
         k = 1.0 / (1.0 + 0.2316419 * l)

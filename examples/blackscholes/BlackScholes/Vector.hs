@@ -1,3 +1,13 @@
+-- |
+-- Module      : BlackScholes.Vector
+-- Copyright   : (c) The President and Fellows of Harvard College 2009-2010
+-- Copyright   : (c) Geoffrey Mainland 2012
+-- License     : BSD-style
+--
+-- Maintainer  : Geoffrey Mainland <mainland@apeiron.net>
+-- Stability   : experimental
+-- Portability : non-portable
+
 module BlackScholes.Vector (
     blackscholes
   ) where
@@ -19,6 +29,7 @@ blackscholes isCall s x t r v | isCall    = call
     d2   = d1 - v*sqrt t
 
 normcdf :: RealFloat a => a -> a
+{-# INLINE normcdf #-}
 normcdf x | x < 0     = 1 -w
           | otherwise =  w
   where
@@ -29,6 +40,7 @@ normcdf x | x < 0     = 1 -w
     coeff = [0.0,0.31938153,-0.356563782,1.781477937,-1.821255978,1.330274429]
 
 horner :: Num a => [a] -> a -> a
+{-# INLINE horner #-}
 horner coeff x = foldr1 madd coeff
   where
     madd a b = b*x + a
