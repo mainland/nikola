@@ -108,6 +108,15 @@ instance (arep ~ N.Rep a,
     precompile (PreEx s m) = unsafePerformIO $ evalEx (m >>= popResult) s
 
 instance (arep ~ N.Rep a,
+          N.IsElem a,
+          N.Manifest r a,
+          Storable arep,
+          IsArrayVal (VCS.Vector arep))
+      => Compilable (N.Array  r N.DIM1 a)
+                    (VCS.Vector arep)      where
+    precompile (PreEx s m) = unsafePerformIO $ evalEx (m >>= popResult) s
+
+instance (arep ~ N.Rep a,
           rsh ~ N.Rsh sh,
           N.IsElem a,
           R.Shape rsh,
@@ -141,6 +150,15 @@ instance (arep ~ N.Rep a,
           Compilable b c)
     => Compilable (N.Array  N.M N.DIM1 a -> b)
                   (V.Vector arep         -> c) where
+    precompile p = \x -> precompile (pushArg x p)
+
+instance (arep ~ N.Rep a,
+          N.IsElem a,
+          Storable arep,
+          IsArrayVal (VCS.Vector arep),
+          Compilable b c)
+    => Compilable (N.Array  N.M N.DIM1 a -> b)
+                  (VCS.Vector arep       -> c) where
     precompile p = \x -> precompile (pushArg x p)
 
 instance (arep ~ N.Rep a,
@@ -210,6 +228,16 @@ instance IsArrayVal [a] => IsVal [a] where
 instance (Storable ty, IsArrayVal (V.Vector ty)) => IsVal (V.Vector ty) where
     pushArg xs (PreEx s m) = PreEx s $ do
         let sh = [V.length xs]
+        toArrayVal xs $ \ptrs -> do
+        pushVal $ ArrayV ptrs sh
+        m
+
+    popResult (ArrayV ptrs sh) = fromArrayVal ptrs sh
+    popResult _                = fail "internal error: popResult (V.Vector a)"
+
+instance (Storable ty, IsArrayVal (VCS.Vector ty)) => IsVal (VCS.Vector ty) where
+    pushArg xs (PreEx s m) = PreEx s $ do
+        let sh = [VCS.length xs]
         toArrayVal xs $ \ptrs -> do
         pushVal $ ArrayV ptrs sh
         m
@@ -323,6 +351,34 @@ baseTypeStorableVectorArrayVal(Word32)
 baseTypeStorableVectorArrayVal(Word64)
 baseTypeStorableVectorArrayVal(Float)
 baseTypeStorableVectorArrayVal(Double)
+
+--
+-- The 'IsArrayVal' instances for CUDA Storable Vectors
+--
+
+#define baseTypeCUDAStorableVectorArrayVal(ty)                          \
+instance IsArrayVal (VCS.Vector ty) where {                             \
+; toArrayVal v kont =                                                   \
+    let { (fdptr, _) = VCS.unsafeToForeignDevPtr0 v                     \
+        }                                                               \
+    in kont $ PtrV (CU.castForeignDevPtr fdptr)                         \
+; fromArrayVal (PtrV fdptr) [n] =                                       \
+    return $ VCS.unsafeFromForeignDevPtr0                               \
+                 (CU.castForeignDevPtr fdptr)                           \
+                 n                                                      \
+; fromArrayVal _ _ = fail "internal error: fromArrayVal (VCS.Vector a)" \
+}
+
+baseTypeCUDAStorableVectorArrayVal(Int8)
+baseTypeCUDAStorableVectorArrayVal(Int16)
+baseTypeCUDAStorableVectorArrayVal(Int32)
+baseTypeCUDAStorableVectorArrayVal(Int64)
+baseTypeCUDAStorableVectorArrayVal(Word8)
+baseTypeCUDAStorableVectorArrayVal(Word16)
+baseTypeCUDAStorableVectorArrayVal(Word32)
+baseTypeCUDAStorableVectorArrayVal(Word64)
+baseTypeCUDAStorableVectorArrayVal(Float)
+baseTypeCUDAStorableVectorArrayVal(Double)
 
 --
 -- The 'IsArrayVal' instances for 'R.CUF' 'R.Array's

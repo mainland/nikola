@@ -254,6 +254,14 @@ instance (arep ~ N.Rep (N.Exp a),
     precompile = addResultCoercion $ coerceResult (undefined :: V.Vector arep)
 
 instance (arep ~ N.Rep (N.Exp a),
+          N.IsElem (N.Exp a),
+          IsArrayVal (VCS.Vector arep),
+          N.Manifest r (N.Exp a))
+      => Compilable (N.Array r N.DIM1 (N.Exp a))
+                    (VCS.Vector arep          ) where
+    precompile = addResultCoercion $ coerceResult (undefined :: VCS.Vector arep)
+
+instance (arep ~ N.Rep (N.Exp a),
           rsh ~ Rsh sh,
           ToRsh sh,
           N.Shape sh,
@@ -302,6 +310,18 @@ instance (arep ~ N.Rep a,
       where
         p' :: PreExpQ b
         p' = addArgBinder (bindArgs (undefined :: V.Vector arep)) pq
+
+instance (arep ~ N.Rep a,
+          N.IsElem a,
+          IsArrayVal (VCS.Vector arep),
+          Compilable b c)
+    => Compilable (N.Array N.M N.DIM1 a -> b)
+                  (VCS.Vector arep      -> c) where
+    precompile pq =
+        castPreExpQ (precompile p' :: PreExpQ c)
+      where
+        p' :: PreExpQ b
+        p' = addArgBinder (bindArgs (undefined :: VCS.Vector arep)) pq
 
 instance (rsh ~ Rsh sh,
           arep ~ N.Rep (N.Exp a),
@@ -452,6 +472,21 @@ instance IsArrayVal (V.Vector a) => IsVal (V.Vector a) where
     coerceResult _ qm =
         [|$qm >>= \(NArray fdptrs sh) -> $(coerceArrayResult (undefined :: V.Vector a)) fdptrs sh|]
 
+instance IsArrayVal (VCS.Vector a) => IsVal (VCS.Vector a) where
+    bindArgs _ = do
+        arr <- fst <$> takeLamVar
+        xs  <- qNewName "xs"
+        p   <- liftQ $ TH.varP xs
+        appendLamPats [p]
+
+        modifyBody $ \qm ->
+            [|$(coerceArrayArg (undefined :: VCS.Vector a)) $(TH.varE xs) $ \ptrs ->
+              $(lamsE [arr] qm) (NArray ptrs (R.ix1 (VCS.length $(TH.varE xs))))
+             |]
+
+    coerceResult _ qm =
+        [|$qm >>= \(NArray fdptrs sh) -> $(coerceArrayResult (undefined :: VCS.Vector a)) fdptrs sh|]
+
 instance IsArrayVal (R.Array R.CUF rsh a) => IsVal (R.Array R.CUF rsh a) where
     bindArgs _ = do
         arr  <- fst <$> takeLamVar
@@ -579,6 +614,36 @@ baseTypeStorableVectorArrayVal(Word32)
 baseTypeStorableVectorArrayVal(Word64)
 baseTypeStorableVectorArrayVal(Float)
 baseTypeStorableVectorArrayVal(Double)
+
+--
+-- 'IsArrayVal' instances for Storable 'Vector's
+--
+
+#define baseTypeCUDAStorableVectorArrayVal(ty)        \
+instance IsArrayVal (VCS.Vector ty) where {         \
+; coerceArrayArg _ =                              \
+  [|\v kont ->                                   \
+    do { let { (fdptr, _) = VCS.unsafeToForeignDevPtr0 v } \
+       ; kont fdptr                               \
+       }                                          \
+   |]                                             \
+; coerceArrayResult _ =                           \
+  [|\fdptr (R.Z R.:. n) ->                        \
+    do { return $ VCS.unsafeFromForeignDevPtr0 fdptr n \
+       }                                          \
+   |]                                             \
+}
+
+baseTypeCUDAStorableVectorArrayVal(Int8)
+baseTypeCUDAStorableVectorArrayVal(Int16)
+baseTypeCUDAStorableVectorArrayVal(Int32)
+baseTypeCUDAStorableVectorArrayVal(Int64)
+baseTypeCUDAStorableVectorArrayVal(Word8)
+baseTypeCUDAStorableVectorArrayVal(Word16)
+baseTypeCUDAStorableVectorArrayVal(Word32)
+baseTypeCUDAStorableVectorArrayVal(Word64)
+baseTypeCUDAStorableVectorArrayVal(Float)
+baseTypeCUDAStorableVectorArrayVal(Double)
 
 --
 -- 'IsArrayVal' instances for UnboxedForeign 'Array's
