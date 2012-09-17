@@ -331,7 +331,7 @@ baseTypeStorableVectorArrayVal(Double)
 #define baseTypeUnboxedForeignArrayVal(ty,con)                                \
 instance R.Shape sh => IsArrayVal (R.Array R.CUF sh ty) where {               \
 ; toArrayVal arr kont =                                                       \
-    let { con v     = R.toUnboxedForeign arr                                  \
+    let { con v      = R.toUnboxedForeign arr                                 \
         ; (fdptr, _) = VCS.unsafeToForeignDevPtr0 v                           \
         }                                                                     \
     in kont $ PtrV (CU.castForeignDevPtr fdptr)                               \
