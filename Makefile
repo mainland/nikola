@@ -6,11 +6,23 @@ SOURCE = $(shell find src -type f)
 include Makefile.cu
 
 GHC_FLAGS += -W -Werror \
-	-O \
 	-isrc -idist/build \
 	-Iinclude -Iinternal -Idist/build \
 	-DHMATRIX \
 	-optP-include -optPdist/build/autogen/cabal_macros.h
+
+GHC_FLAGS+=-O
+
+#GHC_FLAGS+=-O2
+#GHC_FLAGS+=-Odph -rtsopts -threaded
+#GHC_FLAGS+=-fno-liberate-case \
+#	   -funfolding-use-threshold1000 \
+#	   -funfolding-keeness-factor1000
+#GHC_FLAGS+=-fllvm -optlo-O3
+
+#GHC_FLAGS+=-ddump-to-file
+#GHC_FLAGS+=-ddump-simpl
+#GHC_FLAGS+=-dsuppress-all -dppr-case-as-let -dppr-cols200
 
 GHC_FLAGS += \
 	-hide-all-packages \
@@ -44,7 +56,8 @@ GHC_FLAGS += \
 TARGETS	= \
 	mandel unit \
 	append-delayed append-push \
-	blackscholes-compile blackscholes-cuda blackscholes-openmp
+	blackscholes blackscholes-compile \
+	blackscholes-cuda blackscholes-openmp
 
 #TARGETS = test bs demo search nikola blackscholes blackscholes-opt scan scan-opt radix radix-opt unit
 
