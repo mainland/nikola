@@ -400,14 +400,14 @@ class IsVal a where
     bindArgs     :: a -> NQ ()
     coerceResult :: a -> ExpQ -> ExpQ
 
-#define baseTypeVal(ty)                  \
-instance IsVal ty where {                \
-; bindArgs _ = do                        \
-  { (v, _) <- takeLamVar                 \
-  ; p      <- liftQ $ TH.varP (mkName v) \
-  ; appendLamPats [p]                    \
-  }                                      \
-; coerceResult _ = id                    \
+#define baseTypeVal(ty)             \
+instance IsVal ty where {           \
+; bindArgs _ = do                   \
+  { v <- fst <$> takeLamVar         \
+  ; p <- liftQ $ TH.varP (mkName v) \
+  ; appendLamPats [p]               \
+  }                                 \
+; coerceResult _ = id               \
 }
 
 baseTypeVal(Bool)
