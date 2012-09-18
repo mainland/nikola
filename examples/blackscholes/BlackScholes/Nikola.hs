@@ -19,29 +19,28 @@ import Prelude hiding (zipWith3)
 
 import Data.Array.Nikola.Backend.CUDA
 
+type F = Float
+
 -- Nikola's compilation mechanism doesn't play well with polymorphism, so to
 -- make the @blackscholes@ function polymorphic in the numeric type, we need to
 -- pass an extra unused argument that plays the role of a type lambda. Pretty
 -- disgusting.
-blackscholes :: (Ord a, Floating (Exp a), IsElem (Exp a))
-             => a
-             -> Vector M (Exp a)
-             -> Vector M (Exp a)
-             -> Vector M (Exp a)
-             -> Exp a
-             -> Exp a
-             -> Vector D (Exp a)
-blackscholes _ ss xs ts r v =
+blackscholes :: Vector M (Exp F)
+             -> Vector M (Exp F)
+             -> Vector M (Exp F)
+             -> Exp F
+             -> Exp F
+             -> Vector D (Exp F)
+blackscholes ss xs ts r v =
     zipWith3 (\s x t -> blackscholes' True s x t r v) ss xs ts
 
-blackscholes' :: (Ord a, Floating (Exp a), IsElem (Exp a))
-              => Bool  -- @True@ for call, @False@ for put
-              -> Exp a -- Stock price
-              -> Exp a -- Option strike
-              -> Exp a -- Option years
-              -> Exp a -- Riskless rate
-              -> Exp a -- Volatility rate
-              -> Exp a
+blackscholes' :: Bool  -- @True@ for call, @False@ for put
+              -> Exp F -- Stock price
+              -> Exp F -- Option strike
+              -> Exp F -- Option years
+              -> Exp F -- Riskless rate
+              -> Exp F -- Volatility rate
+              -> Exp F
 blackscholes' isCall s x t r v | isCall    = call
                                | otherwise = put
   where
@@ -50,8 +49,7 @@ blackscholes' isCall s x t r v | isCall    = call
     d1   = (log(s/x) + (r+v*v/2)*t)/(v*sqrt t)
     d2   = d1 - v*sqrt t
 
-normcdf :: (Ord a, Floating (Exp a), IsElem (Exp a))
-        => Exp a -> Exp a
+normcdf :: Exp F -> Exp F
 normcdf = vapply normcdf'
   where
     normcdf' x = if x .<. 0 then 1 - w else w

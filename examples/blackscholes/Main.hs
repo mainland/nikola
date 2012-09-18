@@ -33,9 +33,7 @@ import Data.Array.Nikola.Util.Random
 import qualified BlackScholes.Nikola as BSN
 import qualified BlackScholes.Vector as BSV
 
--- All you have to do to benchmark with @Double@s is change this @type@
--- declaration.
-type F = Double
+type F = Float
 
 rISKFREE :: F
 rISKFREE = 0.02
@@ -79,8 +77,7 @@ generateData n = do
 blackscholesNikola :: (V.Vector F, V.Vector F, V.Vector F)
                    -> V.Vector F
 blackscholesNikola (ss, xs, ts) =
-    NH.compile (BSN.blackscholes (undefined :: F))
-      ss xs ts rISKFREE vOLATILITY
+    NH.compile BSN.blackscholes ss xs ts rISKFREE vOLATILITY
 
 blackscholesNikolaCompiled :: (V.Vector F, V.Vector F, V.Vector F)
                            -> V.Vector F
@@ -93,7 +90,7 @@ blackscholesNikolaCompiled (ss, xs, ts) =
                  -> F
                  -> F
                  -> V.Vector F
-    blackscholes = $(NTH.compileSig (BSN.blackscholes (undefined :: F))
+    blackscholes = $(NTH.compileSig BSN.blackscholes
                                     (undefined :: V.Vector F
                                                -> V.Vector F
                                                -> V.Vector F

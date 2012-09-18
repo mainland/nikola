@@ -12,14 +12,15 @@ module BlackScholes.Vector (
     blackscholes
   ) where
 
-blackscholes :: RealFloat a
-             => Bool -- @True@ for call, @False@ for put
-             -> a    -- Stock price
-             -> a    -- Option strike
-             -> a    -- Option years
-             -> a    -- Riskless rate
-             -> a    -- Volatility rate
-             -> a
+type F = Float
+
+blackscholes :: Bool -- @True@ for call, @False@ for put
+             -> F    -- Stock price
+             -> F    -- Option strike
+             -> F    -- Option years
+             -> F    -- Riskless rate
+             -> F    -- Volatility rate
+             -> F
 {-# INLINE blackscholes #-}
 blackscholes isCall s x t r v | isCall    = call
                               | otherwise = put
@@ -29,7 +30,7 @@ blackscholes isCall s x t r v | isCall    = call
     d1   = (log(s/x) + (r+v*v/2)*t)/(v*sqrt t)
     d2   = d1 - v*sqrt t
 
-normcdf :: RealFloat a => a -> a
+normcdf :: F -> F
 {-# INLINE normcdf #-}
 normcdf x | x < 0     = 1 -w
           | otherwise =  w
@@ -40,7 +41,7 @@ normcdf x | x < 0     = 1 -w
     poly = horner coeff
     coeff = [0.0,0.31938153,-0.356563782,1.781477937,-1.821255978,1.330274429]
 
-horner :: Num a => [a] -> a -> a
+horner :: [F] -> F -> F
 {-# INLINE horner #-}
 horner coeff x = foldr1 madd coeff
   where
