@@ -209,7 +209,7 @@ occ ExpA (BinopE Bmin e1 e2) = do
     (e1', occ1) <- withOcc $ occ ExpA e1
     (e2', occ2) <- withOcc $ occ ExpA e2
     setOcc $ Map.map (const Many) (occ1 `Map.union` occ2)
-    return $ BinopE Bmax e1' e2'
+    return $ BinopE Bmin e1' e2'
 
 occ ExpA (LetE v tau _ e1 e2) = do
     (e1', occ1) <- withOcc $ occ ExpA e1
