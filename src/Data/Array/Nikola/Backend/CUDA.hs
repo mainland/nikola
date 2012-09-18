@@ -37,13 +37,17 @@ module Data.Array.Nikola.Backend.CUDA (
 
     Exp,
 
-    DIM0,
-    DIM1,
-    DIM2,
     Sh.Shape(..),
     Sh.Z(..),
     (Sh.:.)(..),
     Sh.Rsh,
+
+    DIM0,
+    DIM1,
+    DIM2,
+
+    Sh.ix1,
+    Sh.ix2,
 
     defaultMain,
 
