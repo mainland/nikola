@@ -12,17 +12,12 @@
 module Main where
 
 import Prelude hiding (map, zipWith, zipWith3)
+import qualified Prelude as P
 
 import Control.Monad
-import Control.Monad.Trans (liftIO)
 import qualified Criterion as C
-import qualified Criterion.Config as C
-import qualified Criterion.Environment as C
 import qualified Criterion.Main as C
-import qualified Criterion.Monad as C
 import Data.Int
-import qualified Statistics.Function as S
-import qualified Statistics.Sample as S
 import System.Environment
 import Text.Printf
 
@@ -30,6 +25,7 @@ import Data.List (foldl')
 
 import qualified Data.Array.Nikola.Backend.CUDA.Haskell as NH
 import qualified Data.Array.Nikola.Backend.CUDA.TH as NTH
+import Data.Array.Nikola.Util.Statistics
 
 import qualified Data.Vector.CUDA.Storable as CV
 import qualified Data.Vector.Storable as V
@@ -41,26 +37,22 @@ type F = Float
 
 main :: IO ()
 main = do
-    (cfg, _) <- System.Environment.getArgs >>=
-                C.parseArgs C.defaultConfig C.defaultOptions
-    C.withConfig cfg $ do
-        env <- C.measureEnvironment
-        forM_ [1, 8, 16, 30, 64, 128, 256] $ \n -> do
-            samplesVector         <- C.runBenchmark env (C.nf AMV.binom n)
-            samplesNikola         <- C.runBenchmark env (C.nf nikolaBinom n)
-            samplesNikolaCompiled <- C.runBenchmark env (C.nf nikolaBinomCompiled n)
-            liftIO $ printf "%d" n
-            liftIO $ printSample samplesVector
-            liftIO $ printSample samplesNikola
-            liftIO $ printSample samplesNikolaCompiled
-            liftIO $ printf "\n"
-  where
-    printSample :: S.Sample -> IO ()
-    printSample samp =
-        printf ",%0.2e,%0.2e,%0.2e" mu min max
-      where
-        mu         = S.mean samp
-        (min, max) = S.minMax samp
+  args <- System.Environment.getArgs
+  case args of
+    ["--validate"] -> validate
+    _              -> C.defaultMain $
+                      P.map benchmarksForN [1, 8, 16, 30, 64, 128, 256]
+
+benchmarksForN :: Int -> C.Benchmark
+benchmarksForN n =
+    C.bgroup (show n)
+         [ C.bench (printf "            vector %-3d" n) $
+                   C.nf AMV.binom n
+         , C.bench (printf "nikola interpreter %-3d" n) $
+                   C.nf nikolaBinom n
+         , C.bench (printf "   nikola compiled %-3d" n) $
+                   C.nf nikolaBinomCompiled n
+         ]
 
 nikolaBinom :: Int -> F
 nikolaBinom expiry = V.head (CV.toHostVector first)
@@ -138,3 +130,13 @@ nikolaBinomCompiled expiry = V.head (CV.toHostVector first)
     dt = fromIntegral expiry/fromIntegral n
     u = exp(alpha*dt+sigma*sqrt dt)
     d = exp(alpha*dt-sigma*sqrt dt)
+
+validate :: IO ()
+validate =
+    forM_ [1, 8, 16, 30, 64, 128, 256] $ \n -> do
+      let v1 = AMV.binom n
+      let v2 = nikolaBinomCompiled n
+      validateL1Norm ePSILON (printf "expiry %-3d" n) (V.singleton v1) (V.singleton v2)
+  where
+    ePSILON :: F
+    ePSILON = 1e-10
