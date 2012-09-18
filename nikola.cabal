@@ -119,11 +119,8 @@ executable blackscholes
     base >=4 && <5,
     criterion >=0.6 && <0.7,
     deepseq >=1.3 && <1.4,
-    language-c-quote >=0.4 && <0.5,
     mtl >=2 && <3,
     nikola >=0.9 && <0.10,
-    mainland-pretty >=0.2.1 && <0.3,
-    repa >=3.2 && <3.3,
     statistics >=0.10 && <0.11,
     vector >=0.9 && <0.10
 
@@ -146,12 +143,8 @@ executable american
   build-depends:
     base >=4 && <5,
     criterion >=0.6 && <0.7,
-    deepseq >=1.3 && <1.4,
-    language-c-quote >=0.4 && <0.5,
     mtl >=2 && <3,
     nikola >=0.9 && <0.10,
-    mainland-pretty >=0.2.1 && <0.3,
-    repa >=3.2 && <3.3,
     statistics >=0.10 && <0.11,
     vector >=0.9 && <0.10
 
@@ -173,12 +166,10 @@ executable american
 executable blackscholes-compile
   build-depends:
     base >=4 && <5,
-    criterion >=0.6 && <0.7,
     language-c-quote >=0.4 && <0.5,
     mtl >=2 && <3,
     nikola >=0.9 && <0.10,
     mainland-pretty >=0.2.1 && <0.3,
-    repa >=3.2 && <3.3,
     statistics >=0.10 && <0.11,
     vector >=0.9 && <0.10
 
