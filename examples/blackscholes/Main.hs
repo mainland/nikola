@@ -56,11 +56,11 @@ benchmarksForN logn = do
     (ss, xs, ts) <- generateData n
     return $ C.bgroup (printf "2**%-2.0f" logn)
                [ C.bench (printf "            vector 2**%-2.0f" logn) $
-                       C.nf blackscholesVector (ss, xs, ts)
+                         C.nf blackscholesVector (ss, xs, ts)
                , C.bench (printf "nikola interpreter 2**%-2.0f" logn) $
-                       C.nf blackscholesNikola (ss, xs, ts)
+                         C.nf blackscholesNikola (ss, xs, ts)
                , C.bench (printf "   nikola compiled 2**%-2.0f" logn) $
-                       C.nf blackscholesNikolaCompiled (ss, xs, ts)
+                         C.nf blackscholesNikolaCompiled (ss, xs, ts)
                ]
   where
     n :: Int
