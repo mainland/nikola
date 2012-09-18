@@ -13,4 +13,4 @@ f v1 =
       map (+1) (append v1 v2)
   where
     v2 :: Array D DIM1 (Exp Float)
-    v2 = range 0 9
+    v2 = enumFromN (ix1 10) 0

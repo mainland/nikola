@@ -1,9 +1,11 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 
 -- |
 -- Module      : Data.Array.Nikola.Operators.IndexSpace
@@ -15,6 +17,8 @@
 -- Portability : non-portable
 
 module Data.Array.Nikola.Operators.IndexSpace (
+    reshape,
+
     Append(..),
     append,
     appendP,
@@ -24,11 +28,19 @@ module Data.Array.Nikola.Operators.IndexSpace (
     reverse,
     reverseP,
 
-    range,
-    replicate
+    enumFromN,
+    enumFromStepN,
+
+    replicate,
+
+    init,
+    tail,
+
+    take,
+    drop
   ) where
 
-import Prelude hiding ((++), map, replicate, reverse)
+import Prelude hiding ((++), drop, init, map, replicate, reverse, tail, take)
 import qualified Prelude as P
 import Data.Typeable (Typeable)
 
@@ -41,6 +53,15 @@ import Data.Array.Nikola.Shape
 
 import Data.Array.Nikola.Language.Monad
 import Data.Array.Nikola.Language.Syntax hiding (Exp, Var)
+
+reshape :: (Shape sh1, Shape sh2, Source r a)
+        => sh2
+        -> Array r sh1 a
+        -> Array D sh2 a
+-- XXX: must dynamically check that size sh2 == size (extent arr)
+reshape sh2 arr =
+    fromFunction sh2 $
+    unsafeIndex arr . fromIndex (extent arr) . toIndex sh2
 
 -- | Reverse
 class (IsArray r1 a, IsArray r2 a) => Reverse r1 r2 t a where
@@ -123,15 +144,75 @@ appendP :: (Append r1 r2 PSH t a)
         -> Array PSH (DIM1 t) a
 appendP = append_
 
-range :: (Typeable t, IsElem (Exp t Ix))
-      => Int -> Int -> Array D (DIM1 t) (Exp t Float)
-range i j | i <= j =
-    fromFunction (ix1 (fromIntegral (j-i+1))) (\(Z:.k) -> fromInt k + fromIntegral i)
-range i j =
-    error $ "range: " P.++ show i P.++ " > " P.++ show j
+enumFromN :: ( Typeable t
+             , Shape sh
+             , IsElem (Exp t Ix)
+             , IsIntegral (Exp t Ix) (Exp t a)
+             , Num (Exp t a)
+             )
+          => sh
+          -> Exp t a
+          -> Array D sh (Exp t a)
+enumFromN sh x = enumFromStepN sh x 1
+
+enumFromStepN :: forall t sh a .
+                 ( Typeable t
+                 , Shape sh
+                 , IsElem (Exp t Ix)
+                 , IsIntegral (Exp t Ix) (Exp t a)
+                 , Num (Exp t a)
+                 )
+              => sh
+              -> Exp t a
+              -> Exp t a
+              -> Array D sh (Exp t a)
+enumFromStepN sh x y =
+    reshape sh arr'
+  where
+    arr' :: Array D (DIM1 t) (Exp t a)
+    arr'= fromFunction (ix1 1) (\(Z:.i) -> x + fromInt i*y)
 
 replicate :: (Typeable t, IsElem (Exp t Ix))
-          => Exp t Ix -> a -> P (Array D (DIM1 t) a)
-replicate n x = do
-    n' <- splitExp n
-    return $ fromFunction (ix1 n') (const x)
+          => Exp t Ix -> a -> Array D (DIM1 t) a
+replicate n x =
+    fromFunction (ix1 n) (const x)
+
+init :: forall r t a . (Typeable t, IsElem (Exp t Ix), Source r a)
+     => Array r (DIM1 t) a -> Array D (DIM1 t) a
+init arr = fromFunction (ix1 sz') (index arr)
+  where
+    sz' :: Exp t Ix
+    sz' = max 0 (sz-1)
+
+    sz :: Exp t Ix
+    !(Z:.sz) = extent arr
+
+tail :: forall r t a . (Typeable t, IsElem (Exp t Ix), Source r a)
+     => Array r (DIM1 t) a -> Array D (DIM1 t) a
+tail arr = fromFunction (ix1 sz') (\(Z:.i) -> index arr (ix1 (min (i+1) (sz'-1))))
+  where
+    sz' :: Exp t Ix
+    sz' = max 0 (sz-1)
+
+    sz :: Exp t Ix
+    !(Z:.sz) = extent arr
+
+take :: forall r t a . (Typeable t, IsElem (Exp t Ix), Source r a)
+     => Exp t Ix -> Array r (DIM1 t) a -> Array D (DIM1 t) a
+take n arr = fromFunction (ix1 sz') (index arr)
+  where
+    sz' :: Exp t Ix
+    sz' = min n sz
+
+    sz :: Exp t Ix
+    !(Z:.sz) = extent arr
+
+drop :: forall r t a . (Typeable t, IsElem (Exp t Ix), Source r a)
+     => Exp t Ix -> Array r (DIM1 t) a -> Array D (DIM1 t) a
+drop n arr = fromFunction (ix1 sz') (\(Z:.i) -> index arr (ix1 (min (i+n) (sz'-1))))
+  where
+    sz' :: Exp t Ix
+    sz' = max 0 (sz-n)
+
+    sz :: Exp t Ix
+    !(Z:.sz) = extent arr
