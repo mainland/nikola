@@ -32,6 +32,7 @@ module Data.Array.Nikola.Backend.CUDA (
     currentContext,
 
     CUDA,
+    Vector,
 
     sizeOfT,
 
@@ -125,6 +126,8 @@ instance IsElem (Exp Double) where
     indexElem arr ix = E $ indexScalar (unE arr) (unE ix)
 
     writeElem arr ix x = writeScalar (unE arr) (unE ix) (unE x)
+
+type Vector r a = Array r DIM1 a
 
 type Exp a = E.Exp CUDA a
 
