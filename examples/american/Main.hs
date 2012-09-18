@@ -41,7 +41,7 @@ main = do
   case args of
     ["--validate"] -> validate
     _              -> C.defaultMain $
-                      P.map benchmarksForN [1, 8, 16, 30, 64, 128, 256]
+                      P.map benchmarksForN [1, 8, 16, 30, 64, 128]
 
 benchmarksForN :: Int -> C.Benchmark
 benchmarksForN n =
