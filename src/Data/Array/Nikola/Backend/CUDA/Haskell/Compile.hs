@@ -280,6 +280,22 @@ compileExp (BinopE op e1 e2) = do
           (DoubleV n1, DoubleV n2) -> return $ DoubleV (max n1 n2)
           _ -> faildoc $ text "internal error: max" <+> ppr val1 <+> ppr val2
 
+    go Bmin m1 m2 = do
+        val1 <- m1
+        val2 <- m2
+        case (val1, val2) of
+          (Int8V n1,   Int8V n2)   -> return $ Int8V   (min n1 n2)
+          (Int16V n1,  Int16V n2)  -> return $ Int16V  (min n1 n2)
+          (Int32V n1,  Int32V n2)  -> return $ Int32V  (min n1 n2)
+          (Int64V n1,  Int64V n2)  -> return $ Int64V  (min n1 n2)
+          (Word8V n1,  Word8V n2)  -> return $ Word8V  (min n1 n2)
+          (Word16V n1, Word16V n2) -> return $ Word16V (min n1 n2)
+          (Word32V n1, Word32V n2) -> return $ Word32V (min n1 n2)
+          (Word64V n1, Word64V n2) -> return $ Word64V (min n1 n2)
+          (FloatV n1,  FloatV n2)  -> return $ FloatV  (min n1 n2)
+          (DoubleV n1, DoubleV n2) -> return $ DoubleV (min n1 n2)
+          _ -> faildoc $ text "internal error: min" <+> ppr val1 <+> ppr val2
+
     go Iadd m1 m2 = int32Op (+) m1 m2
     go Isub m1 m2 = int32Op (-) m1 m2
     go Imul m1 m2 = int32Op (*) m1 m2

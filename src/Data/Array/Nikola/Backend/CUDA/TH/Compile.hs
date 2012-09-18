@@ -221,6 +221,7 @@ compileExp (BinopE op e1 e2) = do
   where
     go :: Binop -> ExpQ -> ExpQ -> ExpQ
     go Bmax qe1 qe2 = [|max $qe1 $qe2|]
+    go Bmin qe1 qe2 = [|min $qe1 $qe2|]
 
     go Iadd qe1 qe2 = [|$qe1 + $qe2|]
     go Isub qe1 qe2 = [|$qe1 - $qe2|]
