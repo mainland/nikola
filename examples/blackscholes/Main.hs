@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 -- |
@@ -16,10 +17,12 @@ import Prelude hiding (map, zipWith, zipWith3)
 
 import Control.DeepSeq
 import qualified Control.Exception as E
+import Control.Monad (forM_, when)
 import qualified Criterion as C
 import qualified Criterion.Main as C
 import qualified Data.Vector.Storable as V
 import Foreign (Storable)
+import System.Environment
 import Text.Printf
 
 import qualified Data.Array.Nikola.Backend.CUDA.Haskell as NH
@@ -31,7 +34,7 @@ import qualified BlackScholes.Vector as BSV
 
 -- All you have to do to benchmark with @Double@s is change this @type@
 -- declaration.
-type F = Float
+type F = Double
 
 rISKFREE :: F
 rISKFREE = 0.02
@@ -41,8 +44,11 @@ vOLATILITY = 0.30;
 
 main :: IO ()
 main = do
-  benchmarks <- mapM benchmarksForN [0,2..20]
-  C.defaultMain benchmarks
+  args <- System.Environment.getArgs
+  case args of
+    ["--validate"] -> validate
+    _              -> mapM benchmarksForN [0,2..20] >>=
+                      C.defaultMain
 
 benchmarksForN :: Double -> IO C.Benchmark
 benchmarksForN logn = do
@@ -102,3 +108,28 @@ blackscholesVector (ss, xs, ts) =
 
 instance Storable a => NFData (V.Vector a) where
     rnf v = V.length v `seq` ()
+
+validate :: IO ()
+validate =
+    forM_ [0,2..16] $ \(logn :: Double) -> do
+      let n = truncate (2**logn)
+      (ss, xs, ts) <- generateData n
+      let v1 = blackscholesNikolaCompiled (ss, xs, ts)
+      let v2 = blackscholesVector (ss, xs, ts)
+      putStrLn $ printf "2**%-2.0f elements" logn
+      putStrLn $ printf "   L1 norm = %1.4e" (l1norm v1 v2)
+      putStrLn $ printf " max delta = %1.4e" (maxDelta v1 v2)
+      when (maxDelta v1 v2 > ePSILON) $
+          fail $ printf "max delta greater than %1.4e" ePSILON
+
+deltas :: V.Vector F -> V.Vector F -> V.Vector F
+deltas v1 v2 = V.zipWith (\x y -> abs (x-y)) v1 v2
+
+maxDelta :: V.Vector F -> V.Vector F -> F
+maxDelta v1 v2 = V.maximum (deltas v1 v2)
+
+l1norm :: V.Vector F -> V.Vector F -> F
+l1norm v1 v2 = V.sum (deltas v1 v2) / V.sum (V.map abs v2)
+
+ePSILON :: F
+ePSILON = 1e-10
