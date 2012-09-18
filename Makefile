@@ -32,6 +32,7 @@ GHC_FLAGS += \
 	-package containers \
 	-package criterion \
 	-package cuda-0.4.1.2 \
+	-package deepseq \
 	-package exception-transformers \
 	-package hmatrix \
 	-package language-c-quote-0.4.1 \
