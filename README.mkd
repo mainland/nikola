@@ -48,7 +48,8 @@ He also suggests using these additional options:
 
 Note that these flags will improve ```Data.Vector``` performance, allowing for
 better comparisons with Nikola. They do not affect the speed of Nikola
-functions.
+functions. You can build the examples with these optimization flags using cabal
+if you pass the additional flag ```--flags=optimize``` to ```cabal configure```.
 
 Black-Scholes
 -------------
