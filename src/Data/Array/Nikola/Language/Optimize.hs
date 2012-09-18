@@ -334,6 +334,8 @@ simpl ExpA (BinopE op e1 e2) = do  e1' <- simpl ExpA e1
     go Imul e1                  e2@(ConstE {})      = simpl ExpA (BinopE Imul e2 e1)
     go Imul e1                  (BinopE Imul e2 e3) = simpl ExpA (BinopE Imul (BinopE Imul e1 e2) e3)
 
+    go Imod e1                  (ConstE (Int32C 1)) = pure e1
+
     -- Float rewrites
     go Fadd (ConstE (FloatC 0)) e2                  = pure e2
     go Fadd (ConstE (FloatC i)) (ConstE (FloatC j)) = pure $ ConstE (FloatC (i+j))
