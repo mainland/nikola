@@ -130,48 +130,6 @@ executable blackscholes-compile
   else
     buildable: False
 
-executable append-delayed
-  build-depends:
-    base >=4 && <5,
-    criterion >=0.6 && <0.7,
-    cuda >=0.4.1,
-    mtl >=2 && <3,
-    nikola >=0.9 && <0.10,
-    repa >=3.2 && <3.3,
-    statistics >=0.10 && <0.11,
-    vector >=0.9 && <0.10,
-    vector-algorithms >=0.5 && <0.6
-
-  main-is: 	    Main.hs
-  hs-source-dirs:   examples/append-delayed
-  default-language: Haskell98
-
-  if flag(examples)
-    buildable: True
-  else
-    buildable: False
-
-executable append-push
-  build-depends:
-    base >=4 && <5,
-    criterion >=0.6 && <0.7,
-    cuda >=0.4.1,
-    mtl >=2 && <3,
-    nikola >=0.9 && <0.10,
-    repa >=3.2 && <3.3,
-    statistics >=0.10 && <0.11,
-    vector >=0.9 && <0.10,
-    vector-algorithms >=0.5 && <0.6
-
-  main-is: 	    Main.hs
-  hs-source-dirs:   examples/append-push
-  default-language: Haskell98
-
-  if flag(examples)
-    buildable: True
-  else
-    buildable: False
-
 test-suite unit
   type:             exitcode-stdio-1.0
   hs-source-dirs:   tests/unit
