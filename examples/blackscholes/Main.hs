@@ -17,7 +17,7 @@ import Prelude hiding (map, zipWith, zipWith3)
 
 import Control.DeepSeq
 import qualified Control.Exception as E
-import Control.Monad (forM_, when)
+import Control.Monad (forM_)
 import qualified Criterion as C
 import qualified Criterion.Main as C
 import qualified Data.Vector.Storable as V
@@ -27,6 +27,7 @@ import Text.Printf
 
 import qualified Data.Array.Nikola.Backend.CUDA.Haskell as NH
 import qualified Data.Array.Nikola.Backend.CUDA.TH as NTH
+import Data.Array.Nikola.Util.Statistics
 import Data.Array.Nikola.Util.Random
 
 import qualified BlackScholes.Nikola as BSN
@@ -116,20 +117,7 @@ validate =
       (ss, xs, ts) <- generateData n
       let v1 = blackscholesNikolaCompiled (ss, xs, ts)
       let v2 = blackscholesVector (ss, xs, ts)
-      putStrLn $ printf "2**%-2.0f elements" logn
-      putStrLn $ printf "   L1 norm = %1.4e" (l1norm v1 v2)
-      putStrLn $ printf " max delta = %1.4e" (maxDelta v1 v2)
-      when (maxDelta v1 v2 > ePSILON) $
-          fail $ printf "max delta greater than %1.4e" ePSILON
-
-deltas :: V.Vector F -> V.Vector F -> V.Vector F
-deltas v1 v2 = V.zipWith (\x y -> abs (x-y)) v1 v2
-
-maxDelta :: V.Vector F -> V.Vector F -> F
-maxDelta v1 v2 = V.maximum (deltas v1 v2)
-
-l1norm :: V.Vector F -> V.Vector F -> F
-l1norm v1 v2 = V.sum (deltas v1 v2) / V.sum (V.map abs v2)
-
-ePSILON :: F
-ePSILON = 1e-10
+      validateL1Norm ePSILON (printf "2**%-2.0f elements" logn) v1 v2
+  where
+    ePSILON :: F
+    ePSILON = 1e-10
