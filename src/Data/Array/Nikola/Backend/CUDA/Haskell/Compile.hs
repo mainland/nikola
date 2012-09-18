@@ -334,8 +334,8 @@ compileKernelCall fname midxs margs = do
                  f              <- liftIO $ CU.getFun mod fname
                  (tdims, gdims) <- mdims
                  args           <- sequence margs
-                 -- liftIO $ putStrLn $ pretty 200 $ ppr $ concatMap valToFunParams args
-                 liftIO $ CU.launchKernel f tdims gdims 0 Nothing (concatMap valToFunParams args)
+                 liftIO $ toFunParams args $ \fparams ->
+                          CU.launchKernel f tdims gdims 0 Nothing fparams
                  return UnitV
   where
     -- Given a list of CUDA dimensiions (x, y, z) and their bounds (each
@@ -352,26 +352,43 @@ compileKernelCall fname midxs margs = do
     boundsOf :: CudaDim -> [(Idx, Ex Val)] -> [Ex Val]
     boundsOf dim idxs = [val | (CudaThreadIdx dim', val) <- idxs, dim' == dim]
 
-    -- Convert a 'Val' to a 'CU.FunParam'.
-    ptrValToFunParams :: PtrVal -> [CU.FunParam]
-    ptrValToFunParams (PtrV fdptr)   = [CU.VArg (CU.unsafeForeignDevPtrToDevPtr fdptr)]
-    ptrValToFunParams (TupPtrV ptrs) = concatMap ptrValToFunParams ptrs
+class ToFunParams a where
+    toFunParams :: a -> ([CU.FunParam] -> IO b) -> IO b
 
-    valToFunParams :: Val -> [CU.FunParam]
-    valToFunParams UnitV            = error "Cannot pass unit type to CUDA function"
-    valToFunParams (BoolV False)    = [CU.VArg (0 :: Int32)]
-    valToFunParams (BoolV True)     = [CU.VArg (1 :: Int32)]
-    valToFunParams (Int8V  n)       = [CU.VArg n]
-    valToFunParams (Int16V n)       = [CU.VArg n]
-    valToFunParams (Int32V n)       = [CU.VArg n]
-    valToFunParams (Int64V n)       = [CU.VArg n]
-    valToFunParams (Word8V  n)      = [CU.VArg n]
-    valToFunParams (Word16V n)      = [CU.VArg n]
-    valToFunParams (Word32V n)      = [CU.VArg n]
-    valToFunParams (Word64V n)      = [CU.VArg n]
-    valToFunParams (FloatV f)       = [CU.VArg f]
-    valToFunParams (DoubleV f)      = [CU.VArg f]
-    valToFunParams (TupleV vals)    = concatMap valToFunParams vals
-    valToFunParams (ArrayV ptrs sh) = ptrValToFunParams ptrs ++
-                                      [CU.VArg (fromIntegral i :: Int32) | i <- sh]
-    valToFunParams (FunV {})        = error "Cannot pass function value to kernel"
+instance ToFunParams a => ToFunParams [a] where
+    toFunParams [] kont =
+        kont []
+
+    toFunParams (x:xs) kont =
+        toFunParams x  $ \fparams_x  ->
+        toFunParams xs $ \fparams_xs ->
+        kont $ fparams_x ++ fparams_xs
+
+instance ToFunParams PtrVal where
+    toFunParams (PtrV fdptr) kont =
+        CU.withForeignDevPtr fdptr $ \dptr ->
+        kont [CU.VArg dptr]
+
+    toFunParams (TupPtrV ptrs) kont =
+        toFunParams ptrs kont
+
+instance ToFunParams Val where
+    toFunParams UnitV            _    = error "Cannot pass unit type to CUDA function"
+    toFunParams (BoolV False)    kont = kont [CU.VArg (0 :: Word8)]
+    toFunParams (BoolV True)     kont = kont [CU.VArg (1 :: Word8)]
+    toFunParams (Int8V  n)       kont = kont [CU.VArg n]
+    toFunParams (Int16V n)       kont = kont [CU.VArg n]
+    toFunParams (Int32V n)       kont = kont [CU.VArg n]
+    toFunParams (Int64V n)       kont = kont [CU.VArg n]
+    toFunParams (Word8V  n)      kont = kont [CU.VArg n]
+    toFunParams (Word16V n)      kont = kont [CU.VArg n]
+    toFunParams (Word32V n)      kont = kont [CU.VArg n]
+    toFunParams (Word64V n)      kont = kont [CU.VArg n]
+    toFunParams (FloatV f)       kont = kont [CU.VArg f]
+    toFunParams (DoubleV f)      kont = kont [CU.VArg f]
+    toFunParams (TupleV vals)    kont = toFunParams vals kont
+    toFunParams (ArrayV ptrs sh) kont = toFunParams ptrs $ \fparams_ptrs ->
+                                        let fparams_sh = [CU.VArg (fromIntegral i :: Int32) | i <- sh]
+                                        in
+                                          kont $ fparams_ptrs ++ fparams_sh
+    toFunParams (FunV {})        _    = error "Cannot pass function value to kernel"
