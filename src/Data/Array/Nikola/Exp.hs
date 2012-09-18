@@ -71,10 +71,19 @@ newtype Exp t a = E { unE :: S.Exp }
   deriving (Typeable)
 
 instance Eq a => Eq (Exp t a) where
-    _ == _ = error "Exp: incomparable"
+    _ == _ = error " (==) Exp: incomparable"
+    _ /= _ = error " (/=) Exp: incomparable"
 
 instance Ord a => Ord (Exp t a) where
-    compare _  _ = error "Exp: incomparable"
+    compare _ _ = error "compare Exp: incomparable"
+
+    _ <  _  = error "(<) Exp: incomparable"
+    _ <= _  = error "(<=) Exp: incomparable"
+    _ >= _  = error "(>=) Exp: incomparable"
+    _ >  _  = error "(>) Exp: incomparable"
+
+    max = binop (BinopE Bmax)
+    min = binop (BinopE Bmin)
 
 unop :: (S.Exp -> S.Exp) -> Exp t a -> Exp t b
 unop op e = (E . op . unE) e
