@@ -55,7 +55,7 @@ randomsRange n (lo, hi) = do
     scale x = (1.0 - t) * lo + t * hi
       where
         t :: a
-        t = fromIntegral x / fromIntegral (maxBound :: Int)
+        t = fromIntegral (abs x) / fromIntegral (maxBound :: Int)
 
     randomS :: R.PureMT -> Int -> Stream.Stream a
     {-# INLINE [1] randomS #-}
