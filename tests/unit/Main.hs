@@ -72,6 +72,8 @@ tests = TestList [ id_test
                  , th_revmap_test1
                  , th_revmap_test2
                  , th_revmap_test3
+                 , th_append_push
+                 , th_append_delayed
                  ]
 
 id_test :: Test
@@ -188,3 +190,31 @@ th_revmap_test3 = "TH reverse and map (+1) on Vector" ~:
 
     f :: V.Vector Double -> V.Vector Double
     f = $(NTH.compileSig Funs.revmapinc (undefined :: V.Vector Double -> V.Vector Double))
+
+th_append_push :: Test
+th_append_push = "TH append push arrays" ~:
+    f xs ~?= V.map (+1) (xs V.++ ys)
+  where
+    xs :: V.Vector Float
+    xs = V.fromList [1..10]
+
+    ys :: V.Vector Float
+    ys = V.fromList [0..9]
+
+    f :: V.Vector Float -> V.Vector Float
+    f = $(NTH.compileSig Funs.append_push
+                         (undefined :: V.Vector Float -> V.Vector Float))
+
+th_append_delayed :: Test
+th_append_delayed = "TH append delayed arrays" ~:
+    f xs ~?= V.map (+1) (xs V.++ ys)
+  where
+    xs :: V.Vector Float
+    xs = V.fromList [1..10]
+
+    ys :: V.Vector Float
+    ys = V.fromList [0..9]
+
+    f :: V.Vector Float -> V.Vector Float
+    f = $(NTH.compileSig Funs.append_delayed
+                         (undefined :: V.Vector Float -> V.Vector Float))

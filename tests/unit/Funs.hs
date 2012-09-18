@@ -1,13 +1,29 @@
 module Funs where
 
-import qualified Data.Array.Nikola.Backend.CUDA as N
+import Prelude hiding (map, reverse)
 
-revmapinc :: N.Array N.M N.DIM1 (N.Exp Double) -> N.Array N.D N.DIM1 (N.Exp Double)
-revmapinc = N.reverse . N.map (+1)
+import Data.Array.Nikola.Backend.CUDA
 
-inc :: N.Exp Float -> N.Exp Float
+revmapinc :: Array M DIM1 (Exp Double) -> Array D DIM1 (Exp Double)
+revmapinc = reverse . map (+1)
+
+inc :: Exp Float -> Exp Float
 inc = (+1)
 
-swap :: N.Array N.M N.DIM1 (N.Exp Float, N.Exp Float)
-      -> N.Array N.D N.DIM1 (N.Exp Float, N.Exp Float)
-swap = N.map (\(x, y) -> (y, x))
+swap :: Array M DIM1 (Exp Float, Exp Float)
+     -> Array D DIM1 (Exp Float, Exp Float)
+swap = map (\(x, y) -> (y, x))
+
+append_push :: Array M DIM1 (Exp Float) -> Array PSH DIM1 (Exp Float)
+append_push v1 =
+    mapP (+1) (appendP (push v1) v2)
+  where
+    v2 :: Array PSH DIM1 (Exp Float)
+    v2 = push (enumFromN (ix1 10) 0)
+
+append_delayed :: Array M DIM1 (Exp Float) -> Array D DIM1 (Exp Float)
+append_delayed v1 =
+    map (+1) (append v1 v2)
+  where
+    v2 :: Array D DIM1 (Exp Float)
+    v2 = enumFromN (ix1 10) 0
