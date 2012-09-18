@@ -56,6 +56,7 @@ GHC_FLAGS += \
 TARGETS	= \
 	mandel unit \
 	append-delayed append-push \
+	american \
 	blackscholes blackscholes-compile \
 	blackscholes-cuda blackscholes-openmp
 
@@ -97,6 +98,12 @@ demo : $(SOURCE) tests/Main.hs
 	$(_QUIET)$(GHC) --make tests/Main.hs \
 		-itests -odir obj -hidir obj \
 		$(GHC_FLAGS) -o $@
+
+american : $(SOURCE) examples/american/*.hs examples/american/American/*.hs
+	@echo "Compiling and linking" $@
+	$(_QUIET)$(GHC) --make examples/american/Main.hs \
+		-odir obj -hidir obj \
+		-iexamples/american $(GHC_FLAGS) -o $@
 
 blackscholes : $(SOURCE) examples/blackscholes/*.hs examples/blackscholes/BlackScholes/*.hs
 	@echo "Compiling and linking" $@

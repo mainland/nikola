@@ -1,5 +1,5 @@
-Configuring
------------
+Building
+--------
 
 Nikola currently supports GHC version 7.4 and version 4.2 of the CUDA SDK.
 
@@ -15,7 +15,7 @@ default on Ubuntu 12.04, so you must install the gcc-4.5 and g++-4.5 packages
 cabal configure \
       --disable-library-profiling \
       --enable-tests \
-      --flags="examples" \
+      --flags=examples \
       --configure-option="--with-nvcc=/usr/local/cuda/4.2/cuda/bin/nvcc" \
       --configure-option="--with-nvcc-cc=/usr/bin/gcc-4.5"
 ```
@@ -27,8 +27,31 @@ Versions of the ```cuda``` package prior to version 5, which is not yet on
 hackage, can corrupt device memory pointers in some cases. If you experience
 CUDA errors, please install the ```cuda``` package directly from github.
 
-Running the benchmarks
-----------------------
+Examples
+--------
+
+Benchmarking
+============
+
+When benchmarking numerical code, it is recommended to use GHC's LLVM
+back-end. Ben Lippmeier recommend the following flags:
+
+```
+-fllvm -optlo-O3
+```
+
+He also suggests using these additional options:
+
+```
+-fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000
+```
+
+Note that these flags will improve ```Data.Vector``` performance, allowing for
+better comparisons with Nikola. They do not affect the speed of Nikola
+functions.
+
+Black-Scholes
+=============
 
 The current Black-Scholes benchmark uses the
 [criterion](http://hackage.haskell.org/package/criterion) library and outputs
@@ -46,3 +69,13 @@ included additional implementations. You can run the benchmark as follows:
 ```
 ./dist/build/blackscholes/blackscholes -s 10
 ```
+
+American Option Evaluation
+==========================
+
+This is a Nikola implementation of Ken Friis Larsen's Haskell code for pricing
+American options. The original version is available [on
+github](http://github.com/kfl/american-options). Thanks to Ken for the
+```vector``` version and permission to distribute this as a Nikola example.
+
+
