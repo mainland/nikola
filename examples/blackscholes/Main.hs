@@ -14,17 +14,12 @@ module Main where
 
 import Prelude hiding (map, zipWith, zipWith3)
 
-import Control.Monad
-import Control.Monad.Trans (liftIO)
-import Criterion
-import Criterion.Config
-import Criterion.Environment
-import Criterion.Main
-import Criterion.Monad
+import Control.DeepSeq
+import qualified Control.Exception as E
+import qualified Criterion as C
+import qualified Criterion.Main as C
 import qualified Data.Vector.Storable as V
-import Statistics.Function
-import Statistics.Sample
-import System.Environment
+import Foreign (Storable)
 import Text.Printf
 
 import qualified Data.Array.Nikola.Backend.CUDA.Haskell as NH
@@ -44,64 +39,42 @@ vOLATILITY = 0.30;
 
 main :: IO ()
 main = do
-    (cfg, _) <- parseArgs defaultConfig defaultOptions =<< System.Environment.getArgs
-    withConfig cfg $ do
-        env <- measureEnvironment
-        -- Powers of two up to 32MB
-        forM_ [0..25] $ \e -> do
-            let n = truncate (2**e)
-            samplesNikola         <- runBenchmark env
-                                     (benchmarkBlackScholes blackscholesNikola n)
-            samplesNikolaCompiled <- runBenchmark env
-                                     (benchmarkBlackScholes blackscholesNikolaCompiled n)
-            samplesVector         <- runBenchmark env
-                                     (benchmarkBlackScholes blackscholesVector n)
-            liftIO $ printf "%d" n
-            liftIO $ printSample samplesNikola
-            liftIO $ printSample samplesNikolaCompiled
-            liftIO $ printSample samplesVector
-            liftIO $ printf "\n"
+  benchmarks <- mapM benchmarksForN [0,2..20]
+  C.defaultMain benchmarks
+
+benchmarksForN :: Double -> IO C.Benchmark
+benchmarksForN logn = do
+    (ss, xs, ts) <- generateData n
+    return $ C.bgroup (printf "2**%-2.0f" logn)
+               [ C.bench (printf "            vector 2**%-2.0f" logn) $
+                       C.nf blackscholesVector (ss, xs, ts)
+               , C.bench (printf "nikola interpreter 2**%-2.0f" logn) $
+                       C.nf blackscholesNikola (ss, xs, ts)
+               , C.bench (printf "   nikola compiled 2**%-2.0f" logn) $
+                       C.nf blackscholesNikolaCompiled (ss, xs, ts)
+               ]
   where
-    printSample :: Sample -> IO ()
-    printSample samp =
-        printf ",%0.2e,%0.2e,%0.2e" mu min max
-      where
-        mu         = mean samp
-        (min, max) = minMax samp
+    n :: Int
+    n = truncate (2**logn)
 
-benchmarkBlackScholes :: (   V.Vector F
-                          -> V.Vector F
-                          -> V.Vector F
-                          -> V.Vector F)
-                      -> Int
-                      -> IO (V.Vector F)
-benchmarkBlackScholes f n =
-    benchmarkBlackScholesIO (\ss xs ts -> return $! f xs ss ts) n
-
-benchmarkBlackScholesIO :: (   V.Vector F
-                            -> V.Vector F
-                            -> V.Vector F
-                            -> IO (V.Vector F))
-                         -> Int
-                         -> IO (V.Vector F)
-benchmarkBlackScholesIO f n = do
+generateData :: Int -> IO (V.Vector F, V.Vector F, V.Vector F)
+generateData n = do
     ss <- randomsRange n (5.0, 30.0)
     xs <- randomsRange n (1.0, 100.0)
     ts <- randomsRange n (0.25, 10.0)
-    f ss xs ts
+    E.evaluate ss
+    E.evaluate xs
+    E.evaluate ts
+    return (ss, xs, ts)
 
-blackscholesNikola :: V.Vector F
+blackscholesNikola :: (V.Vector F, V.Vector F, V.Vector F)
                    -> V.Vector F
-                   -> V.Vector F
-                   -> V.Vector F
-blackscholesNikola ss xs ts =
+blackscholesNikola (ss, xs, ts) =
     NH.compile BSN.blackscholes ss xs ts rISKFREE vOLATILITY
 
-blackscholesNikolaCompiled :: V.Vector F
+blackscholesNikolaCompiled :: (V.Vector F, V.Vector F, V.Vector F)
                            -> V.Vector F
-                           -> V.Vector F
-                           -> V.Vector F
-blackscholesNikolaCompiled ss xs ts =
+blackscholesNikolaCompiled (ss, xs, ts) =
     blackscholes ss xs ts rISKFREE vOLATILITY
   where
     blackscholes :: V.Vector F
@@ -117,9 +90,11 @@ blackscholesNikolaCompiled ss xs ts =
                                                                 -> F
                                                                 -> V.Vector F))
 
-blackscholesVector :: V.Vector F
+blackscholesVector :: (V.Vector F, V.Vector F, V.Vector F)
                    -> V.Vector F
-                   -> V.Vector F
-                   -> V.Vector F
-blackscholesVector ss xs ts =
+{-# INLINE blackscholesVector #-}
+blackscholesVector (ss, xs, ts) =
     V.zipWith3 (\s x t -> BSV.blackscholes True s x t rISKFREE vOLATILITY) ss xs ts
+
+instance Storable a => NFData (V.Vector a) where
+    rnf v = V.length v `seq` ()

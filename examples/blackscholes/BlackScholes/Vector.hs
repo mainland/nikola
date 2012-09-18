@@ -20,6 +20,7 @@ blackscholes :: RealFloat a
              -> a    -- Riskless rate
              -> a    -- Volatility rate
              -> a
+{-# INLINE blackscholes #-}
 blackscholes isCall s x t r v | isCall    = call
                               | otherwise = put
   where
