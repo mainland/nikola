@@ -220,6 +220,13 @@ compileExp (BinopE op e1 e2) = do
     return $ go op qe1 qe2
   where
     go :: Binop -> ExpQ -> ExpQ -> ExpQ
+    go Leq qe1 qe2 = [|$qe1 == $qe2|]
+    go Lne qe1 qe2 = [|$qe1 /= $qe2|]
+    go Lgt qe1 qe2 = [|$qe1 >  $qe2|]
+    go Lge qe1 qe2 = [|$qe1 >= $qe2|]
+    go Llt qe1 qe2 = [|$qe1 <  $qe2|]
+    go Lle qe1 qe2 = [|$qe1 <= $qe2|]
+
     go Bmax qe1 qe2 = [|max $qe1 $qe2|]
     go Bmin qe1 qe2 = [|min $qe1 $qe2|]
 
@@ -240,6 +247,12 @@ compileExp (BinopE op e1 e2) = do
 
     go op _ _ =
         faildoc $ text "Cannot compile:" <+> ppr op
+
+compileExp (IfThenElseE e_test e_then e_else) = do
+    qe_test <- compileExp e_test
+    qe_then <- compileExp e_then
+    qe_else <- compileExp e_else
+    return [|if $qe_test then $qe_then else $qe_else|]
 
 compileExp e = faildoc $ text "Cannot compile" <+> ppr e
 

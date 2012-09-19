@@ -264,6 +264,22 @@ compileExp (BinopE op e1 e2) = do
     return $ go op m1 m2
   where
     go :: Binop -> Ex Val -> Ex Val -> Ex Val
+    go Llt m1 m2 = do
+        val1 <- m1
+        val2 <- m2
+        case (val1, val2) of
+          (Int8V n1,   Int8V n2)   -> return $ BoolV (n1 < n2)
+          (Int16V n1,  Int16V n2)  -> return $ BoolV (n1 < n2)
+          (Int32V n1,  Int32V n2)  -> return $ BoolV (n1 < n2)
+          (Int64V n1,  Int64V n2)  -> return $ BoolV (n1 < n2)
+          (Word8V n1,  Word8V n2)  -> return $ BoolV (n1 < n2)
+          (Word16V n1, Word16V n2) -> return $ BoolV (n1 < n2)
+          (Word32V n1, Word32V n2) -> return $ BoolV (n1 < n2)
+          (Word64V n1, Word64V n2) -> return $ BoolV (n1 < n2)
+          (FloatV n1,  FloatV n2)  -> return $ BoolV (n1 < n2)
+          (DoubleV n1, DoubleV n2) -> return $ BoolV (n1 < n2)
+          _ -> faildoc $ text "internal error: (<)" <+> ppr val1 <+> ppr val2
+
     go Bmax m1 m2 = do
         val1 <- m1
         val2 <- m2
@@ -331,6 +347,13 @@ compileExp (BinopE op e1 e2) = do
         DoubleV n1 <- m1
         DoubleV n2 <- m2
         return $ DoubleV (op n1 n2)
+
+compileExp (IfThenElseE e_test e_then e_else) = do
+    m_test <- compileExp e_test
+    m_then <- compileExp e_then
+    m_else <- compileExp e_else
+    return $ do  BoolV v_test <- m_test
+                 if v_test then m_then else m_else
 
 compileExp e = faildoc $ text "Cannot compile:" <+> ppr e
 
