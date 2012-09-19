@@ -122,7 +122,7 @@ instance Storable a => G.MVector MVector a where
     = unsafePrimToPrim
     $ withForeignDevPtr fp $ \p ->
       withForeignDevPtr fq $ \q ->
-      copyArrayAsync n p q
+      copyArrayAsync n q p
 
 {-# INLINE mallocVector #-}
 mallocVector :: Storable a => Int -> IO (ForeignDevicePtr a)

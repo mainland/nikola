@@ -230,7 +230,7 @@ instance Storable a => G.Vector Vector a where
     = unsafePrimToPrim
     $ withForeignDevPtr fp $ \p ->
       withForeignDevPtr fq $ \q ->
-      CU.copyArrayAsync n p q
+      CU.copyArrayAsync n q p
 
   {-# INLINE elemseq #-}
   elemseq _ = seq
