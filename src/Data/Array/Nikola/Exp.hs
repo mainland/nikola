@@ -32,6 +32,9 @@ module Data.Array.Nikola.Exp (
     -- * Bitwise operators
     (.&.), (.|.),
 
+    -- * Numerical operators
+    (.^.),
+
     -- * Helpers
     varE, voidE,
 
@@ -140,6 +143,16 @@ e1 .&. e2 = binop (BinopE Band) e1 e2
 
 (.|.) :: Bits a => Exp t a -> Exp t a -> Exp t a
 e1 .|. e2 = binop (BinopE Bor) e1 e2
+
+-- | Numerical operators
+class IsFloating a where
+    (.^.) :: (IsIntegral b a) => a -> b -> a
+
+instance IsFloating (Exp t Float) where
+    x .^. y = binop (BinopE Fpow) x (fromInt y :: Exp t Float)
+
+instance IsFloating (Exp t Double) where
+    x .^. y = binop (BinopE Dpow) x (fromInt y :: Exp t Double)
 
 -- | Helpers
 varE :: Var t a -> Exp t a
