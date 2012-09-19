@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE EmptyDataDecls #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
@@ -19,6 +20,7 @@ module Data.Array.Nikola.Repr.Delayed (
     Array(..),
 
     fromFunction,
+    generate,
     toFunction,
 
     delay
@@ -63,6 +65,10 @@ fromFunction :: forall sh a . (Shape sh)
              -> (sh -> a)
              -> Array D sh a
 fromFunction sh f = ADelayed sh f
+
+-- | A version of 'fromFunction' specialized to 'Vector's
+generate :: IsElem (Exp t Ix) => Exp t Ix -> (Exp t Ix -> a) -> Array D (DIM1 t) a
+generate n f = fromFunction (ix1 n) (\(Z:.i) -> f i)
 
 -- | Produce the extent of an array and a function to retrieve an arbitrary
 -- element.
