@@ -189,7 +189,7 @@ init arr = fromFunction (ix1 sz') (index arr)
 
 tail :: forall r t a . (Typeable t, IsElem (Exp t Ix), Source r a)
      => Array r (DIM1 t) a -> Array D (DIM1 t) a
-tail arr = fromFunction (ix1 sz') (\(Z:.i) -> index arr (ix1 (min (i+1) (sz'-1))))
+tail arr = fromFunction (ix1 sz') (\(Z:.i) -> index arr (ix1 (i+1)))
   where
     sz' :: Exp t Ix
     sz' = max 0 (sz-1)
@@ -202,17 +202,17 @@ take :: forall r t a . (Typeable t, IsElem (Exp t Ix), Source r a)
 take n arr = fromFunction (ix1 sz') (index arr)
   where
     sz' :: Exp t Ix
-    sz' = min n sz
+    sz' = if n .<. 0 then 0 else min n sz
 
     sz :: Exp t Ix
     !(Z:.sz) = extent arr
 
 drop :: forall r t a . (Typeable t, IsElem (Exp t Ix), Source r a)
      => Exp t Ix -> Array r (DIM1 t) a -> Array D (DIM1 t) a
-drop n arr = fromFunction (ix1 sz') (\(Z:.i) -> index arr (ix1 (min (i+n) (sz'-1))))
+drop n arr = fromFunction (ix1 sz') (\(Z:.i) -> index arr (ix1 (if n .<. 0 then i else i+n)))
   where
     sz' :: Exp t Ix
-    sz' = max 0 (sz-n)
+    sz' = if n .<. 0 then sz else max 0 (sz-n)
 
     sz :: Exp t Ix
     !(Z:.sz) = extent arr
