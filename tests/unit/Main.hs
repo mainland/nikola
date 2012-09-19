@@ -8,40 +8,26 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
--- Copyright (c) 2010-2012
---         The President and Fellows of Harvard College.
+-- |
+-- Module      : Data.Array.Nikola.Util.Random
+-- Copyright   : (c) The President and Fellows of Harvard College 2009-2010
+-- Copyright   : (c) Geoffrey Mainland 2012
+-- License     : BSD-style
 --
--- Redistribution and use in source and binary forms, with or without
--- modification, are permitted provided that the following conditions
--- are met:
--- 1. Redistributions of source code must retain the above copyright
---    notice, this list of conditions and the following disclaimer.
--- 2. Redistributions in binary form must reproduce the above copyright
---    notice, this list of conditions and the following disclaimer in the
---    documentation and/or other materials provided with the distribution.
--- 3. Neither the name of the University nor the names of its contributors
---    may be used to endorse or promote products derived from this software
---    without specific prior written permission.
-
--- THIS SOFTWARE IS PROVIDED BY THE UNIVERSITY AND CONTRIBUTORS ``AS IS'' AND
--- ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
--- IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
--- ARE DISCLAIMED.  IN NO EVENT SHALL THE UNIVERSITY OR CONTRIBUTORS BE LIABLE
--- FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
--- DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
--- OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
--- HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
--- LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
--- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
--- SUCH DAMAGE.
+-- Maintainer  : Geoffrey Mainland <mainland@apeiron.net>
+-- Stability   : experimental
+-- Portability : non-portable
 
 module Main where
 
 import qualified Funs
 
 import Data.Int
-import System.Exit (exitFailure, exitSuccess)
-import Test.HUnit
+import Test.Framework
+import Test.Framework.Providers.HUnit
+import Test.Framework.Providers.QuickCheck2
+import Test.HUnit ((@=?))
+import Test.QuickCheck
 
 import qualified Data.Array.Repa as R
 import qualified Data.Array.Repa.Eval as R
@@ -54,30 +40,33 @@ import qualified Data.Array.Nikola.Backend.CUDA.Haskell as NH
 import qualified Data.Array.Nikola.Backend.CUDA.TH as NTH
 
 main :: IO ()
-main = do
-    count <- runTestTT tests
-    case failures count of
-      0 -> exitSuccess
-      _ -> exitFailure
+main = defaultMain tests
 
-tests :: Test
-tests = TestList [ id_test
-                 , map_test
-                 , map_inc_test
-                 , zip_test
-                 , scalar_test
-                 , swap_test
-                 , th_swap_test
-                 , th_scalar_test
-                 , th_revmap_test1
-                 , th_revmap_test2
-                 , th_revmap_test3
-                 , th_append_push
-                 , th_append_delayed
-                 ]
+tests :: [Test]
+tests = [ id_test
+        , map_test
+        , map_inc_test
+        , zip_test
+        , scalar_test
+        , swap_test
+        , th_swap_test
+        , th_scalar_test
+        , th_revmap_test1
+        , th_revmap_test2
+        , th_revmap_test3
+        , th_append_push
+        , th_append_delayed
+        , testGroup "QuickCheck index space operations"
+                        [ testProperty "reverse" prop_reverse
+                        , testProperty "init" prop_init
+                        , testProperty "tail" prop_tail
+                        , testProperty "take" prop_take
+                        , testProperty "drop" prop_drop
+                        ]
+        ]
 
 id_test :: Test
-id_test = "id" ~: g 1 ~?= 1
+id_test = testCase "id" $ g 1 @=? 1
   where
     f :: N.Exp Float -> N.Exp Float
     f x = x
@@ -86,8 +75,8 @@ id_test = "id" ~: g 1 ~?= 1
     g = NH.compile f
 
 map_test :: Test
-map_test = "map" ~:
-    g (V.fromList [1..10]) ~?= V.map (+1) (V.fromList [1..10])
+map_test = testCase "map" $
+    g (V.fromList [1..10]) @=? V.map (+1) (V.fromList [1..10])
   where
     f :: N.Array N.M N.DIM1 (N.Exp Float) -> N.Array N.D N.DIM1 (N.Exp Float)
     f v = N.map (\x -> x + 1) v
@@ -96,8 +85,8 @@ map_test = "map" ~:
     g = NH.compile f
 
 map_inc_test :: Test
-map_inc_test = "map inc" ~:
-    g (V.fromList [1..10]) ~?= V.map (+1) (V.fromList [1..10])
+map_inc_test = testCase "map inc" $
+    g (V.fromList [1..10]) @=? V.map (+1) (V.fromList [1..10])
   where
     f :: N.Array N.M N.DIM1 (N.Exp Int32) -> N.Array N.D N.DIM1 (N.Exp Int32)
     f v = N.map (\x -> x + 1) v
@@ -106,8 +95,8 @@ map_inc_test = "map inc" ~:
     g = NH.compile f
 
 zip_test :: Test
-zip_test = "zip" ~:
-    g [1..32] [1..32] ~?= let xs = zipWith (+) [1..32] [1..32]
+zip_test = testCase "zip" $
+    g [1..32] [1..32] @=? let xs = zipWith (+) [1..32] [1..32]
                           in
                             zipWith (+) xs xs
   where
@@ -123,8 +112,8 @@ zip_test = "zip" ~:
     g = NH.compile f
 
 scalar_test :: Test
-scalar_test = "scalar" ~:
-    h 10 153 ~?= 2*10 + 2*153
+scalar_test = testCase "scalar" $
+    h 10 153 @=? 2*10 + 2*153
   where
     f :: N.Exp Float -> N.Exp Float -> N.Exp Float
     f x y = g x + g y
@@ -136,8 +125,8 @@ scalar_test = "scalar" ~:
     h = NH.compile f
 
 swap_test :: Test
-swap_test = "swap" ~:
-    f xs ~?= map (\(x, y) -> (y, x)) xs
+swap_test = testCase "swap" $
+    f xs @=? map (\(x, y) -> (y, x)) xs
   where
     f :: [(Float, Float)] -> [(Float, Float)]
     f = NH.compile Funs.swap
@@ -146,8 +135,8 @@ swap_test = "swap" ~:
     xs = [1..10] `zip` [2..11]
 
 th_swap_test :: Test
-th_swap_test = "TH swap" ~:
-    f xs ~?= map (\(x, y) -> (y, x)) xs
+th_swap_test = testCase "TH swap" $
+    f xs @=? map (\(x, y) -> (y, x)) xs
   where
     f :: [(Float, Float)] -> [(Float, Float)]
     f = $(NTH.compileSig Funs.swap (undefined :: [(Float, Float)] -> [(Float, Float)]))
@@ -156,14 +145,14 @@ th_swap_test = "TH swap" ~:
     xs = [1..10] `zip` [2..11]
 
 th_scalar_test :: Test
-th_scalar_test = "TH scalar" ~: g 500 ~?= 501
+th_scalar_test = testCase "TH scalar" $ g 500 @=? 501
   where
     g :: Float -> Float
     g = $(NTH.compile Funs.inc)
 
 th_revmap_test1 :: Test
-th_revmap_test1 = "TH reverse and map (+1) on CF array" ~:
-    R.toList (f (R.fromList (R.ix1 (length xs)) xs)) ~?= (reverse . map (+1)) xs
+th_revmap_test1 = testCase "TH reverse and map (+1) on CF array" $
+    R.toList (f (R.fromList (R.ix1 (length xs)) xs)) @=? (reverse . map (+1)) xs
   where
     xs :: [Double]
     xs = [1..10]
@@ -172,8 +161,8 @@ th_revmap_test1 = "TH reverse and map (+1) on CF array" ~:
     f = $(NTH.compile Funs.revmapinc)
 
 th_revmap_test2 :: Test
-th_revmap_test2 = "TH reverse and map (+1) on list" ~:
-    f xs ~?= (reverse . map (+1)) xs
+th_revmap_test2 = testCase "TH reverse and map (+1) on list" $
+    f xs @=? (reverse . map (+1)) xs
   where
     xs :: [Double]
     xs = [1..10]
@@ -182,8 +171,8 @@ th_revmap_test2 = "TH reverse and map (+1) on list" ~:
     f = $(NTH.compileSig Funs.revmapinc (undefined :: [Double] -> [Double]))
 
 th_revmap_test3 :: Test
-th_revmap_test3 = "TH reverse and map (+1) on Vector" ~:
-    f xs ~?= (V.reverse . V.map (+1)) xs
+th_revmap_test3 = testCase "TH reverse and map (+1) on Vector" $
+    f xs @=? (V.reverse . V.map (+1)) xs
   where
     xs :: V.Vector Double
     xs = V.fromList [1..10]
@@ -192,8 +181,8 @@ th_revmap_test3 = "TH reverse and map (+1) on Vector" ~:
     f = $(NTH.compileSig Funs.revmapinc (undefined :: V.Vector Double -> V.Vector Double))
 
 th_append_push :: Test
-th_append_push = "TH append push arrays" ~:
-    f xs ~?= V.map (+1) (xs V.++ ys)
+th_append_push = testCase "TH append push arrays" $
+    f xs @=? V.map (+1) (xs V.++ ys)
   where
     xs :: V.Vector Float
     xs = V.fromList [1..10]
@@ -206,8 +195,8 @@ th_append_push = "TH append push arrays" ~:
                          (undefined :: V.Vector Float -> V.Vector Float))
 
 th_append_delayed :: Test
-th_append_delayed = "TH append delayed arrays" ~:
-    f xs ~?= V.map (+1) (xs V.++ ys)
+th_append_delayed = testCase "TH append delayed arrays" $
+    f xs @=? V.map (+1) (xs V.++ ys)
   where
     xs :: V.Vector Float
     xs = V.fromList [1..10]
@@ -218,3 +207,45 @@ th_append_delayed = "TH append delayed arrays" ~:
     f :: V.Vector Float -> V.Vector Float
     f = $(NTH.compileSig Funs.append_delayed
                          (undefined :: V.Vector Float -> V.Vector Float))
+
+prop_reverse :: [Float] -> Property
+prop_reverse xs = length xs > 0 ==> reverseN xs == reverse xs
+  where
+    reverseN :: [Float] -> [Float]
+    reverseN = $(NTH.compileSig (N.reverse :: N.Array N.M N.DIM1 (N.Exp Float)
+                                           -> N.Array N.D N.DIM1 (N.Exp Float))
+                                (undefined :: [Float] -> [Float]))
+
+prop_init :: [Float] -> Property
+prop_init xs = length xs > 0 ==> initN xs == init xs
+  where
+    initN :: [Float] -> [Float]
+    initN = $(NTH.compileSig (N.init :: N.Array N.M N.DIM1 (N.Exp Float)
+                                     -> N.Array N.D N.DIM1 (N.Exp Float))
+                             (undefined :: [Float] -> [Float]))
+
+prop_tail :: [Float] -> Property
+prop_tail xs = length xs > 0 ==> tailN xs == tail xs
+  where
+    tailN :: [Float] -> [Float]
+    tailN = $(NTH.compileSig (N.tail :: N.Array N.M N.DIM1 (N.Exp Float)
+                                     -> N.Array N.D N.DIM1 (N.Exp Float))
+                             (undefined :: [Float] -> [Float]))
+
+prop_take :: Int32 -> [Float] -> Property
+prop_take n xs = property $ takeN n xs == take (fromIntegral n) xs
+  where
+    takeN :: Int32 -> [Float] -> [Float]
+    takeN = $(NTH.compileSig (N.take :: N.Exp Int32
+                                     -> N.Array N.M N.DIM1 (N.Exp Float)
+                                     -> N.Array N.D N.DIM1 (N.Exp Float))
+                             (undefined :: Int32 -> [Float] -> [Float]))
+
+prop_drop :: Int32 -> [Float] -> Property
+prop_drop n xs = property $ dropN n xs == drop (fromIntegral n) xs
+  where
+    dropN :: Int32 -> [Float] -> [Float]
+    dropN = $(NTH.compileSig (N.drop :: N.Exp Int32
+                                     -> N.Array N.M N.DIM1 (N.Exp Float)
+                                     -> N.Array N.D N.DIM1 (N.Exp Float))
+                             (undefined :: Int32 -> [Float] -> [Float]))

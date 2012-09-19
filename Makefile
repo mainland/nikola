@@ -27,6 +27,7 @@ GHC_FLAGS+=-O
 GHC_FLAGS += \
 	-hide-all-packages \
 	-package HUnit \
+	-package QuickCheck \
 	-package base \
 	-package bytestring \
 	-package containers \
@@ -48,6 +49,9 @@ GHC_FLAGS += \
 	-package syb \
 	-package symbol \
 	-package template-haskell \
+	-package test-framework \
+	-package test-framework-hunit \
+	-package test-framework-quickcheck2 \
 	-package text \
 	-package transformers \
 	-package uniplate \

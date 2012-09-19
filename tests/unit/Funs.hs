@@ -4,6 +4,15 @@ import Prelude hiding (map, reverse)
 
 import Data.Array.Nikola.Backend.CUDA
 
+-- |
+-- Module      : Data.Array.Nikola.Util.Random
+-- Copyright   : (c) Geoffrey Mainland 2012
+-- License     : BSD-style
+--
+-- Maintainer  : Geoffrey Mainland <mainland@apeiron.net>
+-- Stability   : experimental
+-- Portability : non-portable
+
 revmapinc :: Array M DIM1 (Exp Double) -> Array D DIM1 (Exp Double)
 revmapinc = reverse . map (+1)
 
