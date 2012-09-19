@@ -1,15 +1,21 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module American.Nikola (
-    finalPut,
-    prevPut
+    binom,
+    binomCompiled
   ) where
 
-import Prelude hiding (drop, init, map, tail, take, zipWith)
-
 import Data.Int
+import Data.List (foldl')
 
-import Data.Array.Nikola.Backend.CUDA
+import qualified Data.Vector.CUDA.Storable as CV
+import qualified Data.Vector.Storable as V
+
+import qualified Data.Array.Nikola.Backend.CUDA.Haskell as NH
+import qualified Data.Array.Nikola.Backend.CUDA.TH as NTH
+
+import qualified American.Nikola.Implementation as Imp
 
 --
 -- This code is adapted from Ken Friis Larsen's implementation of pricing for
@@ -18,43 +24,79 @@ import Data.Array.Nikola.Backend.CUDA
 
 type F = Double
 
-v1 ^*^ v2 = zipWith (*) v1 v2
-v1 ^+^ v2 = zipWith (+) v1 v2
-c -^ v = map (c -) v
-c *^ v = map (c *) v
-
-pmax v c = map (max c) v
-ppmax = zipWith max
-
--- standard econ parameters
-strike = 100
-bankDays = 252
-s0 = 100
-r = 0.03; alpha = 0.07; sigma = 0.20
-
-finalPut :: Vector M (Exp F)
-         -> Vector M (Exp F)
-         -> Vector D (Exp F)
-finalPut uPow dPow = pmax (strike -^ st) 0
+binom :: Int -> F
+binom expiry = V.head (CV.toHostVector first)
   where
-    st :: Vector D (Exp F)
-    st = s0 *^ (uPow ^*^ dPow)
+    uPow :: CV.Vector F
+    uPow = CV.fromHostVector $ V.generate (n+1) (u^)
 
-prevPut :: Vector M (Exp F)
-        -> Vector M (Exp F)
-        -> Exp Int32
-        -> Vector M (Exp F)
-        -> Exp Int32
-        -> Vector D (Exp F)
-prevPut uPow dPow expiry put i =
-    ppmax(strike -^ st) ((qUR *^ tail put) ^+^ (qDR *^ init put))
-  where
-    st = s0 *^ ((take i uPow) ^*^ (drop (n+1-i) dPow))
+    dPow :: CV.Vector F
+    dPow = CV.fromHostVector $ V.reverse $ V.generate (n+1) (d^)
+
+    first :: CV.Vector F
+    first = foldl' (prevPut uPow dPow (fromIntegral expiry)) (finalPut uPow dPow)
+              [fromIntegral n, fromIntegral n-1 .. 1]
+
+    finalPut :: CV.Vector F
+             -> CV.Vector F
+             -> CV.Vector F
+    finalPut = NH.compile Imp.finalPut
+
+    prevPut :: CV.Vector F
+            -> CV.Vector F
+            -> Int32
+            -> CV.Vector F
+            -> Int32
+            -> CV.Vector F
+    prevPut = NH.compile Imp.prevPut
+
+    -- standard econ parameters
+    bankDays = 252
+    alpha = 0.07; sigma = 0.20
 
     n = expiry*bankDays
-    dt = fromInt expiry/fromInt n
+    dt = fromIntegral expiry/fromIntegral n
     u = exp(alpha*dt+sigma*sqrt dt)
     d = exp(alpha*dt-sigma*sqrt dt)
-    stepR = exp(r*dt)
-    q = (stepR-d)/(u-d)
-    qUR = q/stepR; qDR = (1-q)/stepR
+
+binomCompiled :: Int -> F
+binomCompiled expiry = V.head (CV.toHostVector first)
+  where
+    uPow :: CV.Vector F
+    uPow = CV.fromHostVector $ V.generate (n+1) (u^)
+
+    dPow :: CV.Vector F
+    dPow = CV.fromHostVector $ V.reverse $ V.generate (n+1) (d^)
+
+    first :: CV.Vector F
+    first = foldl' (prevPut uPow dPow (fromIntegral expiry)) (finalPut uPow dPow)
+              [fromIntegral n, fromIntegral n-1 .. 1]
+
+    finalPut :: CV.Vector F
+             -> CV.Vector F
+             -> CV.Vector F
+    finalPut = $(NTH.compileSig Imp.finalPut (undefined :: CV.Vector F
+                                                        -> CV.Vector F
+                                                        -> CV.Vector F))
+
+    prevPut :: CV.Vector F
+            -> CV.Vector F
+            -> Int32
+            -> CV.Vector F
+            -> Int32
+            -> CV.Vector F
+    prevPut = $(NTH.compileSig Imp.prevPut (undefined :: CV.Vector F
+                                                      -> CV.Vector F
+                                                      -> Int32
+                                                      -> CV.Vector F
+                                                      -> Int32
+                                                      -> CV.Vector F))
+
+    -- standard econ parameters
+    bankDays = 252
+    alpha = 0.07; sigma = 0.20
+
+    n = expiry*bankDays
+    dt = fromIntegral expiry/fromIntegral n
+    u = exp(alpha*dt+sigma*sqrt dt)
+    d = exp(alpha*dt-sigma*sqrt dt)
