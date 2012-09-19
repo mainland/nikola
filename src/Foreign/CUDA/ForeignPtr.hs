@@ -48,7 +48,10 @@ newForeignDevPtr_ dptr = newForeignPtr_ (useDevicePtr dptr)
 -- try the allocation once more.
 mallocDeviceArray :: Storable a => Int -> IO (DevicePtr a)
 mallocDeviceArray n =
-   mallocArray n `catch` \(_ :: CUDAException) -> performGC >> mallocArray n
+   mallocArray n' `catch` \(_ :: CUDAException) -> performGC >> mallocArray n'
+  where
+    n' :: Int
+    n' = max 1 n
 
 mallocForeignDevPtrArray :: Storable a => Int -> IO (ForeignDevicePtr a)
 mallocForeignDevPtrArray n = do

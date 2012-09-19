@@ -190,7 +190,7 @@ compileProgH (AllocH atau e_sh) = do
 
     go sz tau = do
         ptr :: CU.ForeignDevicePtr Word8 <-
-               liftIO $ CU.mallocForeignDevPtrArray (max 1 sz*sizeOfT tau)
+               liftIO $ CU.mallocForeignDevPtrArray (sz*sizeOfT tau)
         return $ PtrV (CU.castForeignDevPtr ptr)
 
 compileProgH (LiftH p es) = do
