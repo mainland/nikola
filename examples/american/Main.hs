@@ -39,7 +39,7 @@ main = do
   case args of
     ["--validate"] -> validate
     _              -> C.defaultMain $
-                      P.map benchmarksForN [1, 8, 16, 30, 64]
+                      P.map benchmarksForN [1, 8, 16, 30, 64, 128]
 
 benchmarksForN :: Int -> C.Benchmark
 benchmarksForN n =
@@ -54,7 +54,7 @@ benchmarksForN n =
 
 validate :: IO ()
 validate =
-    forM_ [1, 8, 16, 30, 64] $ \n -> do
+    forM_ [1, 8, 16, 30, 64, 128] $ \n -> do
       let v1 = AMV.binom n
       let v2 = AMN.binomCompiled n
       validateL1Norm ePSILON (printf "expiry %-3d" n) (V.singleton v1) (V.singleton v2)
