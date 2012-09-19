@@ -8,7 +8,7 @@ import qualified Data.Vector.Storable as V
 -- American options available at <http://github.com/kfl/american-options>.
 --
 
-type F = Float
+type F = Double
 
 -- Pointwise manipulation of vectors and scalars
 v1 ^*^ v2 = V.zipWith (*) v1 v2

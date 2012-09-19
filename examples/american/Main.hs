@@ -33,7 +33,7 @@ import qualified Data.Vector.Storable as V
 import qualified American.Nikola as AMN
 import qualified American.Vector as AMV
 
-type F = Float
+type F = Double
 
 main :: IO ()
 main = do
@@ -41,7 +41,7 @@ main = do
   case args of
     ["--validate"] -> validate
     _              -> C.defaultMain $
-                      P.map benchmarksForN [1, 8, 16, 30, 64, 128]
+                      P.map benchmarksForN [1, 8, 16, 30, 64]
 
 benchmarksForN :: Int -> C.Benchmark
 benchmarksForN n =
@@ -133,7 +133,7 @@ nikolaBinomCompiled expiry = V.head (CV.toHostVector first)
 
 validate :: IO ()
 validate =
-    forM_ [1, 8, 16, 30, 64, 128, 256] $ \n -> do
+    forM_ [1, 8, 16, 30, 64] $ \n -> do
       let v1 = AMV.binom n
       let v2 = nikolaBinomCompiled n
       validateL1Norm ePSILON (printf "expiry %-3d" n) (V.singleton v1) (V.singleton v2)

@@ -16,7 +16,7 @@ import Data.Array.Nikola.Backend.CUDA
 -- American options available at <http://github.com/kfl/american-options>.
 --
 
-type F = Float
+type F = Double
 
 v1 ^*^ v2 = zipWith (*) v1 v2
 v1 ^+^ v2 = zipWith (+) v1 v2
