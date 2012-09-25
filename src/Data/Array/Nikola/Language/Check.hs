@@ -309,7 +309,7 @@ inferExp = go
     go (LetE v tau _ e1 e2) = do
         tau' <- go e1
         when (tau' /= tau) $
-            faildoc $ text "Type mis-match in let binding for" <+> ppr v
+            faildoc $ text "Type mis-match in let binding of" <+> ppr v
         extendVarTypes [(v, tau)] $ go e2
 
     go (LamE vtaus e) = do
@@ -392,13 +392,13 @@ inferProgH = go
     go (LetH v tau e p) = do
         tau' <- inferExp e
         when (tau' /= tau) $
-            faildoc $ text "Type mis-match in let binding for" <+> ppr v
+            faildoc $ text "Type mis-match in let binding of" <+> ppr v
         extendVarTypes [(v, tau)] $ go p
 
     go (BindH v tau p1 p2) = do
         tau' <- inferProgH p1
         when (tau' /= tau) $
-            faildoc $ text "Type mis-match in let binding for" <+> ppr v
+            faildoc $ text "Type mis-match in binding of" <+> ppr v
         extendVarTypes [(v, tau)] $ go p2
 
     go (LiftH kproc args) = do
@@ -450,13 +450,13 @@ inferProgK = go
     go (LetK v tau e p) = do
         tau' <- inferExp e
         when (tau' /= tau) $
-            faildoc $ text "Type mis-match in let binding for" <+> ppr v
+            faildoc $ text "Type mis-match in let binding of" <+> ppr v
         extendVarTypes [(v, tau)] $ go p
 
     go (BindK v tau p1 p2) = do
         tau' <- inferProgK p1
         when (tau' /= tau) $
-            faildoc $ text "Type mis-match in let binding for" <+> ppr v
+            faildoc $ text "Type mis-match in binding of" <+> ppr v
         extendVarTypes [(v, tau)] $ go p2
 
     go (ForK vs es prog) = do
