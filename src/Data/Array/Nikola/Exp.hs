@@ -242,7 +242,7 @@ instance Integral (Exp t Int32) where
 
 -- Float
 instance IsIntegral (Exp t Int32) (Exp t Float) where
-    fromInt = unop (UnopE (ToFloatI FloatT))
+    fromInt = unop (UnopE (Cast FloatT))
 
 instance Num (Exp t Float) where
     e1 + e2 = binop (BinopE AddN) e1 e2
@@ -288,7 +288,7 @@ instance Floating (Exp t Float) where
 
 -- Double
 instance IsIntegral (Exp t Int32) (Exp t Double) where
-    fromInt = unop (UnopE (ToFloatI DoubleT))
+    fromInt = unop (UnopE (Cast DoubleT))
 
 instance Num (Exp t Double) where
     e1 + e2 = binop (BinopE AddN) e1 e2

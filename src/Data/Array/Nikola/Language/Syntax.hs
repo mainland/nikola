@@ -82,11 +82,11 @@ data Const = BoolC   Bool
   deriving (Eq, Ord, Data, Typeable)
 
 -- | Unary operators
-data Unop = -- Logical operators
-            NotL
+data Unop = -- Casting
+            Cast ScalarType
 
-            -- Conversion operators
-          | ToFloatI ScalarType
+            -- Logical operators
+          | NotL
 
             -- Numeric operators
           | NegN
@@ -382,11 +382,19 @@ instance Show Const where
     showsPrec p = shows . pprPrec p
 
 instance Pretty Unop where
-    ppr NotL    = text "not"
+    ppr (Cast Int8T)   = text "(int8_t)"
+    ppr (Cast Int16T)  = text "(int16_t)"
+    ppr (Cast Int32T)  = text "(int32_t)"
+    ppr (Cast Int64T)  = text "(int64_t)"
+    ppr (Cast Word8T)  = text "(uint8_t)"
+    ppr (Cast Word16T) = text "(uint16_t)"
+    ppr (Cast Word32T) = text "(uint32_t)"
+    ppr (Cast Word64T) = text "(uint64_t)"
+    ppr (Cast FloatT)  = text "(float)"
+    ppr (Cast DoubleT) = text "(double)"
+    ppr (Cast tau)     = errordoc $ text "Bad cast to" <+> ppr tau
 
-    ppr (ToFloatI FloatT)  = text "(float)"
-    ppr (ToFloatI DoubleT) = text "(double)"
-    ppr (ToFloatI tau)     = errordoc $ text "Bad float conversion to" <+> ppr tau
+    ppr NotL    = text "not"
 
     ppr NegN    = text "-"
     ppr AbsN    = text "abs"
@@ -444,9 +452,9 @@ class HasFixity a where
     fixity :: a -> Fixity
 
 instance HasFixity Unop where
-    fixity NotL = infix_ appPrec
+    fixity (Cast _) = infix_ appPrec
 
-    fixity (ToFloatI _) = infix_ appPrec
+    fixity NotL = infix_ appPrec
 
     fixity NegN    = infix_ addPrec
     fixity AbsN    = infix_ appPrec

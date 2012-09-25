@@ -169,8 +169,8 @@ inferUnop = go
 
     go NotL (ScalarT BoolT) = return boolT
 
-    go (ToFloatI FloatT)  tau | isIntT tau = return (ScalarT FloatT)
-    go (ToFloatI DoubleT) tau | isIntT tau = return (ScalarT DoubleT)
+    go (Cast tau1) tau2 | isNumT (ScalarT tau1) && isNumT tau2 =
+        return (ScalarT tau1)
 
     go NegN    tau | isNumT tau   = return tau
     go AbsN    tau | isNumT tau   = return tau

@@ -134,10 +134,18 @@ compileExp (UnopE op e) = do
     ScalarCE <$> (go op tau <$> compileExp e)
   where
     go :: Unop -> ScalarType -> CExp -> C.Exp
-    go NotL _ ce = [cexp|!$ce|]
+    go (Cast Int8T)   _ ce = [cexp|(typename int8_t) $ce|]
+    go (Cast Int16T)  _ ce = [cexp|(typename int16_t) $ce|]
+    go (Cast Int32T)  _ ce = [cexp|(typename int32_t) $ce|]
+    go (Cast Int64T)  _ ce = [cexp|(typename int64_t) $ce|]
+    go (Cast Word8T)  _ ce = [cexp|(typename uint8_t) $ce|]
+    go (Cast Word16T) _ ce = [cexp|(typename uint16_t) $ce|]
+    go (Cast Word32T) _ ce = [cexp|(typename uint32_t) $ce|]
+    go (Cast Word64T) _ ce = [cexp|(typename uint64_t) $ce|]
+    go (Cast FloatT)  _ ce = [cexp|(float) $ce|]
+    go (Cast DoubleT) _ ce = [cexp|(double) $ce|]
 
-    go (ToFloatI FloatT)  _ ce = [cexp|(float) $ce|]
-    go (ToFloatI DoubleT) _ ce = [cexp|(double) $ce|]
+    go NotL _ ce = [cexp|!$ce|]
 
     go NegN _ ce = [cexp|-$ce|]
 
