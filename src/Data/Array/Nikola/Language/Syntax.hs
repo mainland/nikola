@@ -203,6 +203,7 @@ newtype PtrType = PtrT ScalarType
 data Type = ScalarT ScalarType
           | ArrayT ScalarType Int
           | FunT [Type] Type
+          | MT Type
   deriving (Eq, Ord, Data, Typeable)
 
 unitT :: Type
@@ -640,6 +641,10 @@ instance Pretty Type where
       where
         funargs [x] = x
         funargs xs  = parens (commasep xs)
+
+    pprPrec p (MT tau) =
+        parensIf (p > appPrec) $
+        text "M" <+> pprPrec appPrec1 tau
 
 instance Show Type where
     showsPrec p = shows . pprPrec p

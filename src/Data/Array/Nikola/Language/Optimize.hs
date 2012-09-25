@@ -491,7 +491,7 @@ norm ProgHA (SeqH (ReturnH {}) m)                    = norm ProgHA m
 norm ProgHA (SeqH (SeqH m1 m2) m3)                   = norm ProgHA (SeqH m1 (SeqH m2 m3))
 norm ProgHA (SeqH (BindH v tau m1 m2) m3)            = norm ProgHA (BindH v tau m1 (SeqH m2 m3))
 norm ProgHA (SeqH m1 (ReturnH UnitE))                = do  m1' <- norm ProgHA m1
-                                                           tau <- inferProgH m1'
+                                                           tau <- inferProgH m1' >>= checkMT
                                                            if tau == unitT
                                                              then norm ProgHA m1
                                                              else norm ProgHA $ SeqH m1' (ReturnH UnitE)
@@ -507,7 +507,7 @@ norm ProgKA (SeqK (SeqK m1 m2) m3)                   = norm ProgKA (SeqK m1 (Seq
 norm ProgKA (ParK (ParK m1 m2) m3)                   = norm ProgKA (ParK m1 (ParK m2 m3))
 norm ProgKA (SeqK (BindK v tau m1 m2) m3)            = norm ProgKA (BindK v tau m1 (SeqK m2 m3))
 norm ProgKA (SeqK m1 (ReturnK UnitE))                = do  m1' <- norm ProgKA m1
-                                                           tau <- inferProgK m1'
+                                                           tau <- inferProgK m1' >>= checkMT
                                                            if tau == unitT
                                                              then norm ProgKA m1
                                                              else norm ProgKA $ SeqK m1' (ReturnK UnitE)

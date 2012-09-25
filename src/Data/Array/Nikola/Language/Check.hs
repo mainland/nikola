@@ -18,6 +18,7 @@ module Data.Array.Nikola.Language.Check (
 
     checkArrayT,
     checkFunT,
+    checkMT,
 
     checkExp,
     inferProgH,
@@ -141,6 +142,11 @@ checkFunT :: MonadCheck m => Type -> m ([Type], Type)
 checkFunT (FunT taus tau) = return (taus, tau)
 checkFunT tau             = faildoc $
                             text "Expected function type but got" <+> ppr tau
+
+checkMT :: MonadCheck m => Type -> m Type
+checkMT (MT tau) = return tau
+checkMT tau      = faildoc $
+                   text "Expected monadic type but got" <+> ppr tau
 
 inferConst :: forall m . MonadCheck m => Const -> m ScalarType
 inferConst = go
@@ -396,20 +402,21 @@ inferProgH = go
         extendVarTypes [(v, tau)] $ go p
 
     go (BindH v tau p1 p2) = do
-        tau' <- inferProgH p1
+        tau' <- inferProgH p1 >>= checkMT
         when (tau' /= tau) $
             faildoc $ text "Type mis-match in binding of" <+> ppr v
         extendVarTypes [(v, tau)] $ go p2
 
     go (LiftH kproc args) = do
-        (taus, tau) <- inferProcK kproc >>= checkFunT
-        taus' <- mapM inferExp args
+        (taus, mtau) <- inferProcK kproc >>= checkFunT
+        tau          <- checkMT mtau
+        taus'        <- mapM inferExp args
         when (length taus' /= length taus) $ do
             faildoc $ text "Kernel proc" <+> ppr kproc <+>
                       text "expected" <+> ppr (length taus) <+>
                       text "arguments bu got" <+> ppr (length taus')
         zipWithM_ checkEqT taus' taus
-        return tau
+        return (MT tau)
 
     go (IfThenElseH teste thene elsee) = do
         tau_test <- inferExp teste
@@ -429,7 +436,7 @@ inferProgH = go
             faildoc $ text "Type mismatch in array allocation." <+>
                       text "Shape has" <+> ppr (length sh) <+> text "dimensions," <+>
                       text "but array type has" <+> ppr n
-        return atau
+        return (MT atau)
 
     go (DelayedH {}) =
         error "inferProgH: encountered DelayedH"
@@ -443,7 +450,7 @@ inferProgK :: forall m . MonadCheck m => ProgK -> m Type
 inferProgK = go
   where
     go :: ProgK -> m Type
-    go (ReturnK e)  = inferExp e
+    go (ReturnK e)  = MT <$> inferExp e
     go (SeqK p1 p2) = go p1 >> go p2
     go (ParK p1 p2) = go p1 >> go p2
 
@@ -454,7 +461,7 @@ inferProgK = go
         extendVarTypes [(v, tau)] $ go p
 
     go (BindK v tau p1 p2) = do
-        tau' <- inferProgK p1
+        tau' <- inferProgK p1 >>= checkMT
         when (tau' /= tau) $
             faildoc $ text "Type mis-match in binding of" <+> ppr v
         extendVarTypes [(v, tau)] $ go p2
@@ -463,7 +470,7 @@ inferProgK = go
         taus <- mapM inferExp es
         extendVarTypes (vs `zip` taus) $
             checkProgK prog unitT
-        return unitT
+        return (MT unitT)
 
     go (ParforK vs es prog) = do
         taus <- mapM inferExp es
@@ -486,10 +493,10 @@ inferProgK = go
         inferExp idx >>= checkIntT
         tau' <- inferExp x
         checkEqT tau' (ScalarT tau)
-        return unitT
+        return (MT unitT)
 
     go SyncK =
-        return unitT
+        return (MT unitT)
 
     go (DelayedK {}) =
         error "inferProgK: encountered DelayedK"

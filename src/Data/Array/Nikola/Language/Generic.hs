@@ -62,6 +62,7 @@ instance TraversableFamily AST where
         go TypeA (ScalarT tau)   = ScalarT <$> trav ScalarTypeA tau
         go TypeA (ArrayT tau n)  = ArrayT <$> trav ScalarTypeA tau <*> pure n
         go TypeA (FunT taus tau) = FunT <$> traverse (trav TypeA) taus <*> trav TypeA tau
+        go TypeA (MT tau)        = MT <$> trav TypeA tau
 
         go ExpA (VarE v)                = VarE <$> trav VarA v
         go ExpA e@(ConstE {})           = pure e

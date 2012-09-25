@@ -776,6 +776,9 @@ instance NewCVar Type where
         addParam [cparam|$ty:(toCType tau) $id:ctemp|]
         return $ FunCE [cexp|$id:ctemp|]
 
+    newCVar v (MT tau) =
+        newCVar v tau
+
 -- | C assignment
 class AssignC a where
     assignC :: a    -- ^ Destination
@@ -864,6 +867,9 @@ instance AssignCUDAResult CExp where
                                 cudaMemcpyDeviceToHost);|]
         addStm [cstm|cudaFree($ce2);|]
 
+    assignCUDAResult (MT tau) ce1 ce2 = do
+        assignCUDAResult tau ce1 ce2
+
     assignCUDAResult _ ce1 ce2 =
         faildoc $ text "assignCUDAResult: cannot assign" <+> ppr ce2 <+>
                   text "to" <+> ppr ce1
@@ -906,6 +912,9 @@ instance IsCType Type where
         -- XXX not quite right...
         params :: [C.Param]
         params = map (\tau -> [cparam|$ty:(toCType tau)|]) (concatMap flattenT taus)
+
+    toCType (MT tau) =
+        toCType tau
 
 -- | Convert an 'a' into function parameters
 class IsCParam a where
@@ -1014,6 +1023,9 @@ instance IsCParam Type where
         addParam [cparam|$ty:(toCType tau) $id:ctemp|]
         return $ FunCE [cexp|$id:ctemp|]
 
+    toCParam (v, MT tau) =
+        toCParam (v, tau)
+
     toCResultParam (ScalarT tau) =
         toCResultParam tau
 
@@ -1026,6 +1038,9 @@ instance IsCParam Type where
         ctemp <- gensym "f"
         addParam [cparam|$ty:(toCType tau)* $id:ctemp|]
         return $ FunCE [cexp|*$id:ctemp|]
+
+    toCResultParam (MT tau) =
+        toCResultParam tau
 
     toCUDAResultParam (ScalarT tau) =
         toCUDAResultParam tau
@@ -1043,6 +1058,9 @@ instance IsCParam Type where
       where
         ctau :: C.Type
         ctau = toCType tau
+
+    toCUDAResultParam (MT tau) =
+        toCResultParam tau
 
 -- | Convert an 'a' into a list of C function arguments.
 class IsCArg a where
