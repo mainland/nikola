@@ -47,7 +47,7 @@ blackscholes1 isCall s x t r v | isCall    = call
     d2   = d1 - v*sqrt t
 
 normcdf :: Exp Double -> Exp Double
-normcdf x = if x .<. 0 then 1 - w else w
+normcdf x = if x <* 0 then 1 - w else w
   where
     w = 1.0 - 1.0 / sqrt (2.0 * pi) * exp(-l*l / 2.0) * poly k
     k = 1.0 / (1.0 + 0.2316419 * l)

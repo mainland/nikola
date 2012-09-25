@@ -39,7 +39,7 @@ step cs = zipWith stepPoint cs
   where
     stepPoint :: Complex -> (Complex, Exp Int32) -> (Complex, Exp Int32)
     stepPoint c (z,i) =
-        if magnitude z' .>. 4.0
+        if magnitude z' >* 4.0
         then (z, i)
         else (z', i+1)
       where

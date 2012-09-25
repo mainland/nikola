@@ -23,17 +23,20 @@ module Data.Array.Nikola.Exp (
     IfThenElse(..),
     (?),
 
+    -- * Equality
+    IsEq(..),
+
     -- * Comparison operators
-    (.<.), (.<=.), (.==.), (./=.), (.>.), (.>=.),
+    IsOrd(..),
 
     -- * Boolean operators
-    (.&&.), (.||.),
+    (&&*), (||*),
 
     -- * Bitwise operators
-    (.&.), (.|.),
+    IsBits(..),
 
     -- * Numerical operators
-    (.^.),
+    (^*),
 
     -- * Helpers
     varE, voidE,
@@ -48,9 +51,13 @@ module Data.Array.Nikola.Exp (
     writeScalar
   ) where
 
+import Prelude hiding (max, min)
+import qualified Prelude as P
+
 import Data.Bits (Bits)
 import Data.Int
 import Data.Typeable (Typeable)
+import Data.Word
 
 import Data.Array.Nikola.Language.Monad
 import qualified Data.Array.Nikola.Language.Syntax as S
@@ -114,45 +121,87 @@ instance (IfThenElse (Exp t Bool) a, IfThenElse (Exp t Bool) b)
 (?) :: Exp t Bool -> (Exp t a, Exp t a) -> Exp t a
 t ? (th, el) = E $ IfThenElseE (unE t) (unE th) (unE el)
 
-(.==.), (./=.) :: Eq a => Exp t a -> Exp t a -> Exp t Bool
-(.==.) = binop (BinopE EqO)
-(./=.) = binop (BinopE NeO)
+infix 4 ==*, /=*, <*, <=*, >*, >=*
 
-(.<.), (.<=.), (.>.), (.>=.) :: Ord a => Exp t a -> Exp t a -> Exp t Bool
-(.<.)  = binop (BinopE LtO)
-(.<=.) = binop (BinopE LeO)
-(.>.)  = binop (BinopE GtO)
-(.>=.) = binop (BinopE GeO)
+-- | Embedded version of the 'Eq' class
+class Eq a => IsEq a where
+    (==*), (/=*) :: Exp t a -> Exp t a -> Exp t Bool
+    (==*) = binop (BinopE EqO)
+    (/=*) = binop (BinopE NeO)
 
--- | Boolean operators
-infixr 3  .&&.
-infixr 2  .||.
+instance IsEq Int8
+instance IsEq Int16
+instance IsEq Int32
+instance IsEq Int64
+instance IsEq Word8
+instance IsEq Word16
+instance IsEq Word32
+instance IsEq Word64
+instance IsEq Float
+instance IsEq Double
 
-(.&&.) :: Exp t Bool -> Exp t Bool -> Exp t Bool
-e1 .&&. e2 = binop (BinopE AndL) e1 e2
+-- | Embedded version of the 'Ord' class
+class Ord a => IsOrd a where
+    (<*), (<=*), (>*), (>=*) :: Exp t a -> Exp t a -> Exp t Bool
+    (<*)  = binop (BinopE LtO)
+    (<=*) = binop (BinopE LeO)
+    (>*)  = binop (BinopE GtO)
+    (>=*) = binop (BinopE GeO)
 
-(.||.) :: Exp t Bool -> Exp t Bool -> Exp t Bool
-e1 .||. e2 = binop (BinopE OrL) e1 e2
+    max, min :: Exp t a -> Exp t a -> Exp t a
+    max = binop (BinopE MaxO)
+    min = binop (BinopE MinO)
 
--- | Bit-wise operators
-infixl 7 .&.
-infixl 5 .|.
+instance IsOrd Int8
+instance IsOrd Int16
+instance IsOrd Int32
+instance IsOrd Int64
+instance IsOrd Word8
+instance IsOrd Word16
+instance IsOrd Word32
+instance IsOrd Word64
+instance IsOrd Float
+instance IsOrd Double
 
-(.&.) :: Bits a => Exp t a -> Exp t a -> Exp t a
-e1 .&. e2 = binop (BinopE AndB) e1 e2
+-- | Embedded versions of Boolean operators
+infixr 3  &&*
+infixr 2  ||*
 
-(.|.) :: Bits a => Exp t a -> Exp t a -> Exp t a
-e1 .|. e2 = binop (BinopE OrB) e1 e2
+(&&*) :: Exp t Bool -> Exp t Bool -> Exp t Bool
+e1 &&* e2 = binop (BinopE AndL) e1 e2
+
+(||*) :: Exp t Bool -> Exp t Bool -> Exp t Bool
+e1 ||* e2 = binop (BinopE OrL) e1 e2
+
+-- | Embedded versions of bit-wise operators
+infixl 7 &*
+infixl 5 |*
+
+class Bits a => IsBits a where
+    (&*) :: Bits a => Exp t a -> Exp t a -> Exp t a
+    e1 &* e2 = binop (BinopE AndB) e1 e2
+
+    (|*) :: Bits a => Exp t a -> Exp t a -> Exp t a
+    e1 |* e2 = binop (BinopE OrB) e1 e2
+
+instance IsBits Int8
+instance IsBits Int16
+instance IsBits Int32
+instance IsBits Int64
+instance IsBits Word8
+instance IsBits Word16
+instance IsBits Word32
+instance IsBits Word64
 
 -- | Numerical operators
 class IsFloating a where
-    (.^.) :: (IsIntegral b a) => a -> b -> a
+    (^*) :: (IsIntegral b a) => a -> b -> a
 
 instance IsFloating (Exp t Float) where
-    x .^. y = binop (BinopE PowF) x (fromInt y :: Exp t Float)
+    x ^* y = binop (BinopE PowF) x (fromInt y :: Exp t Float)
 
 instance IsFloating (Exp t Double) where
-    x .^. y = binop (BinopE PowF) x (fromInt y :: Exp t Double)
+    x ^* y = binop (BinopE PowF) x (fromInt y :: Exp t Double)
 
 -- | Helpers
 varE :: Var t a -> Exp t a

@@ -25,6 +25,7 @@ import Control.Monad.State (StateT(..), evalStateT,
                             MonadState(..), gets, modify)
 import Control.Monad.Trans (MonadIO(..))
 import Data.Foldable
+import Data.Int
 import Data.Monoid
 import Data.List (foldl1')
 import qualified Data.Map as Map
@@ -401,8 +402,8 @@ mergeParfor ProcKA (ProcK vtaus p) = do
 
     go ((seq1, ParforK [v1] [e1] p1) : (seq2, ParforK [v2] [e2] p2) : ms) = do
         insertSubst VarA v2 VarA v1
-        let p1' = ifK ((E . VarE) v1 .<. (E e1 :: E.Exp t Int)) p1
-        let p2' = ifK ((E . VarE) v1 .<. (E e2 :: E.Exp t Int)) p2
+        let p1' = ifK ((E . VarE) v1 <* (E e1 :: E.Exp t Int32)) p1
+        let p2' = ifK ((E . VarE) v1 <* (E e2 :: E.Exp t Int32)) p2
         go ((seq1, ParforK [v1] [BinopE MaxO e1 e2] (sync p1' p2')) : ms)
       where
         sync = case seq2 of
@@ -783,7 +784,7 @@ joinRanges (Range (I c1 vs1)) (Range (I c2 vs2)) =
     up Nothing   Nothing   = Nothing
     up (Just c)  Nothing   = Just c
     up Nothing   (Just c)  = Just c
-    up (Just c1) (Just c2) = Just (max c1 c2)
+    up (Just c1) (Just c2) = Just (Prelude.max c1 c2)
 
 joinRanges _ _ = T
 

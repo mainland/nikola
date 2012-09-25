@@ -3,7 +3,7 @@ module American.Nikola.Implementation (
     prevPut
   ) where
 
-import Prelude hiding (drop, init, map, tail, take, zipWith)
+import Prelude hiding (drop, init, map, max, min, tail, take, zipWith)
 
 import Data.Int
 

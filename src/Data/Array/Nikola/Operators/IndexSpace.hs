@@ -40,7 +40,7 @@ module Data.Array.Nikola.Operators.IndexSpace (
     drop
   ) where
 
-import Prelude hiding ((++), drop, init, map, replicate, reverse, tail, take)
+import Prelude hiding ((++), drop, init, map, max, min, replicate, reverse, tail, take)
 import qualified Prelude as P
 import Data.Typeable (Typeable)
 
@@ -112,7 +112,7 @@ instance (Typeable t,
         ADelayed (Z:.n2) h2 = delay arr2
 
         h :: DIM1 t -> a
-        h (Z:.i) = if (i .<. n1)
+        h (Z:.i) = if (i <* n1)
                      then h1 (ix1 i)
                      else h2 (ix1 (i-n1))
 
@@ -202,17 +202,17 @@ take :: forall r t a . (Typeable t, IsElem (Exp t Ix), Source r a)
 take n arr = fromFunction (ix1 sz') (index arr)
   where
     sz' :: Exp t Ix
-    sz' = if n .<. 0 then 0 else min n sz
+    sz' = if n <* 0 then 0 else min n sz
 
     sz :: Exp t Ix
     !(Z:.sz) = extent arr
 
 drop :: forall r t a . (Typeable t, IsElem (Exp t Ix), Source r a)
      => Exp t Ix -> Array r (DIM1 t) a -> Array D (DIM1 t) a
-drop n arr = fromFunction (ix1 sz') (\(Z:.i) -> index arr (ix1 (if n .<. 0 then i else i+n)))
+drop n arr = fromFunction (ix1 sz') (\(Z:.i) -> index arr (ix1 (if n <* 0 then i else i+n)))
   where
     sz' :: Exp t Ix
-    sz' = if n .<. 0 then sz else max 0 (sz-n)
+    sz' = if n <* 0 then sz else max 0 (sz-n)
 
     sz :: Exp t Ix
     !(Z:.sz) = extent arr
