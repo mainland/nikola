@@ -85,8 +85,8 @@ instance Ord a => Ord (Exp t a) where
     _ >= _  = error "(>=) Exp: incomparable"
     _ >  _  = error "(>) Exp: incomparable"
 
-    max = binop (BinopE Bmax)
-    min = binop (BinopE Bmin)
+    max = binop (BinopE MaxO)
+    min = binop (BinopE MinO)
 
 unop :: (S.Exp -> S.Exp) -> Exp t a -> Exp t b
 unop op e = (E . op . unE) e
@@ -115,44 +115,44 @@ instance (IfThenElse (Exp t Bool) a, IfThenElse (Exp t Bool) b)
 t ? (th, el) = E $ IfThenElseE (unE t) (unE th) (unE el)
 
 (.==.), (./=.) :: Eq a => Exp t a -> Exp t a -> Exp t Bool
-(.==.) = binop (BinopE Leq)
-(./=.) = binop (BinopE Lne)
+(.==.) = binop (BinopE EqO)
+(./=.) = binop (BinopE NeO)
 
 (.<.), (.<=.), (.>.), (.>=.) :: Ord a => Exp t a -> Exp t a -> Exp t Bool
-(.<.)  = binop (BinopE Llt)
-(.<=.) = binop (BinopE Lle)
-(.>.)  = binop (BinopE Lgt)
-(.>=.) = binop (BinopE Lge)
+(.<.)  = binop (BinopE LtO)
+(.<=.) = binop (BinopE LeO)
+(.>.)  = binop (BinopE GtO)
+(.>=.) = binop (BinopE GeO)
 
 -- | Boolean operators
 infixr 3  .&&.
 infixr 2  .||.
 
 (.&&.) :: Exp t Bool -> Exp t Bool -> Exp t Bool
-e1 .&&. e2 = binop (BinopE Land) e1 e2
+e1 .&&. e2 = binop (BinopE AndL) e1 e2
 
 (.||.) :: Exp t Bool -> Exp t Bool -> Exp t Bool
-e1 .||. e2 = binop (BinopE Land) e1 e2
+e1 .||. e2 = binop (BinopE OrL) e1 e2
 
 -- | Bit-wise operators
 infixl 7 .&.
 infixl 5 .|.
 
 (.&.) :: Bits a => Exp t a -> Exp t a -> Exp t a
-e1 .&. e2 = binop (BinopE Band) e1 e2
+e1 .&. e2 = binop (BinopE AndB) e1 e2
 
 (.|.) :: Bits a => Exp t a -> Exp t a -> Exp t a
-e1 .|. e2 = binop (BinopE Bor) e1 e2
+e1 .|. e2 = binop (BinopE OrB) e1 e2
 
 -- | Numerical operators
 class IsFloating a where
     (.^.) :: (IsIntegral b a) => a -> b -> a
 
 instance IsFloating (Exp t Float) where
-    x .^. y = binop (BinopE Fpow) x (fromInt y :: Exp t Float)
+    x .^. y = binop (BinopE PowF) x (fromInt y :: Exp t Float)
 
 instance IsFloating (Exp t Double) where
-    x .^. y = binop (BinopE Dpow) x (fromInt y :: Exp t Double)
+    x .^. y = binop (BinopE PowF) x (fromInt y :: Exp t Double)
 
 -- | Helpers
 varE :: Var t a -> Exp t a
@@ -166,15 +166,15 @@ class IsIntegral a b where
 
 -- Int32
 instance Num (Exp t Int32) where
-    e1 + e2 = binop (BinopE Iadd) e1 e2
-    e1 - e2 = binop (BinopE Isub) e1 e2
-    e1 * e2 = binop (BinopE Imul) e1 e2
+    e1 + e2 = binop (BinopE AddN) e1 e2
+    e1 - e2 = binop (BinopE SubN) e1 e2
+    e1 * e2 = binop (BinopE MulN) e1 e2
 
-    negate e    = unop (UnopE Ineg) e
+    negate e    = unop (UnopE NegN) e
     fromInteger = E . ConstE . Int32C . fromInteger
 
-    abs e    = unop (UnopE Iabs) e
-    signum e = unop (UnopE Isignum) e
+    abs e    = unop (UnopE AbsN) e
+    signum e = unop (UnopE SignumN) e
 
 instance Real (Exp t Int32) where
     toRational _ = error "Exp: cannot convert to rational"
@@ -184,8 +184,8 @@ instance Enum (Exp t Int32) where
     fromEnum _ = error "Exp: not enumerable"
 
 instance Integral (Exp t Int32) where
-    quot = binop (BinopE Idiv)
-    rem  = binop (BinopE Imod)
+    quot = binop (BinopE DivN)
+    rem  = binop (BinopE ModI)
 
     quotRem e1 e2 = (quot e1 e2, rem e1 e2)
 
@@ -193,95 +193,95 @@ instance Integral (Exp t Int32) where
 
 -- Float
 instance IsIntegral (Exp t Int32) (Exp t Float) where
-    fromInt = unop (UnopE Itof)
+    fromInt = unop (UnopE (ToFloatI FloatT))
 
 instance Num (Exp t Float) where
-    e1 + e2 = binop (BinopE Fadd) e1 e2
-    e1 - e2 = binop (BinopE Fsub) e1 e2
-    e1 * e2 = binop (BinopE Fmul) e1 e2
+    e1 + e2 = binop (BinopE AddN) e1 e2
+    e1 - e2 = binop (BinopE SubN) e1 e2
+    e1 * e2 = binop (BinopE MulN) e1 e2
 
-    negate e    = unop (UnopE Fneg) e
+    negate e    = unop (UnopE NegN) e
     fromInteger = E . ConstE . FloatC . fromInteger
 
-    abs e    = unop (UnopE Fabs) e
-    signum e = unop (UnopE Fsignum) e
+    abs e    = unop (UnopE AbsN) e
+    signum e = unop (UnopE SignumN) e
 
 instance Real (Exp t Float) where
     toRational _ = error "Exp: cannot convert to rational"
 
 instance Fractional (Exp t Float) where
-    (/) = binop (BinopE Fdiv)
+    (/) = binop (BinopE DivN)
 
-    recip (E (UnopE Frecip e)) = E e
-    recip e                    = unop (UnopE Frecip) e
+    recip (E (UnopE RecipF e)) = E e
+    recip e                    = unop (UnopE RecipF) e
 
     fromRational = E . ConstE . FloatC . fromRational
 
 instance Floating (Exp t Float) where
     pi      = (E . ConstE . FloatC) pi
-    exp     = unop (UnopE Fexp)
-    sqrt    = unop (UnopE Fsqrt)
-    log     = unop (UnopE Flog)
-    (**)    = binop (BinopE Fpow)
-    logBase = binop (BinopE FlogBase)
-    sin     = unop (UnopE Fsin)
-    tan     = unop (UnopE Ftan)
-    cos     = unop (UnopE Fcos)
-    asin    = unop (UnopE Fasin)
-    atan    = unop (UnopE Fatan)
-    acos    = unop (UnopE Facos)
-    sinh    = unop (UnopE Fsinh)
-    tanh    = unop (UnopE Ftanh)
-    cosh    = unop (UnopE Fcosh)
-    asinh   = unop (UnopE Fasinh)
-    atanh   = unop (UnopE Fatanh)
-    acosh   = unop (UnopE Facosh)
+    exp     = unop (UnopE ExpF)
+    sqrt    = unop (UnopE SqrtF)
+    log     = unop (UnopE LogF)
+    (**)    = binop (BinopE PowF)
+    logBase = binop (BinopE LogBaseF)
+    sin     = unop (UnopE SinF)
+    tan     = unop (UnopE TanF)
+    cos     = unop (UnopE CosF)
+    asin    = unop (UnopE AsinF)
+    atan    = unop (UnopE AtanF)
+    acos    = unop (UnopE AcosF)
+    sinh    = unop (UnopE SinhF)
+    tanh    = unop (UnopE TanhF)
+    cosh    = unop (UnopE CoshF)
+    asinh   = unop (UnopE AsinhF)
+    atanh   = unop (UnopE AtanhF)
+    acosh   = unop (UnopE AcoshF)
 
 -- Double
 instance IsIntegral (Exp t Int32) (Exp t Double) where
-    fromInt = unop (UnopE Itod)
+    fromInt = unop (UnopE (ToFloatI DoubleT))
 
 instance Num (Exp t Double) where
-    e1 + e2 = binop (BinopE Dadd) e1 e2
-    e1 - e2 = binop (BinopE Dsub) e1 e2
-    e1 * e2 = binop (BinopE Dmul) e1 e2
+    e1 + e2 = binop (BinopE AddN) e1 e2
+    e1 - e2 = binop (BinopE SubN) e1 e2
+    e1 * e2 = binop (BinopE MulN) e1 e2
 
-    negate e    = unop (UnopE Dneg) e
+    negate e    = unop (UnopE NegN) e
     fromInteger = E . ConstE . DoubleC . fromInteger
 
-    abs e    = unop (UnopE Dabs) e
-    signum e = unop (UnopE Dsignum) e
+    abs e    = unop (UnopE AbsN) e
+    signum e = unop (UnopE SignumN) e
 
 instance Real (Exp t Double) where
     toRational _ = error "Exp: cannot convert to rational"
 
 instance Fractional (Exp t Double) where
-    (/) = binop (BinopE Ddiv)
+    (/) = binop (BinopE DivN)
 
-    recip (E (UnopE Drecip e)) = E e
-    recip e                    = unop (UnopE Drecip) e
+    recip (E (UnopE RecipF e)) = E e
+    recip e                    = unop (UnopE RecipF) e
 
     fromRational = E . ConstE . DoubleC . fromRational
 
 instance Floating (Exp t Double) where
     pi      = (E . ConstE . DoubleC) pi
-    exp     = unop (UnopE Dexp)
-    sqrt    = unop (UnopE Dsqrt)
-    log     = unop (UnopE Dlog)
-    (**)    = binop (BinopE Dpow)
-    logBase = binop (BinopE DlogBase)
-    sin     = unop (UnopE Dsin)
-    tan     = unop (UnopE Dtan)
-    cos     = unop (UnopE Dcos)
-    asin    = unop (UnopE Dasin)
-    atan    = unop (UnopE Datan)
-    acos    = unop (UnopE Dacos)
-    sinh    = unop (UnopE Dsinh)
-    tanh    = unop (UnopE Dtanh)
-    cosh    = unop (UnopE Dcosh)
-    asinh   = unop (UnopE Dasinh)
-    atanh   = unop (UnopE Datanh)
-    acosh   = unop (UnopE Dacosh)
+    exp     = unop (UnopE ExpF)
+    sqrt    = unop (UnopE SqrtF)
+    log     = unop (UnopE LogF)
+    (**)    = binop (BinopE PowF)
+    logBase = binop (BinopE LogBaseF)
+    sin     = unop (UnopE SinF)
+    tan     = unop (UnopE TanF)
+    cos     = unop (UnopE CosF)
+    asin    = unop (UnopE AsinF)
+    atan    = unop (UnopE AtanF)
+    acos    = unop (UnopE AcosF)
+    sinh    = unop (UnopE SinhF)
+    tanh    = unop (UnopE TanhF)
+    cosh    = unop (UnopE CoshF)
+    asinh   = unop (UnopE AsinhF)
+    atanh   = unop (UnopE AtanhF)
+    acosh   = unop (UnopE AcoshF)
 
 class Lift a where
     lift :: a -> Exp t a

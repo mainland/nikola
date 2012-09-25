@@ -259,94 +259,31 @@ compileExp (AppE f es) = do
                  return x
 
 compileExp (BinopE op e1 e2) = do
-    m1 <- compileExp e1
-    m2 <- compileExp e2
-    return $ go op m1 m2
+    tau <- inferExp e1
+    m1  <- compileExp e1
+    m2  <- compileExp e2
+    return $ go tau op m1 m2
   where
-    go :: Binop -> Ex Val -> Ex Val -> Ex Val
-    go Llt m1 m2 = do
-        val1 <- m1
-        val2 <- m2
-        case (val1, val2) of
-          (Int8V n1,   Int8V n2)   -> return $ BoolV (n1 < n2)
-          (Int16V n1,  Int16V n2)  -> return $ BoolV (n1 < n2)
-          (Int32V n1,  Int32V n2)  -> return $ BoolV (n1 < n2)
-          (Int64V n1,  Int64V n2)  -> return $ BoolV (n1 < n2)
-          (Word8V n1,  Word8V n2)  -> return $ BoolV (n1 < n2)
-          (Word16V n1, Word16V n2) -> return $ BoolV (n1 < n2)
-          (Word32V n1, Word32V n2) -> return $ BoolV (n1 < n2)
-          (Word64V n1, Word64V n2) -> return $ BoolV (n1 < n2)
-          (FloatV n1,  FloatV n2)  -> return $ BoolV (n1 < n2)
-          (DoubleV n1, DoubleV n2) -> return $ BoolV (n1 < n2)
-          _ -> faildoc $ text "internal error: (<)" <+> ppr val1 <+> ppr val2
+    go :: Type -> Binop -> Ex Val -> Ex Val -> Ex Val
+    go _ EqO m1 m2 = liftOrd (==) m1 m2
+    go _ NeO m1 m2 = liftOrd (/=) m1 m2
+    go _ GtO m1 m2 = liftOrd (>)  m1 m2
+    go _ GeO m1 m2 = liftOrd (>=) m1 m2
+    go _ LtO m1 m2 = liftOrd (<)  m1 m2
+    go _ LeO m1 m2 = liftOrd (<=) m1 m2
 
-    go Bmax m1 m2 = do
-        val1 <- m1
-        val2 <- m2
-        case (val1, val2) of
-          (Int8V n1,   Int8V n2)   -> return $ Int8V   (max n1 n2)
-          (Int16V n1,  Int16V n2)  -> return $ Int16V  (max n1 n2)
-          (Int32V n1,  Int32V n2)  -> return $ Int32V  (max n1 n2)
-          (Int64V n1,  Int64V n2)  -> return $ Int64V  (max n1 n2)
-          (Word8V n1,  Word8V n2)  -> return $ Word8V  (max n1 n2)
-          (Word16V n1, Word16V n2) -> return $ Word16V (max n1 n2)
-          (Word32V n1, Word32V n2) -> return $ Word32V (max n1 n2)
-          (Word64V n1, Word64V n2) -> return $ Word64V (max n1 n2)
-          (FloatV n1,  FloatV n2)  -> return $ FloatV  (max n1 n2)
-          (DoubleV n1, DoubleV n2) -> return $ DoubleV (max n1 n2)
-          _ -> faildoc $ text "internal error: max" <+> ppr val1 <+> ppr val2
+    go _ MaxO m1 m2 = liftMaxMin max m1 m2
+    go _ MinO m1 m2 = liftMaxMin min m1 m2
 
-    go Bmin m1 m2 = do
-        val1 <- m1
-        val2 <- m2
-        case (val1, val2) of
-          (Int8V n1,   Int8V n2)   -> return $ Int8V   (min n1 n2)
-          (Int16V n1,  Int16V n2)  -> return $ Int16V  (min n1 n2)
-          (Int32V n1,  Int32V n2)  -> return $ Int32V  (min n1 n2)
-          (Int64V n1,  Int64V n2)  -> return $ Int64V  (min n1 n2)
-          (Word8V n1,  Word8V n2)  -> return $ Word8V  (min n1 n2)
-          (Word16V n1, Word16V n2) -> return $ Word16V (min n1 n2)
-          (Word32V n1, Word32V n2) -> return $ Word32V (min n1 n2)
-          (Word64V n1, Word64V n2) -> return $ Word64V (min n1 n2)
-          (FloatV n1,  FloatV n2)  -> return $ FloatV  (min n1 n2)
-          (DoubleV n1, DoubleV n2) -> return $ DoubleV (min n1 n2)
-          _ -> faildoc $ text "internal error: min" <+> ppr val1 <+> ppr val2
+    go _   AddN m1 m2 = liftNum (+) m1 m2
+    go _   SubN m1 m2 = liftNum (-) m1 m2
+    go _   MulN m1 m2 = liftNum (*) m1 m2
+    go tau DivN m1 m2
+        | isIntT tau = liftIntegral div m1 m2
+        | otherwise  = liftFloating (/) m1 m2
 
-    go Iadd m1 m2 = int32Op (+) m1 m2
-    go Isub m1 m2 = int32Op (-) m1 m2
-    go Imul m1 m2 = int32Op (*) m1 m2
-    go Idiv m1 m2 = int32Op div m1 m2
-
-    go Fadd m1 m2 = floatOp (+) m1 m2
-    go Fsub m1 m2 = floatOp (-) m1 m2
-    go Fmul m1 m2 = floatOp (*) m1 m2
-    go Fdiv m1 m2 = floatOp (/) m1 m2
-
-    go Dadd m1 m2 = doubleOp (+) m1 m2
-    go Dsub m1 m2 = doubleOp (-) m1 m2
-    go Dmul m1 m2 = doubleOp (*) m1 m2
-    go Ddiv m1 m2 = doubleOp (/) m1 m2
-
-    go op _ _ =
+    go _ op _ _ =
         faildoc $ text "Cannot compile:" <+> ppr op
-
-    int32Op :: (Int32 -> Int32 -> Int32) -> Ex Val -> Ex Val -> Ex Val
-    int32Op op m1 m2 = do
-        Int32V n1 <- m1
-        Int32V n2 <- m2
-        return $ Int32V (op n1 n2)
-
-    floatOp :: (Float -> Float -> Float) -> Ex Val -> Ex Val -> Ex Val
-    floatOp op m1 m2 = do
-        FloatV n1 <- m1
-        FloatV n2 <- m2
-        return $ FloatV (op n1 n2)
-
-    doubleOp :: (Double -> Double -> Double) -> Ex Val -> Ex Val -> Ex Val
-    doubleOp op m1 m2 = do
-        DoubleV n1 <- m1
-        DoubleV n2 <- m2
-        return $ DoubleV (op n1 n2)
 
 compileExp (IfThenElseE e_test e_then e_else) = do
     m_test <- compileExp e_test

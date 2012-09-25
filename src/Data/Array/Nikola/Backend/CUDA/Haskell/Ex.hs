@@ -1,4 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- |
 -- Module      : Data.Array.Nikola.Backend.CUDA.Haskell.Ex
@@ -17,6 +19,12 @@ module Data.Array.Nikola.Backend.CUDA.Haskell.Ex
 
     , PtrVal(..)
     , Val(..)
+    , liftOrd
+    , liftMaxMin
+    , liftNum
+    , liftIntegral
+    , liftFractional
+    , liftFloating
 
     , getCUDAModule
     , pushVal
@@ -88,6 +96,120 @@ instance Pretty Val where
 
 instance Show Val where
     showsPrec p = shows . pprPrec p
+
+liftOrd :: forall m . Monad m
+        => (forall a . Ord a => a -> a -> Bool)
+        -> m Val -> m Val -> m Val
+liftOrd op m1 m2 = do
+    v1 <- m1
+    v2 <- m2
+    go v1 v2
+  where
+    go :: Val -> Val -> m Val
+    go (Int8V n1)   (Int8V n2)   = return $ BoolV (op n1 n2)
+    go (Int16V n1)  (Int16V n2)  = return $ BoolV (op n1 n2)
+    go (Int32V n1)  (Int32V n2)  = return $ BoolV (op n1 n2)
+    go (Int64V n1)  (Int64V n2)  = return $ BoolV (op n1 n2)
+    go (Word8V n1)  (Word8V n2)  = return $ BoolV (op n1 n2)
+    go (Word16V n1) (Word16V n2) = return $ BoolV (op n1 n2)
+    go (Word32V n1) (Word32V n2) = return $ BoolV (op n1 n2)
+    go (Word64V n1) (Word64V n2) = return $ BoolV (op n1 n2)
+    go (FloatV n1)  (FloatV n2)  = return $ BoolV (op n1 n2)
+    go (DoubleV n1) (DoubleV n2) = return $ BoolV (op n1 n2)
+    go v1           v2           = faildoc $
+                                   text "liftOrd:" <+> ppr v1 <+> ppr v2
+
+liftMaxMin :: forall m . Monad m
+           => (forall a . Ord a => a -> a -> a)
+           -> m Val -> m Val -> m Val
+liftMaxMin op m1 m2 = do
+    v1 <- m1
+    v2 <- m2
+    go v1 v2
+  where
+    go :: Val -> Val -> m Val
+    go (Int8V n1)   (Int8V n2)   = return $ Int8V   (op n1 n2)
+    go (Int16V n1)  (Int16V n2)  = return $ Int16V  (op n1 n2)
+    go (Int32V n1)  (Int32V n2)  = return $ Int32V  (op n1 n2)
+    go (Int64V n1)  (Int64V n2)  = return $ Int64V  (op n1 n2)
+    go (Word8V n1)  (Word8V n2)  = return $ Word8V  (op n1 n2)
+    go (Word16V n1) (Word16V n2) = return $ Word16V (op n1 n2)
+    go (Word32V n1) (Word32V n2) = return $ Word32V (op n1 n2)
+    go (Word64V n1) (Word64V n2) = return $ Word64V (op n1 n2)
+    go (FloatV n1)  (FloatV n2)  = return $ FloatV  (op n1 n2)
+    go (DoubleV n1) (DoubleV n2) = return $ DoubleV (op n1 n2)
+    go v1           v2           = faildoc $
+                                   text "liftMaxMin:" <+> ppr v1 <+> ppr v2
+
+liftNum :: forall m . Monad m
+        => (forall a . Num a => a -> a -> a)
+        -> m Val -> m Val -> m Val
+liftNum op m1 m2 = do
+    v1 <- m1
+    v2 <- m2
+    go v1 v2
+  where
+    go :: Val -> Val -> m Val
+    go (Int8V n1)   (Int8V n2)   = return $ Int8V   (op n1 n2)
+    go (Int16V n1)  (Int16V n2)  = return $ Int16V  (op n1 n2)
+    go (Int32V n1)  (Int32V n2)  = return $ Int32V  (op n1 n2)
+    go (Int64V n1)  (Int64V n2)  = return $ Int64V  (op n1 n2)
+    go (Word8V n1)  (Word8V n2)  = return $ Word8V  (op n1 n2)
+    go (Word16V n1) (Word16V n2) = return $ Word16V (op n1 n2)
+    go (Word32V n1) (Word32V n2) = return $ Word32V (op n1 n2)
+    go (Word64V n1) (Word64V n2) = return $ Word64V (op n1 n2)
+    go (FloatV n1)  (FloatV n2)  = return $ FloatV  (op n1 n2)
+    go (DoubleV n1) (DoubleV n2) = return $ DoubleV (op n1 n2)
+    go v1           v2           = faildoc $
+                                   text "liftNum:" <+> ppr v1 <+> ppr v2
+
+liftIntegral :: forall m . Monad m
+             => (forall a . Integral a => a -> a -> a)
+             -> m Val -> m Val -> m Val
+liftIntegral op m1 m2 = do
+    v1 <- m1
+    v2 <- m2
+    go v1 v2
+  where
+    go :: Val -> Val -> m Val
+    go (Int8V n1)   (Int8V n2)   = return $ Int8V   (op n1 n2)
+    go (Int16V n1)  (Int16V n2)  = return $ Int16V  (op n1 n2)
+    go (Int32V n1)  (Int32V n2)  = return $ Int32V  (op n1 n2)
+    go (Int64V n1)  (Int64V n2)  = return $ Int64V  (op n1 n2)
+    go (Word8V n1)  (Word8V n2)  = return $ Word8V  (op n1 n2)
+    go (Word16V n1) (Word16V n2) = return $ Word16V (op n1 n2)
+    go (Word32V n1) (Word32V n2) = return $ Word32V (op n1 n2)
+    go (Word64V n1) (Word64V n2) = return $ Word64V (op n1 n2)
+    go v1           v2           = faildoc $
+                                   text "liftIntegral:" <+> ppr v1 <+> ppr v2
+
+liftFractional :: forall m . Monad m
+               => (forall a . Fractional a => a -> a -> a)
+               -> m Val -> m Val -> m Val
+liftFractional op m1 m2 = do
+    v1 <- m1
+    v2 <- m2
+    go v1 v2
+  where
+    go :: Val -> Val -> m Val
+    go (FloatV n1)  (FloatV n2)  = return $ FloatV  (op n1 n2)
+    go (DoubleV n1) (DoubleV n2) = return $ DoubleV (op n1 n2)
+    go v1           v2           = faildoc $
+                                   text "liftFractional:" <+> ppr v1 <+> ppr v2
+
+liftFloating :: forall m . Monad m
+             => (forall a . Floating a => a -> a -> a)
+             -> m Val -> m Val -> m Val
+liftFloating op m1 m2 = do
+    v1 <- m1
+    v2 <- m2
+    go v1 v2
+  where
+    go :: Val -> Val -> m Val
+    go (FloatV n1)  (FloatV n2)  = return $ FloatV  (op n1 n2)
+    go (DoubleV n1) (DoubleV n2) = return $ DoubleV (op n1 n2)
+    go v1           v2           = faildoc $
+                                   text "liftFloating:" <+> ppr v1 <+> ppr v2
 
 evalEx :: Ex a -> ExState -> IO a
 evalEx m s = snd <$> runEx m s

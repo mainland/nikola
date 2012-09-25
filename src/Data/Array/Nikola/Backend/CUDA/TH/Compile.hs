@@ -215,37 +215,31 @@ compileExp (LetE v tau _ e1 e2) = do
     return $ TH.letE [TH.valD (TH.varP (TH.mkName (unVar v))) (TH.normalB qe1) []] qe2
 
 compileExp (BinopE op e1 e2) = do
+    tau <- inferExp e1
     qe1 <- compileExp e1
     qe2 <- compileExp e2
-    return $ go op qe1 qe2
+    return $ go tau op qe1 qe2
   where
-    go :: Binop -> ExpQ -> ExpQ -> ExpQ
-    go Leq qe1 qe2 = [|$qe1 == $qe2|]
-    go Lne qe1 qe2 = [|$qe1 /= $qe2|]
-    go Lgt qe1 qe2 = [|$qe1 >  $qe2|]
-    go Lge qe1 qe2 = [|$qe1 >= $qe2|]
-    go Llt qe1 qe2 = [|$qe1 <  $qe2|]
-    go Lle qe1 qe2 = [|$qe1 <= $qe2|]
+    go :: Type -> Binop -> ExpQ -> ExpQ -> ExpQ
+    go _ EqO qe1 qe2 = [|$qe1 == $qe2|]
+    go _ NeO qe1 qe2 = [|$qe1 /= $qe2|]
+    go _ GtO qe1 qe2 = [|$qe1 >  $qe2|]
+    go _ GeO qe1 qe2 = [|$qe1 >= $qe2|]
+    go _ LtO qe1 qe2 = [|$qe1 <  $qe2|]
+    go _ LeO qe1 qe2 = [|$qe1 <= $qe2|]
 
-    go Bmax qe1 qe2 = [|max $qe1 $qe2|]
-    go Bmin qe1 qe2 = [|min $qe1 $qe2|]
+    go _ MaxO qe1 qe2 = [|max $qe1 $qe2|]
+    go _ MinO qe1 qe2 = [|min $qe1 $qe2|]
 
-    go Iadd qe1 qe2 = [|$qe1 + $qe2|]
-    go Isub qe1 qe2 = [|$qe1 - $qe2|]
-    go Imul qe1 qe2 = [|$qe1 * $qe2|]
-    go Idiv qe1 qe2 = [|$qe1 `div` $qe2|]
+    go _ AddN qe1 qe2 = [|$qe1 + $qe2|]
+    go _ SubN qe1 qe2 = [|$qe1 - $qe2|]
+    go _ MulN qe1 qe2 = [|$qe1 * $qe2|]
 
-    go Fadd qe1 qe2 = [|$qe1 + $qe2|]
-    go Fsub qe1 qe2 = [|$qe1 - $qe2|]
-    go Fmul qe1 qe2 = [|$qe1 * $qe2|]
-    go Fdiv qe1 qe2 = [|$qe1 / $qe2|]
+    go tau DivN qe1 qe2
+        | isIntT tau = [|$qe1 `div` $qe2|]
+        | otherwise  = [|$qe1 / $qe2|]
 
-    go Dadd qe1 qe2 = [|$qe1 + $qe2|]
-    go Dsub qe1 qe2 = [|$qe1 - $qe2|]
-    go Dmul qe1 qe2 = [|$qe1 * $qe2|]
-    go Ddiv qe1 qe2 = [|$qe1 / $qe2|]
-
-    go op _ _ =
+    go _ op _ _ =
         faildoc $ text "Cannot compile:" <+> ppr op
 
 compileExp (IfThenElseE e_test e_then e_else) = do

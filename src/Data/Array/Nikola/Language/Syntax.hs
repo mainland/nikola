@@ -82,96 +82,68 @@ data Const = BoolC   Bool
   deriving (Eq, Ord, Data, Typeable)
 
 -- | Unary operators
-data Unop = Lnot
+data Unop = -- Logical operators
+            NotL
 
-          | Ineg
-          | Iabs
-          | Isignum
+            -- Conversion operators
+          | ToFloatI ScalarType
 
-          | Itof
-          | Itod
+            -- Numeric operators
+          | NegN
+          | AbsN
+          | SignumN
 
-          | Fneg
-          | Fabs
-          | Fsignum
-          | Frecip
-
-          | Fexp
-          | Fsqrt
-          | Flog
-          | Fsin
-          | Ftan
-          | Fcos
-          | Fasin
-          | Fatan
-          | Facos
-          | Fsinh
-          | Ftanh
-          | Fcosh
-          | Fasinh
-          | Fatanh
-          | Facosh
-
-          | Dneg
-          | Dabs
-          | Dsignum
-          | Drecip
-
-          | Dexp
-          | Dsqrt
-          | Dlog
-          | Dsin
-          | Dtan
-          | Dcos
-          | Dasin
-          | Datan
-          | Dacos
-          | Dsinh
-          | Dtanh
-          | Dcosh
-          | Dasinh
-          | Datanh
-          | Dacosh
+            -- Floating point operators
+          | RecipF
+          | ExpF
+          | SqrtF
+          | LogF
+          | SinF
+          | TanF
+          | CosF
+          | AsinF
+          | AtanF
+          | AcosF
+          | SinhF
+          | TanhF
+          | CoshF
+          | AsinhF
+          | AtanhF
+          | AcoshF
   deriving (Eq, Ord, Data, Typeable)
 
 -- | Binary operators
-data Binop = Land
-           | Lor
+data Binop = -- Order operators
+             EqO
+           | NeO
+           | GtO
+           | GeO
+           | LtO
+           | LeO
 
-           | Leq
-           | Lne
-           | Lgt
-           | Lge
-           | Llt
-           | Lle
+           | MaxO
+           | MinO
 
-           | Band
-           | Bor
+             -- Logical operators
+           | AndL
+           | OrL
 
-           | Bmax
-           | Bmin
+            -- Numeric operators
+           | AddN
+           | SubN
+           | MulN
+           | DivN
 
-           | Iadd
-           | Isub
-           | Imul
-           | Idiv
-           | Imod
+             -- Bitwise operators
+           | AndB
+           | OrB
 
-           | Fadd
-           | Fsub
-           | Fmul
-           | Fdiv
+            -- Integral operators
+           | ModI
 
-           | Fpow
-           | FlogBase
-
-           | Dadd
-           | Dsub
-           | Dmul
-           | Ddiv
-
-           | Dpow
-           | DlogBase
+            -- Floating point operators
+           | PowF
+           | LogBaseF
   deriving (Eq, Ord, Data, Typeable)
 
 -- | Variables
@@ -285,15 +257,15 @@ instance Ord (R Exp Exp) where
     compare _  _ = error "R Exp Exp: incomparable"
 
 instance Num Exp where
-    e1 + e2 = BinopE Iadd e1 e2
-    e1 - e2 = BinopE Isub e1 e2
-    e1 * e2 = BinopE Imul e1 e2
+    e1 + e2 = BinopE AddN e1 e2
+    e1 - e2 = BinopE SubN e1 e2
+    e1 * e2 = BinopE MulN e1 e2
 
-    negate e    = UnopE Ineg e
+    negate e    = UnopE NegN e
     fromInteger = ConstE . Int32C . fromInteger
 
-    abs e    = UnopE Iabs e
-    signum e = UnopE Isignum e
+    abs e    = UnopE AbsN e
+    signum e = UnopE SignumN e
 
 -- | Host programs. These are monadic.
 data ProgH = ReturnH Exp
@@ -410,193 +382,119 @@ instance Show Const where
     showsPrec p = shows . pprPrec p
 
 instance Pretty Unop where
-    ppr Lnot    = text "not"
+    ppr NotL    = text "not"
 
-    ppr Ineg    = text "-"
-    ppr Iabs    = text "abs"
-    ppr Isignum = text "signum"
+    ppr (ToFloatI FloatT)  = text "(float)"
+    ppr (ToFloatI DoubleT) = text "(double)"
+    ppr (ToFloatI tau)     = errordoc $ text "Bad float conversion to" <+> ppr tau
 
-    ppr Itof    = text "(float)"
-    ppr Itod    = text "(double)"
+    ppr NegN    = text "-"
+    ppr AbsN    = text "abs"
+    ppr SignumN = text "signum"
 
-    ppr Fneg    = text "-"
-    ppr Fabs    = text "abs"
-    ppr Fsignum = text "signum"
-    ppr Frecip  = text "1.0/"
+    ppr RecipF  = text "1.0/"
 
-    ppr Fexp   = text "expf"
-    ppr Fsqrt  = text "sqrtf"
-    ppr Flog   = text "logf"
-    ppr Fsin   = text "sinf"
-    ppr Ftan   = text "tanf"
-    ppr Fcos   = text "cosf"
-    ppr Fasin  = text "asinf"
-    ppr Fatan  = text "atanf"
-    ppr Facos  = text "acosf"
-    ppr Fsinh  = text "sinhf"
-    ppr Ftanh  = text "tanhf"
-    ppr Fcosh  = text "coshf"
-    ppr Fasinh = text "asinshf"
-    ppr Fatanh = text "atanhf"
-    ppr Facosh = text "acoshf"
-
-    ppr Dneg    = text "-"
-    ppr Dabs    = text "abs"
-    ppr Dsignum = text "signum"
-    ppr Drecip  = text "1.0/"
-
-    ppr Dexp   = text "exp"
-    ppr Dsqrt  = text "sqrt"
-    ppr Dlog   = text "log"
-    ppr Dsin   = text "sin"
-    ppr Dtan   = text "tan"
-    ppr Dcos   = text "cos"
-    ppr Dasin  = text "asin"
-    ppr Datan  = text "atan"
-    ppr Dacos  = text "acos"
-    ppr Dsinh  = text "sinh"
-    ppr Dtanh  = text "tanh"
-    ppr Dcosh  = text "cosh"
-    ppr Dasinh = text "asinsh"
-    ppr Datanh = text "atanh"
-    ppr Dacosh = text "acosh"
+    ppr ExpF   = text "exp"
+    ppr SqrtF  = text "sqrt"
+    ppr LogF   = text "log"
+    ppr SinF   = text "sin"
+    ppr TanF   = text "tan"
+    ppr CosF   = text "cos"
+    ppr AsinF  = text "asin"
+    ppr AtanF  = text "atan"
+    ppr AcosF  = text "acos"
+    ppr SinhF  = text "sinh"
+    ppr TanhF  = text "tanh"
+    ppr CoshF  = text "cosh"
+    ppr AsinhF = text "asinsh"
+    ppr AtanhF = text "atanh"
+    ppr AcoshF = text "acosh"
 
 instance Show Unop where
     showsPrec p = shows . pprPrec p
 
 instance Pretty Binop where
-    ppr Land = text "&&"
-    ppr Lor  = text "||"
+    ppr EqO = text "=="
+    ppr NeO = text "/="
+    ppr GtO = text ">"
+    ppr GeO = text ">="
+    ppr LtO = text "<"
+    ppr LeO = text "<="
 
-    ppr Leq  = text "=="
-    ppr Lne  = text "/="
+    ppr MaxO = text "`max`"
+    ppr MinO = text "`min`"
 
-    ppr Lgt = text ">"
-    ppr Lge = text ">="
-    ppr Llt = text "<"
-    ppr Lle = text "<="
+    ppr AndL = text "&&"
+    ppr OrL  = text "||"
 
-    ppr Band = text "&"
-    ppr Bor  = text "|"
+    ppr AddN = text "+"
+    ppr SubN = text "-"
+    ppr MulN = text "*"
+    ppr DivN = text "/"
 
-    ppr Bmax = text "`max`"
-    ppr Bmin = text "`min`"
+    ppr AndB = text "&"
+    ppr OrB  = text "|"
 
-    ppr Iadd = text "+"
-    ppr Isub = text "-"
-    ppr Imul = text "*"
-    ppr Idiv = text "/"
-    ppr Imod = text "%"
+    ppr ModI = text "%"
 
-    ppr Fadd = text "+"
-    ppr Fsub = text "-"
-    ppr Fmul = text "*"
-    ppr Fdiv = text "/"
-
-    ppr Fpow     = text "**"
-    ppr FlogBase = text "`logBase`"
-
-    ppr Dadd = text "+"
-    ppr Dsub = text "-"
-    ppr Dmul = text "*"
-    ppr Ddiv = text "/"
-
-    ppr Dpow     = text "**"
-    ppr DlogBase = text "`logBase`"
+    ppr PowF     = text "**"
+    ppr LogBaseF = text "`logBase`"
 
 class HasFixity a where
     fixity :: a -> Fixity
 
 instance HasFixity Unop where
-    fixity Lnot    = infix_ appPrec
+    fixity NotL = infix_ appPrec
 
-    fixity Ineg    = infix_ addPrec
-    fixity Iabs    = infix_ appPrec
-    fixity Isignum = infix_ appPrec
+    fixity (ToFloatI _) = infix_ appPrec
 
-    fixity Itof    = infix_ appPrec
-    fixity Itod    = infix_ appPrec
+    fixity NegN    = infix_ addPrec
+    fixity AbsN    = infix_ appPrec
+    fixity SignumN = infix_ appPrec
 
-    fixity Fneg    = infix_ addPrec
-    fixity Fabs    = infix_ appPrec
-    fixity Fsignum = infix_ appPrec
-    fixity Frecip  = infix_ appPrec
-
-    fixity Fexp   = infix_ appPrec
-    fixity Fsqrt  = infix_ appPrec
-    fixity Flog   = infix_ appPrec
-    fixity Fsin   = infix_ appPrec
-    fixity Ftan   = infix_ appPrec
-    fixity Fcos   = infix_ appPrec
-    fixity Fasin  = infix_ appPrec
-    fixity Fatan  = infix_ appPrec
-    fixity Facos  = infix_ appPrec
-    fixity Fsinh  = infix_ appPrec
-    fixity Ftanh  = infix_ appPrec
-    fixity Fcosh  = infix_ appPrec
-    fixity Fasinh = infix_ appPrec
-    fixity Fatanh = infix_ appPrec
-    fixity Facosh = infix_ appPrec
-
-    fixity Dneg    = infix_ addPrec
-    fixity Dabs    = infix_ appPrec
-    fixity Dsignum = infix_ appPrec
-    fixity Drecip  = infix_ appPrec
-
-    fixity Dexp   = infix_ appPrec
-    fixity Dsqrt  = infix_ appPrec
-    fixity Dlog   = infix_ appPrec
-    fixity Dsin   = infix_ appPrec
-    fixity Dtan   = infix_ appPrec
-    fixity Dcos   = infix_ appPrec
-    fixity Dasin  = infix_ appPrec
-    fixity Datan  = infix_ appPrec
-    fixity Dacos  = infix_ appPrec
-    fixity Dsinh  = infix_ appPrec
-    fixity Dtanh  = infix_ appPrec
-    fixity Dcosh  = infix_ appPrec
-    fixity Dasinh = infix_ appPrec
-    fixity Datanh = infix_ appPrec
-    fixity Dacosh = infix_ appPrec
+    fixity RecipF = infix_ appPrec
+    fixity ExpF   = infix_ appPrec
+    fixity SqrtF  = infix_ appPrec
+    fixity LogF   = infix_ appPrec
+    fixity SinF   = infix_ appPrec
+    fixity TanF   = infix_ appPrec
+    fixity CosF   = infix_ appPrec
+    fixity AsinF  = infix_ appPrec
+    fixity AtanF  = infix_ appPrec
+    fixity AcosF  = infix_ appPrec
+    fixity SinhF  = infix_ appPrec
+    fixity TanhF  = infix_ appPrec
+    fixity CoshF  = infix_ appPrec
+    fixity AsinhF = infix_ appPrec
+    fixity AtanhF = infix_ appPrec
+    fixity AcoshF = infix_ appPrec
 
 instance HasFixity Binop where
-    fixity Land = infixr_ landPrec
-    fixity Lor  = infixr_ lorPrec
+    fixity EqO = infix_ eqPrec
+    fixity NeO = infix_ eqPrec
+    fixity GtO = infix_ eqPrec
+    fixity GeO = infix_ eqPrec
+    fixity LtO = infix_ eqPrec
+    fixity LeO = infix_ eqPrec
 
-    fixity Leq = infix_ eqPrec
-    fixity Lne = infix_ eqPrec
-    fixity Lgt = infix_ eqPrec
-    fixity Lge = infix_ eqPrec
-    fixity Llt = infix_ eqPrec
-    fixity Lle = infix_ eqPrec
+    fixity MaxO = infixl_ 9
+    fixity MinO = infixl_ 9
 
-    fixity Band = infixl_ bandPrec
-    fixity Bor  = infixl_ borPrec
+    fixity AndL = infixr_ landPrec
+    fixity OrL  = infixr_ lorPrec
 
-    fixity Bmax     = infixl_ 9
-    fixity Bmin     = infixl_ 9
+    fixity AddN = infixl_ addPrec
+    fixity SubN = infixl_ addPrec
+    fixity MulN = infixl_ mulPrec
+    fixity DivN = infixl_ mulPrec
 
-    fixity Iadd = infixl_ addPrec
-    fixity Isub = infixl_ addPrec
-    fixity Imul = infixl_ mulPrec
-    fixity Idiv = infixl_ mulPrec
-    fixity Imod = infixl_ mulPrec
+    fixity AndB = infixl_ bandPrec
+    fixity OrB  = infixl_ borPrec
 
-    fixity Fadd = infixl_ addPrec
-    fixity Fsub = infixl_ addPrec
-    fixity Fmul = infixl_ mulPrec
-    fixity Fdiv = infixl_ mulPrec
+    fixity ModI = infixl_ mulPrec
 
-    fixity Fpow     = infixr_ powPrec
-    fixity FlogBase = infixl_ mulPrec
-
-    fixity Dadd = infixl_ addPrec
-    fixity Dsub = infixl_ addPrec
-    fixity Dmul = infixl_ mulPrec
-    fixity Ddiv = infixl_ mulPrec
-
-    fixity Dpow     = infixr_ powPrec
-    fixity DlogBase = infixl_ mulPrec
+    fixity PowF     = infixr_ powPrec
+    fixity LogBaseF = infixl_ mulPrec
 
 instance Show Binop where
     showsPrec p = shows . pprPrec p
@@ -710,26 +608,23 @@ instance Pretty Exp where
         Fixity _ opp = fixity op
 
         unopSpace :: Unop -> Doc
-        unopSpace Ineg   = empty
-        unopSpace Fneg   = empty
-        unopSpace Dneg   = empty
-        unopSpace Frecip = empty
-        unopSpace Drecip = empty
+        unopSpace NegN   = empty
+        unopSpace RecipF = empty
         unopSpace _      = space
 
-    pprPrec p (BinopE FlogBase e1 e2) =
+    pprPrec p (BinopE MaxO e1 e2) =
+        parensIf (p > appPrec) $
+        text "max" <+> pprPrec appPrec1 e1 <+> pprPrec appPrec1 e2
+
+    pprPrec p (BinopE MinO e1 e2) =
+        parensIf (p > appPrec) $
+        text "min" <+> pprPrec appPrec1 e1 <+> pprPrec appPrec1 e2
+
+    pprPrec p (BinopE LogBaseF e1 e2) =
         parensIf (p > appPrec) $
         text "logBase" <+>
         pprPrec appPrec1 e1 <+>
         pprPrec appPrec1 e2
-
-    pprPrec p (BinopE Bmax e1 e2) =
-        parensIf (p > appPrec) $
-        text "max" <+> pprPrec appPrec1 e1 <+> pprPrec appPrec1 e2
-
-    pprPrec p (BinopE Bmin e1 e2) =
-        parensIf (p > appPrec) $
-        text "min" <+> pprPrec appPrec1 e1 <+> pprPrec appPrec1 e2
 
     pprPrec p (BinopE op e1 e2) =
         infixop p (fixity op) (ppr op) e1 e2

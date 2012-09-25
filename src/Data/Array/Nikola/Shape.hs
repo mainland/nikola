@@ -130,7 +130,7 @@ instance (Shape sh, IsElem (Exp t Ix)) => Shape (sh :. Exp t Ix) where
     unitDim = unitDim :. 1
 
     intersectDim (sh1 :. n1) (sh2 :. n2) =
-        intersectDim sh1 sh2 :. E (BinopE Bmin (unE n1) (unE n2))
+        intersectDim sh1 sh2 :. E (BinopE MinO (unE n1) (unE n2))
 
     addDim (sh1 :. n1) (sh2 :. n2) =
         addDim sh1 sh2 :. (n1 + n2)
@@ -193,4 +193,3 @@ ix2 y x = Z :. y :. x
 type family Rsh a :: *
 type instance Rsh Z         = R.Z
 type instance Rsh (Z :. sh) = R.Z R.:. Rsh sh
-

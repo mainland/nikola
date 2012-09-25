@@ -130,101 +130,98 @@ compileExp (AppE f es) = do
         return $ ScalarCE [cexp|($cf)($args:cargs)|]
 
 compileExp (UnopE op e) = do
-    ScalarCE <$> (go op <$> compileExp e)
+    tau <- inferExp e >>= checkScalarT
+    ScalarCE <$> (go op tau <$> compileExp e)
   where
-    go :: Unop -> CExp -> C.Exp
-    go Lnot e = [cexp|!$e|]
+    go :: Unop -> ScalarType -> CExp -> C.Exp
+    go NotL _ ce = [cexp|!$ce|]
 
-    go Ineg e    = [cexp|-$e|]
-    go Iabs e    = [cexp|abs($e)|]
-    go Isignum e = [cexp|$e > 0 ? 1 : ($e < 0 ? -1 : 0)|]
+    go (ToFloatI FloatT)  _ ce = [cexp|(float) $ce|]
+    go (ToFloatI DoubleT) _ ce = [cexp|(double) $ce|]
 
-    go Itof e    = [cexp|(float) $e|]
-    go Itod e    = [cexp|(double) $e|]
+    go NegN _ ce = [cexp|-$ce|]
 
-    go Fneg e    = [cexp|-$e|]
-    go Fabs e    = [cexp|fabsf($e)|]
-    go Fsignum e = [cexp|$e > 0 ? 1 : ($e < 0 ? -1 : 0)|]
-    go Frecip e  = [cexp|1.0f/$e|]
+    go AbsN FloatT  ce                        = [cexp|fabsf($ce)|]
+    go AbsN DoubleT ce                        = [cexp|fabs($ce)|]
+    go AbsN tau     ce | isIntT (ScalarT tau) = [cexp|abs($ce)|]
 
-    go Fexp e   = [cexp|expf($e)|]
-    go Fsqrt e  = [cexp|sqrtf($e)|]
-    go Flog e   = [cexp|logf($e)|]
-    go Fsin e   = [cexp|sinf($e)|]
-    go Ftan e   = [cexp|tanf($e)|]
-    go Fcos e   = [cexp|cosf($e)|]
-    go Fasin e  = [cexp|asinf($e)|]
-    go Fatan e  = [cexp|atanf($e)|]
-    go Facos e  = [cexp|acosf($e)|]
-    go Fsinh e  = [cexp|asinhf($e)|]
-    go Ftanh e  = [cexp|atanhf($e)|]
-    go Fcosh e  = [cexp|acoshf($e)|]
-    go Fasinh e = [cexp|asinhf($e)|]
-    go Fatanh e = [cexp|atanhf($e)|]
-    go Facosh e = [cexp|acoshf($e)|]
+    go SignumN FloatT  ce                        = [cexp|$ce > 0 ? 1 : ($ce < 0 ? -1 : 0)|]
+    go SignumN DoubleT ce                        = [cexp|$ce > 0.0 ? 1.0 : ($ce < 0.0 ? -1.0 : 0.0)|]
+    go SignumN tau     ce | isIntT (ScalarT tau) = [cexp|$ce > 0.0f ? 1.0f : ($ce < 0.0f ? -1.0f : 0.0f)|]
 
-    go Dneg e    = [cexp|-$e|]
-    go Dabs e    = [cexp|fabs($e)|]
-    go Dsignum e = [cexp|$e > 0 ? 1 : ($e < 0 ? -1 : 0)|]
-    go Drecip e  = [cexp|1.0/$e|]
+    go RecipF FloatT  ce = [cexp|1.0f/$ce|]
+    go RecipF DoubleT ce = [cexp|1.0/$ce|]
+    go ExpF   FloatT  ce = [cexp|expf($ce)|]
+    go ExpF   DoubleT ce = [cexp|exp($ce)|]
+    go SqrtF  FloatT  ce = [cexp|sqrtf($ce)|]
+    go SqrtF  DoubleT ce = [cexp|sqrt($ce)|]
+    go LogF   FloatT  ce = [cexp|logf($ce)|]
+    go LogF   DoubleT ce = [cexp|log($ce)|]
+    go SinF   FloatT  ce = [cexp|sinf($ce)|]
+    go SinF   DoubleT ce = [cexp|sinf($ce)|]
+    go TanF   FloatT  ce = [cexp|tanf($ce)|]
+    go TanF   DoubleT ce = [cexp|tan($ce)|]
+    go CosF   FloatT  ce = [cexp|cosf($ce)|]
+    go CosF   DoubleT ce = [cexp|cos($ce)|]
+    go AsinF  FloatT  ce = [cexp|asinf($ce)|]
+    go AsinF  DoubleT ce = [cexp|asin($ce)|]
+    go AtanF  FloatT  ce = [cexp|atanf($ce)|]
+    go AtanF  DoubleT ce = [cexp|atan($ce)|]
+    go AcosF  FloatT  ce = [cexp|acosf($ce)|]
+    go AcosF  DoubleT ce = [cexp|acos($ce)|]
+    go SinhF  FloatT  ce = [cexp|asinhf($ce)|]
+    go SinhF  DoubleT ce = [cexp|asinh($ce)|]
+    go TanhF  FloatT  ce = [cexp|atanhf($ce)|]
+    go TanhF  DoubleT ce = [cexp|atanh($ce)|]
+    go CoshF  FloatT  ce = [cexp|acoshf($ce)|]
+    go CoshF  DoubleT ce = [cexp|acosh($ce)|]
+    go AsinhF FloatT  ce = [cexp|asinhf($ce)|]
+    go AsinhF DoubleT ce = [cexp|asinh($ce)|]
+    go AtanhF FloatT  ce = [cexp|atanhf($ce)|]
+    go AtanhF DoubleT ce = [cexp|atanh($ce)|]
+    go AcoshF FloatT  ce = [cexp|acoshf($ce)|]
+    go AcoshF DoubleT ce = [cexp|acosh($ce)|]
 
-    go Dexp e   = [cexp|exp($e)|]
-    go Dsqrt e  = [cexp|sqrt($e)|]
-    go Dlog e   = [cexp|log($e)|]
-    go Dsin e   = [cexp|sin($e)|]
-    go Dtan e   = [cexp|tan($e)|]
-    go Dcos e   = [cexp|cos($e)|]
-    go Dasin e  = [cexp|asin($e)|]
-    go Datan e  = [cexp|atan($e)|]
-    go Dacos e  = [cexp|acos($e)|]
-    go Dsinh e  = [cexp|asinh($e)|]
-    go Dtanh e  = [cexp|atanh($e)|]
-    go Dcosh e  = [cexp|acosh($e)|]
-    go Dasinh e = [cexp|asinh($e)|]
-    go Datanh e = [cexp|atanh($e)|]
-    go Dacosh e = [cexp|acosh($e)|]
+    go _ tau _ = errordoc $
+                 text "Cannot compile" <+> ppr (UnopE op e) <+>
+                 text "at type" <+> ppr tau
 
-compileExp (BinopE op e1 e2) =
-    ScalarCE <$> (go op <$> compileExp e1 <*> compileExp e2)
+compileExp (BinopE op e1 e2) = do
+    tau <- inferExp e1 >>= checkScalarT
+    ScalarCE <$> (go op tau <$> compileExp e1 <*> compileExp e2)
   where
-    go :: Binop -> CExp -> CExp -> C.Exp
-    go Land e1 e2 = [cexp|$e1 && $e2|]
-    go Lor  e1 e2 = [cexp|$e1 || $e2|]
+    go :: Binop -> ScalarType -> CExp -> CExp -> C.Exp
+    go EqO _ ce1 ce2 = [cexp|$ce1 == $ce2|]
+    go NeO _ ce1 ce2 = [cexp|$ce1 != $ce2|]
+    go GtO _ ce1 ce2 = [cexp|$ce1 > $ce2|]
+    go GeO _ ce1 ce2 = [cexp|$ce1 >= $ce2|]
+    go LtO _ ce1 ce2 = [cexp|$ce1 < $ce2|]
+    go LeO _ ce1 ce2 = [cexp|$ce1 <= $ce2|]
 
-    go Leq e1 e2 = [cexp|$e1 == $e2|]
-    go Lne e1 e2 = [cexp|$e1 != $e2|]
-    go Lgt e1 e2 = [cexp|$e1 > $e2|]
-    go Lge e1 e2 = [cexp|$e1 >= $e2|]
-    go Llt e1 e2 = [cexp|$e1 < $e2|]
-    go Lle e1 e2 = [cexp|$e1 <= $e2|]
+    go MaxO _ ce1 ce2 = [cexp|$ce1 > $ce2 ? $ce1 : $ce2 |]
+    go MinO _ ce1 ce2 = [cexp|$ce1 > $ce2 ? $ce2 : $ce1 |]
 
-    go Band e1 e2 = [cexp|$e1 & $e2|]
-    go Bor  e1 e2 = [cexp|$e1 | $e2|]
+    go AndL _ ce1 ce2 = [cexp|$ce1 && $ce2|]
+    go OrL  _ ce1 ce2 = [cexp|$ce1 || $ce2|]
 
-    go Bmax e1 e2 = [cexp|$e1 > $e2 ? $e1 : $e2 |]
-    go Bmin e1 e2 = [cexp|$e1 > $e2 ? $e2 : $e1 |]
+    go AddN _ ce1 ce2 = [cexp|$ce1 + $ce2|]
+    go SubN _ ce1 ce2 = [cexp|$ce1 - $ce2|]
+    go MulN _ ce1 ce2 = [cexp|$ce1 * $ce2|]
+    go DivN _ ce1 ce2 = [cexp|$ce1 / $ce2|]
 
-    go Iadd e1 e2 = [cexp|$e1 + $e2|]
-    go Isub e1 e2 = [cexp|$e1 - $e2|]
-    go Imul e1 e2 = [cexp|$e1 * $e2|]
-    go Idiv e1 e2 = [cexp|$e1 / $e2|]
-    go Imod e1 e2 = [cexp|$e1 % $e2|]
+    go AndB _ ce1 ce2 = [cexp|$ce1 & $ce2|]
+    go OrB  _ ce1 ce2 = [cexp|$ce1 | $ce2|]
 
-    go Fadd e1 e2 = [cexp|$e1 + $e2|]
-    go Fsub e1 e2 = [cexp|$e1 - $e2|]
-    go Fmul e1 e2 = [cexp|$e1 * $e2|]
-    go Fdiv e1 e2 = [cexp|$e1 / $e2|]
+    go ModI _ ce1 ce2 = [cexp|$ce1 % $ce2|]
 
-    go Fpow e1 e2     = [cexp|powf($e1,$e2)|]
-    go FlogBase e1 e2 = [cexp|logf($e2)/logf($e1)|]
+    go PowF     FloatT  ce1 ce2 = [cexp|powf($ce1,$ce2)|]
+    go PowF     DoubleT ce1 ce2 = [cexp|pow($ce1,$ce2)|]
+    go LogBaseF FloatT  ce1 ce2 = [cexp|logf($ce2)/logf($ce1)|]
+    go LogBaseF DoubleT ce1 ce2 = [cexp|log($ce2)/log($ce1)|]
 
-    go Dadd e1 e2 = [cexp|$e1 + $e2|]
-    go Dsub e1 e2 = [cexp|$e1 - $e2|]
-    go Dmul e1 e2 = [cexp|$e1 * $e2|]
-    go Ddiv e1 e2 = [cexp|$e1 / $e2|]
-
-    go Dpow e1 e2     = [cexp|pow($e1,$e2)|]
-    go DlogBase e1 e2 = [cexp|log($e2)/log($e1)|]
+    go _ tau _ _ = errordoc $
+                   text "Cannot compile" <+> ppr (BinopE op e1 e2) <+>
+                   text "at type" <+> ppr tau
 
 compileExp (IfThenElseE test th el) = do
     tau <- inferExp th

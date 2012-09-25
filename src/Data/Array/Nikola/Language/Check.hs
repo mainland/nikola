@@ -16,6 +16,11 @@ module Data.Array.Nikola.Language.Check (
 
     inferExp,
 
+    isIntT,
+    isFloatT,
+    isNumT,
+
+    checkScalarT,
     checkArrayT,
     checkFunT,
     checkMT,
@@ -58,12 +63,12 @@ isIntT (ScalarT Word64T) = True
 isIntT _                 = False
 
 isFloatT :: Type -> Bool
-isFloatT (ScalarT FloatT) = True
-isFloatT _                = False
+isFloatT (ScalarT FloatT)  = True
+isFloatT (ScalarT DoubleT) = True
+isFloatT _                 = False
 
-isDoubleT :: Type -> Bool
-isDoubleT (ScalarT DoubleT) = True
-isDoubleT _                 = False
+isNumT :: Type -> Bool
+isNumT tau = isIntT tau || isFloatT tau
 
 joinBoolT :: MonadCheck m => Type -> Type -> m Type
 joinBoolT tau@(ScalarT BoolT) (ScalarT BoolT) = return tau
@@ -87,16 +92,9 @@ joinIntT tau1 tau2 =
               text "but got" <+> ppr tau1
 
 joinFloatT :: MonadCheck m => Type -> Type -> m Type
-joinFloatT tau@(ScalarT FloatT) (ScalarT FloatT) = return tau
-
+joinFloatT tau@(ScalarT FloatT)  (ScalarT FloatT)  = return tau
+joinFloatT tau@(ScalarT DoubleT) (ScalarT DoubleT) = return tau
 joinFloatT tau1 tau2 =
-    faildoc $ text "Expected" <+> ppr tau2 <+>
-              text "but got" <+> ppr tau1
-
-joinDoubleT :: MonadCheck m => Type -> Type -> m Type
-joinDoubleT tau@(ScalarT DoubleT) (ScalarT DoubleT) = return tau
-
-joinDoubleT tau1 tau2 =
     faildoc $ text "Expected" <+> ppr tau2 <+>
               text "but got" <+> ppr tau1
 
@@ -169,56 +167,31 @@ inferUnop = go
   where
     go :: Unop -> Type -> m Type
 
-    go Lnot (ScalarT BoolT) = return boolT
+    go NotL (ScalarT BoolT) = return boolT
 
-    go Ineg    tau | isIntT tau   = return tau
-    go Iabs    tau | isIntT tau   = return tau
-    go Isignum tau | isIntT tau   = return tau
+    go (ToFloatI FloatT)  tau | isIntT tau = return (ScalarT FloatT)
+    go (ToFloatI DoubleT) tau | isIntT tau = return (ScalarT DoubleT)
 
-    go Itof    tau | isIntT tau   = return (ScalarT FloatT)
-    go Itod    tau | isIntT tau   = return (ScalarT DoubleT)
+    go NegN    tau | isNumT tau   = return tau
+    go AbsN    tau | isNumT tau   = return tau
+    go SignumN tau | isNumT tau   = return tau
 
-    go Fneg    tau | isFloatT tau = return tau
-    go Fabs    tau | isFloatT tau = return tau
-    go Fsignum tau | isFloatT tau = return tau
-    go Frecip  tau | isFloatT tau = return tau
-
-    go Fexp    tau | isFloatT tau = return tau
-    go Fsqrt   tau | isFloatT tau = return tau
-    go Flog    tau | isFloatT tau = return tau
-    go Fsin    tau | isFloatT tau = return tau
-    go Ftan    tau | isFloatT tau = return tau
-    go Fcos    tau | isFloatT tau = return tau
-    go Fasin   tau | isFloatT tau = return tau
-    go Fatan   tau | isFloatT tau = return tau
-    go Facos   tau | isFloatT tau = return tau
-    go Fsinh   tau | isFloatT tau = return tau
-    go Ftanh   tau | isFloatT tau = return tau
-    go Fcosh   tau | isFloatT tau = return tau
-    go Fasinh  tau | isFloatT tau = return tau
-    go Fatanh  tau | isFloatT tau = return tau
-    go Facosh  tau | isFloatT tau = return tau
-
-    go Dneg    tau | isDoubleT tau = return tau
-    go Dabs    tau | isDoubleT tau = return tau
-    go Dsignum tau | isDoubleT tau = return tau
-    go Drecip  tau | isDoubleT tau = return tau
-
-    go Dexp    tau | isDoubleT tau = return tau
-    go Dsqrt   tau | isDoubleT tau = return tau
-    go Dlog    tau | isDoubleT tau = return tau
-    go Dsin    tau | isDoubleT tau = return tau
-    go Dtan    tau | isDoubleT tau = return tau
-    go Dcos    tau | isDoubleT tau = return tau
-    go Dasin   tau | isDoubleT tau = return tau
-    go Datan   tau | isDoubleT tau = return tau
-    go Dacos   tau | isDoubleT tau = return tau
-    go Dsinh   tau | isDoubleT tau = return tau
-    go Dtanh   tau | isDoubleT tau = return tau
-    go Dcosh   tau | isDoubleT tau = return tau
-    go Dasinh  tau | isDoubleT tau = return tau
-    go Datanh  tau | isDoubleT tau = return tau
-    go Dacosh  tau | isDoubleT tau = return tau
+    go RecipF  tau | isFloatT tau = return tau
+    go ExpF    tau | isFloatT tau = return tau
+    go SqrtF   tau | isFloatT tau = return tau
+    go LogF    tau | isFloatT tau = return tau
+    go SinF    tau | isFloatT tau = return tau
+    go TanF    tau | isFloatT tau = return tau
+    go CosF    tau | isFloatT tau = return tau
+    go AsinF   tau | isFloatT tau = return tau
+    go AtanF   tau | isFloatT tau = return tau
+    go AcosF   tau | isFloatT tau = return tau
+    go SinhF   tau | isFloatT tau = return tau
+    go TanhF   tau | isFloatT tau = return tau
+    go CoshF   tau | isFloatT tau = return tau
+    go AsinhF  tau | isFloatT tau = return tau
+    go AtanhF  tau | isFloatT tau = return tau
+    go AcoshF  tau | isFloatT tau = return tau
 
     go op tau =
         faildoc $
@@ -230,48 +203,35 @@ inferBinop =
     go
   where
     go :: Binop -> Type -> Type -> m Type
-    go Land tau1 tau2     = joinBoolT tau1 tau2
-    go Lor tau1 tau2      = joinBoolT tau1 tau2
+    go EqO tau1 tau2      = joinNumT tau1 tau2 >> return boolT
+    go NeO tau1 tau2      = joinNumT tau1 tau2 >> return boolT
+    go GtO tau1 tau2      = joinNumT tau1 tau2 >> return boolT
+    go GeO tau1 tau2      = joinNumT tau1 tau2 >> return boolT
+    go LtO tau1 tau2      = joinNumT tau1 tau2 >> return boolT
+    go LeO tau1 tau2      = joinNumT tau1 tau2 >> return boolT
 
-    go Leq tau1 tau2      = joinNumT tau1 tau2 >> return boolT
-    go Lne tau1 tau2      = joinNumT tau1 tau2 >> return boolT
-    go Lgt tau1 tau2      = joinNumT tau1 tau2 >> return boolT
-    go Lge tau1 tau2      = joinNumT tau1 tau2 >> return boolT
-    go Llt tau1 tau2      = joinNumT tau1 tau2 >> return boolT
-    go Lle tau1 tau2      = joinNumT tau1 tau2 >> return boolT
+    go MaxO tau1 tau2     = joinNumT tau1 tau2
+    go MinO tau1 tau2     = joinNumT tau1 tau2
 
-    go Band tau1 tau2     = joinIntT tau1 tau2
-    go Bor  tau1 tau2     = joinIntT tau1 tau2
+    go AndL tau1 tau2     = joinBoolT tau1 tau2
+    go OrL tau1 tau2      = joinBoolT tau1 tau2
 
-    go Bmax tau1 tau2     = joinNumT tau1 tau2
-    go Bmin tau1 tau2     = joinNumT tau1 tau2
+    go AddN tau1 tau2     = joinNumT tau1 tau2
+    go SubN tau1 tau2     = joinNumT tau1 tau2
+    go MulN tau1 tau2     = joinNumT tau1 tau2
+    go DivN tau1 tau2     = joinNumT tau1 tau2
 
-    go Iadd tau1 tau2     = joinIntT tau1 tau2
-    go Isub tau1 tau2     = joinIntT tau1 tau2
-    go Imul tau1 tau2     = joinIntT tau1 tau2
-    go Idiv tau1 tau2     = joinIntT tau1 tau2
-    go Imod tau1 tau2     = joinIntT tau1 tau2
+    go AndB tau1 tau2     = joinIntT tau1 tau2
+    go OrB  tau1 tau2     = joinIntT tau1 tau2
 
-    go Fadd     tau1 tau2 = joinFloatT tau1 tau2
-    go Fsub     tau1 tau2 = joinFloatT tau1 tau2
-    go Fmul     tau1 tau2 = joinFloatT tau1 tau2
-    go Fdiv     tau1 tau2 = joinFloatT tau1 tau2
+    go ModI tau1 tau2     = joinIntT tau1 tau2
 
-    go Fpow     tau1 tau2 = joinFloatT tau1 tau2
-    go FlogBase tau1 tau2 = joinFloatT tau1 tau2
-
-    go Dadd     tau1 tau2 = joinDoubleT tau1 tau2
-    go Dsub     tau1 tau2 = joinDoubleT tau1 tau2
-    go Dmul     tau1 tau2 = joinDoubleT tau1 tau2
-    go Ddiv     tau1 tau2 = joinDoubleT tau1 tau2
-
-    go Dpow     tau1 tau2 = joinDoubleT tau1 tau2
-    go DlogBase tau1 tau2 = joinDoubleT tau1 tau2
+    go PowF     tau1 tau2 = joinFloatT tau1 tau2
+    go LogBaseF tau1 tau2 = joinFloatT tau1 tau2
 
 inferExp :: forall m . MonadCheck m => Exp -> m Type
 inferExp = go
   where
-    go :: Exp -> m Type
     go (VarE v) =
         lookupVarType v
 

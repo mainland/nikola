@@ -199,17 +199,17 @@ occ ExpA (VarE v) = do  v' <- occ VarA v
                         occVar v'
                         return $ VarE v'
 
-occ ExpA (BinopE Bmax e1 e2) = do
+occ ExpA (BinopE MaxO e1 e2) = do
     (e1', occ1) <- withOcc $ occ ExpA e1
     (e2', occ2) <- withOcc $ occ ExpA e2
     setOcc $ Map.map (const Many) (occ1 `Map.union` occ2)
-    return $ BinopE Bmax e1' e2'
+    return $ BinopE MaxO e1' e2'
 
-occ ExpA (BinopE Bmin e1 e2) = do
+occ ExpA (BinopE MinO e1 e2) = do
     (e1', occ1) <- withOcc $ occ ExpA e1
     (e2', occ2) <- withOcc $ occ ExpA e2
     setOcc $ Map.map (const Many) (occ1 `Map.union` occ2)
-    return $ BinopE Bmin e1' e2'
+    return $ BinopE MinO e1' e2'
 
 occ ExpA (LetE v tau _ e1 e2) = do
     (e1', occ1) <- withOcc $ occ ExpA e1
@@ -288,8 +288,7 @@ isAtomic (VarE {})        = True
 isAtomic (ConstE {})      = True
 isAtomic (ProjArrE _ _ e) = isAtomic e
 isAtomic (DimE _ _ e)     = isAtomic e
-isAtomic (UnopE Ineg _)   = True
-isAtomic (UnopE Fneg _)   = True
+isAtomic (UnopE NegN _)   = True
 isAtomic _                = False
 
 simpl :: AST a -> a -> O a
@@ -310,8 +309,11 @@ simpl ExpA (UnopE op e) = do  e' <- simpl ExpA e
                               go op e'
   where
     go :: Unop -> Exp -> O Exp
-    go Fsqrt  (ConstE (FloatC i)) = pure $ ConstE (FloatC (sqrt i))
-    go Frecip (ConstE (FloatC i)) = pure $ ConstE (FloatC (1/i))
+    go SqrtF  (ConstE (FloatC i)) = pure $ ConstE (FloatC (sqrt i))
+    go RecipF (ConstE (FloatC i)) = pure $ ConstE (FloatC (1/i))
+
+    go SqrtF  (ConstE (DoubleC i)) = pure $ ConstE (DoubleC (sqrt i))
+    go RecipF (ConstE (DoubleC i)) = pure $ ConstE (DoubleC (1/i))
 
     go op e = return $ UnopE op e
 
@@ -320,53 +322,35 @@ simpl ExpA (BinopE op e1 e2) = do  e1' <- simpl ExpA e1
                                    go op e1' e2'
   where
     go :: Binop -> Exp -> Exp -> O Exp
-    -- Integer rewrites
-    go Iadd (ConstE (Int32C 0)) e2                  = pure e2
-    go Iadd (ConstE (Int32C i)) (ConstE (Int32C j)) = pure $ ConstE (Int32C (i+j))
-    go Iadd e1                  e2@(ConstE {})      = simpl ExpA (BinopE Iadd e2 e1)
-    go Iadd e1                  (BinopE Iadd e2 e3) = simpl ExpA (BinopE Iadd (BinopE Iadd e1 e2) e3)
+    go AddN (ConstE (Int32C 0))  e2                   = pure e2
+    go AddN (ConstE (FloatC 0))  e2                   = pure e2
+    go AddN (ConstE (DoubleC 0)) e2                   = pure e2
+    go AddN (ConstE (Int32C i))  (ConstE (Int32C j))  = pure $ ConstE (Int32C (i+j))
+    go AddN (ConstE (FloatC i))  (ConstE (FloatC j))  = pure $ ConstE (FloatC (i+j))
+    go AddN (ConstE (DoubleC i)) (ConstE (DoubleC j)) = pure $ ConstE (DoubleC (i+j))
+    go AddN e1                   (BinopE AddN e2 e3)  = simpl ExpA (BinopE AddN (BinopE AddN e1 e2) e3)
+    go AddN e1                   e2@(ConstE {})       = simpl ExpA (BinopE AddN e2 e1)
 
-    go Isub e1                  (ConstE (Int32C i)) = simpl ExpA (BinopE Iadd (ConstE (Int32C (negate i))) e1)
+    go SubN e1                  (ConstE (Int32C i))   = simpl ExpA (BinopE AddN (ConstE (Int32C (negate i))) e1)
+    go SubN e1                  (ConstE (FloatC i))   = simpl ExpA (BinopE AddN (ConstE (FloatC (negate i))) e1)
+    go SubN e1                  (ConstE (DoubleC i))  = simpl ExpA (BinopE AddN (ConstE (DoubleC (negate i))) e1)
 
-    go Imul (ConstE (Int32C 0)) _                   = pure $ ConstE (Int32C 0)
-    go Imul (ConstE (Int32C 1)) e2                  = pure e2
-    go Imul (ConstE (Int32C i)) (ConstE (Int32C j)) = pure $ ConstE (Int32C (i*j))
-    go Imul e1                  e2@(ConstE {})      = simpl ExpA (BinopE Imul e2 e1)
-    go Imul e1                  (BinopE Imul e2 e3) = simpl ExpA (BinopE Imul (BinopE Imul e1 e2) e3)
+    go MulN (ConstE (Int32C 0))  _                    = pure $ ConstE (Int32C 0)
+    go MulN (ConstE (FloatC 0))  _                    = pure $ ConstE (FloatC 0)
+    go MulN (ConstE (DoubleC 0)) _                    = pure $ ConstE (DoubleC 0)
+    go MulN (ConstE (Int32C 1))  e2                   = pure e2
+    go MulN (ConstE (FloatC 1))  e2                   = pure e2
+    go MulN (ConstE (DoubleC 1)) e2                   = pure e2
+    go MulN (ConstE (Int32C i))  (ConstE (Int32C j))  = pure $ ConstE (Int32C (i*j))
+    go MulN (ConstE (FloatC i))  (ConstE (FloatC j))  = pure $ ConstE (FloatC (i*j))
+    go MulN (ConstE (DoubleC i)) (ConstE (DoubleC j)) = pure $ ConstE (DoubleC (i*j))
+    go MulN e1                   e2@(ConstE {})       = simpl ExpA (BinopE MulN e2 e1)
+    go MulN e1                   (BinopE MulN e2 e3)  = simpl ExpA (BinopE MulN (BinopE MulN e1 e2) e3)
 
-    go Imod e1                  (ConstE (Int32C 1)) = pure e1
+    go ModI e1                  (ConstE (Int32C 1))   = pure e1
 
-    -- Float rewrites
-    go Fadd (ConstE (FloatC 0)) e2                  = pure e2
-    go Fadd (ConstE (FloatC i)) (ConstE (FloatC j)) = pure $ ConstE (FloatC (i+j))
-    go Fadd e1                  e2@(ConstE {})      = simpl ExpA (BinopE Fadd e2 e1)
-    go Fadd e1                  (BinopE Fadd e2 e3) = simpl ExpA (BinopE Fadd (BinopE Fadd e1 e2) e3)
-
-    go Fsub e1                  (ConstE (FloatC i)) = simpl ExpA (BinopE Fadd (ConstE (FloatC (negate i))) e1)
-
-    go Fmul (ConstE (FloatC 0)) _                   = pure $ ConstE (FloatC 0)
-    go Fmul (ConstE (FloatC 1)) e2                  = pure e2
-    go Fmul (ConstE (FloatC i)) (ConstE (FloatC j)) = pure $ ConstE (FloatC (i*j))
-    go Fmul e1                  e2@(ConstE {})      = simpl ExpA (BinopE Fmul e2 e1)
-    go Fmul e1                  (BinopE Fmul e2 e3) = simpl ExpA (BinopE Fmul (BinopE Fmul e1 e2) e3)
-
-    go Fdiv (ConstE (FloatC 1)) e2                  = simpl ExpA (UnopE Frecip e2)
-
-    -- Double rewrites
-    go Dadd (ConstE (DoubleC 0)) e2                   = pure e2
-    go Dadd (ConstE (DoubleC i)) (ConstE (DoubleC j)) = pure $ ConstE (DoubleC (i+j))
-    go Dadd e1                   e2@(ConstE {})       = simpl ExpA (BinopE Dadd e2 e1)
-    go Dadd e1                   (BinopE Dadd e2 e3)  = simpl ExpA (BinopE Dadd (BinopE Dadd e1 e2) e3)
-
-    go Dsub e1                   (ConstE (DoubleC i)) = simpl ExpA (BinopE Dadd (ConstE (DoubleC (negate i))) e1)
-
-    go Dmul (ConstE (DoubleC 0)) _                    = pure $ ConstE (DoubleC 0)
-    go Dmul (ConstE (DoubleC 1)) e2                   = pure e2
-    go Dmul (ConstE (DoubleC i)) (ConstE (DoubleC j)) = pure $ ConstE (DoubleC (i*j))
-    go Dmul e1                   e2@(ConstE {})       = simpl ExpA (BinopE Dmul e2 e1)
-    go Dmul e1                   (BinopE Dmul e2 e3)  = simpl ExpA (BinopE Dmul (BinopE Dmul e1 e2) e3)
-
-    go Ddiv (ConstE (DoubleC 1)) e2                   = simpl ExpA (UnopE Drecip e2)
+    go DivN (ConstE (FloatC 1)) e2                    = simpl ExpA (UnopE RecipF e2)
+    go DivN (ConstE (DoubleC 1)) e2                   = simpl ExpA (UnopE RecipF e2)
 
     -- Default
     go op e1 e2 = return $ BinopE op e1 e2
@@ -419,7 +403,7 @@ mergeParfor ProcKA (ProcK vtaus p) = do
         insertSubst VarA v2 VarA v1
         let p1' = ifK ((E . VarE) v1 .<. (E e1 :: E.Exp t Int)) p1
         let p2' = ifK ((E . VarE) v1 .<. (E e2 :: E.Exp t Int)) p2
-        go ((seq1, ParforK [v1] [BinopE Bmax e1 e2] (sync p1' p2')) : ms)
+        go ((seq1, ParforK [v1] [BinopE MaxO e1 e2] (sync p1' p2')) : ms)
       where
         sync = case seq2 of
                  SeqM -> \m1 m2 -> m1 `seqK` SyncK `seqK` m2
@@ -756,10 +740,10 @@ instance Pretty I where
 
 iToExp :: I -> Exp
 iToExp (I (Just c) vs) =
-    foldl1' (BinopE Bmax) (ConstE (Int32C (fromIntegral c)) : Set.toList vs)
+    foldl1' (BinopE MaxO) (ConstE (Int32C (fromIntegral c)) : Set.toList vs)
 
 iToExp (I Nothing vs) =
-    foldl1' (BinopE Bmax) (Set.toList vs)
+    foldl1' (BinopE MaxO) (Set.toList vs)
 
 -- | A 'Range' represents a range (loop bound) [0,n). Either we know the upper
 -- bound precisely, and it is of the form max(c,e1,...,en) where c is a constant
@@ -785,7 +769,7 @@ rangeE (VarE v) = do
 rangeE (ConstE (Int32C i)) =
     return $ Range $ I (Just (fromIntegral i)) Set.empty
 
-rangeE (BinopE Bmax e1 e2) = do
+rangeE (BinopE MaxO e1 e2) = do
     d1 <- rangeE e1
     d2 <- rangeE e2
     return $ joinRanges d1 d2
@@ -837,7 +821,7 @@ mergeBounds ProgKA (ParforK vs es p) = do
       where
         sync m1 m2 = m1 `seqK` SyncK `seqK` m2
 
-    go ((s, m@(IfThenElseK (BinopE Llt (VarE v) e) p1 _)):ms) = do
+    go ((s, m@(IfThenElseK (BinopE LtO (VarE v) e) p1 _)):ms) = do
         d1 <- lookupVar v
         d2 <- Just <$> rangeE e
         if d1 == d2
