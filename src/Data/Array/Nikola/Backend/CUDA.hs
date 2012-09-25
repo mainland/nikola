@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -100,32 +101,35 @@ currentContext = unsafePerformIO $ do
 data CUDA
   deriving (Typeable)
 
-instance IsElem (E.Exp CUDA Int32) where
-    type Rep (E.Exp CUDA Int32) = Int32
+#define cudaIsElem(ty,tycon)                                  \
+instance IsElem (E.Exp CUDA ty) where                         \
+{ type Rep (E.Exp CUDA ty) = ty                               \
+; typeOf _ = tycon                                            \
+; indexElem arr ix = E $ indexScalar (unE arr) (unE ix)       \
+; writeElem arr ix x = writeScalar (unE arr) (unE ix) (unE x) \
+}
 
-    typeOf _ = Int32T
+cudaIsElem(Int8,   Int8T)
+cudaIsElem(Int16,  Int16T)
+cudaIsElem(Int32,  Int32T)
+cudaIsElem(Int64,  Int64T)
+cudaIsElem(Word8,  Word8T)
+cudaIsElem(Word16, Word16T)
+cudaIsElem(Word32, Word32T)
+cudaIsElem(Word64, Word64T)
+cudaIsElem(Float,  FloatT)
+cudaIsElem(Double, DoubleT)
 
-    indexElem arr ix = E $ indexScalar (unE arr) (unE ix)
-
-    writeElem arr ix x = writeScalar (unE arr) (unE ix) (unE x)
-
-instance IsElem (Exp Float) where
-    type Rep (Exp Float) = Float
-
-    typeOf _ = FloatT
-
-    indexElem arr ix = E $ indexScalar (unE arr) (unE ix)
-
-    writeElem arr ix x = writeScalar (unE arr) (unE ix) (unE x)
-
-instance IsElem (Exp Double) where
-    type Rep (Exp Double) = Double
-
-    typeOf _ = DoubleT
-
-    indexElem arr ix = E $ indexScalar (unE arr) (unE ix)
-
-    writeElem arr ix x = writeScalar (unE arr) (unE ix) (unE x)
+instance IsNum CUDA Int8 where
+instance IsNum CUDA Int16 where
+instance IsNum CUDA Int32 where
+instance IsNum CUDA Int64 where
+instance IsNum CUDA Word8 where
+instance IsNum CUDA Word16 where
+instance IsNum CUDA Word32 where
+instance IsNum CUDA Word64 where
+instance IsNum CUDA Float where
+instance IsNum CUDA Double where
 
 type Vector r a = Array r DIM1 a
 

@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -36,12 +37,12 @@ module Data.Array.Nikola.Exp (
     IsBits(..),
 
     -- * Numerical operators
-    (^*),
+    IsNum(..),
+    IsIntegral(..),
+    (^),
 
     -- * Helpers
     varE, voidE,
-
-    IsIntegral(..),
 
     Lift(..),
 
@@ -51,7 +52,7 @@ module Data.Array.Nikola.Exp (
     writeScalar
   ) where
 
-import Prelude hiding (max, min)
+import Prelude hiding ((^), fromIntegral, max, min)
 import qualified Prelude as P
 
 import Data.Bits (Bits)
@@ -193,15 +194,23 @@ instance IsBits Word16
 instance IsBits Word32
 instance IsBits Word64
 
--- | Numerical operators
-class IsFloating a where
-    (^*) :: (IsIntegral b a) => a -> b -> a
+-- | 'IsNum' type class
+class IsElem (Exp t a) => IsNum t a where
+    fromInt :: Exp t Int32 -> Exp t a
+    fromInt e = unop (UnopE (Cast tau)) e
+      where
+        tau :: ScalarType
+        tau = typeOf (undefined :: Exp t a)
 
-instance IsFloating (Exp t Float) where
-    x ^* y = binop (BinopE PowF) x (fromInt y :: Exp t Float)
+class (Integral a, IsNum t a) => IsIntegral t a where
+    toInt :: Exp t a -> Exp t Int32
+    toInt e = unop (UnopE (Cast Int32T)) e
 
-instance IsFloating (Exp t Double) where
-    x ^* y = binop (BinopE PowF) x (fromInt y :: Exp t Double)
+fromIntegral :: (IsIntegral t a, IsNum t b) => Exp t a -> Exp t b
+fromIntegral = fromInt . toInt
+
+(^) :: (Floating (Exp t a), IsNum t a, IsIntegral t b) => Exp t a -> Exp t b -> Exp t a
+x ^ y = x ** fromIntegral y
 
 -- | Helpers
 varE :: Var t a -> Exp t a
@@ -210,128 +219,24 @@ varE = E . VarE . unV
 voidE :: Exp t ()
 voidE = E UnitE
 
-class IsIntegral a b where
-    fromInt :: a -> b
+indexScalar :: S.Exp -> S.Exp -> S.Exp
+indexScalar arr ix =
+    IndexE arr ix
 
--- Int32
-instance Num (Exp t Int32) where
-    e1 + e2 = binop (BinopE AddN) e1 e2
-    e1 - e2 = binop (BinopE SubN) e1 e2
-    e1 * e2 = binop (BinopE MulN) e1 e2
+writeScalar :: S.Exp -> S.Exp -> S.Exp -> P ()
+writeScalar arr ix x =
+        shift $ \k -> do
+        let p1 =  WriteK arr ix x
+        p2     <- reset $ k ()
+        return $ p1 `seqK` p2
 
-    negate e    = unop (UnopE NegN) e
-    fromInteger = E . ConstE . Int32C . fromInteger
+proj :: Int -> Int -> Exp t a -> Exp t b
+proj i n tup = E (ProjE i n (unE tup))
 
-    abs e    = unop (UnopE AbsN) e
-    signum e = unop (UnopE SignumN) e
+projArr :: Int -> Int -> Exp t a -> Exp t b
+projArr i n tup = E (ProjArrE i n (unE tup))
 
-instance Real (Exp t Int32) where
-    toRational _ = error "Exp: cannot convert to rational"
-
-instance Enum (Exp t Int32) where
-    toEnum _   = error "Exp: not enumerable"
-    fromEnum _ = error "Exp: not enumerable"
-
-instance Integral (Exp t Int32) where
-    quot = binop (BinopE DivN)
-    rem  = binop (BinopE ModI)
-
-    quotRem e1 e2 = (quot e1 e2, rem e1 e2)
-
-    toInteger _ = error "Exp: cannot convert to Integer"
-
--- Float
-instance IsIntegral (Exp t Int32) (Exp t Float) where
-    fromInt = unop (UnopE (Cast FloatT))
-
-instance Num (Exp t Float) where
-    e1 + e2 = binop (BinopE AddN) e1 e2
-    e1 - e2 = binop (BinopE SubN) e1 e2
-    e1 * e2 = binop (BinopE MulN) e1 e2
-
-    negate e    = unop (UnopE NegN) e
-    fromInteger = E . ConstE . FloatC . fromInteger
-
-    abs e    = unop (UnopE AbsN) e
-    signum e = unop (UnopE SignumN) e
-
-instance Real (Exp t Float) where
-    toRational _ = error "Exp: cannot convert to rational"
-
-instance Fractional (Exp t Float) where
-    (/) = binop (BinopE DivN)
-
-    recip (E (UnopE RecipF e)) = E e
-    recip e                    = unop (UnopE RecipF) e
-
-    fromRational = E . ConstE . FloatC . fromRational
-
-instance Floating (Exp t Float) where
-    pi      = (E . ConstE . FloatC) pi
-    exp     = unop (UnopE ExpF)
-    sqrt    = unop (UnopE SqrtF)
-    log     = unop (UnopE LogF)
-    (**)    = binop (BinopE PowF)
-    logBase = binop (BinopE LogBaseF)
-    sin     = unop (UnopE SinF)
-    tan     = unop (UnopE TanF)
-    cos     = unop (UnopE CosF)
-    asin    = unop (UnopE AsinF)
-    atan    = unop (UnopE AtanF)
-    acos    = unop (UnopE AcosF)
-    sinh    = unop (UnopE SinhF)
-    tanh    = unop (UnopE TanhF)
-    cosh    = unop (UnopE CoshF)
-    asinh   = unop (UnopE AsinhF)
-    atanh   = unop (UnopE AtanhF)
-    acosh   = unop (UnopE AcoshF)
-
--- Double
-instance IsIntegral (Exp t Int32) (Exp t Double) where
-    fromInt = unop (UnopE (Cast DoubleT))
-
-instance Num (Exp t Double) where
-    e1 + e2 = binop (BinopE AddN) e1 e2
-    e1 - e2 = binop (BinopE SubN) e1 e2
-    e1 * e2 = binop (BinopE MulN) e1 e2
-
-    negate e    = unop (UnopE NegN) e
-    fromInteger = E . ConstE . DoubleC . fromInteger
-
-    abs e    = unop (UnopE AbsN) e
-    signum e = unop (UnopE SignumN) e
-
-instance Real (Exp t Double) where
-    toRational _ = error "Exp: cannot convert to rational"
-
-instance Fractional (Exp t Double) where
-    (/) = binop (BinopE DivN)
-
-    recip (E (UnopE RecipF e)) = E e
-    recip e                    = unop (UnopE RecipF) e
-
-    fromRational = E . ConstE . DoubleC . fromRational
-
-instance Floating (Exp t Double) where
-    pi      = (E . ConstE . DoubleC) pi
-    exp     = unop (UnopE ExpF)
-    sqrt    = unop (UnopE SqrtF)
-    log     = unop (UnopE LogF)
-    (**)    = binop (BinopE PowF)
-    logBase = binop (BinopE LogBaseF)
-    sin     = unop (UnopE SinF)
-    tan     = unop (UnopE TanF)
-    cos     = unop (UnopE CosF)
-    asin    = unop (UnopE AsinF)
-    atan    = unop (UnopE AtanF)
-    acos    = unop (UnopE AcosF)
-    sinh    = unop (UnopE SinhF)
-    tanh    = unop (UnopE TanhF)
-    cosh    = unop (UnopE CoshF)
-    asinh   = unop (UnopE AsinhF)
-    atanh   = unop (UnopE AtanhF)
-    acosh   = unop (UnopE AcoshF)
-
+-- Lifting Haskell values to Nikola (embedded) values
 class Lift a where
     lift :: a -> Exp t a
 
@@ -360,23 +265,6 @@ class (Typeable a) => IsElem a where
 
     indexElem :: Exp t (Ptr a) -> Exp t Ix -> a
     writeElem :: Exp t (Ptr a) -> Exp t Ix -> a -> P ()
-
-indexScalar :: S.Exp -> S.Exp -> S.Exp
-indexScalar arr ix =
-    IndexE arr ix
-
-writeScalar :: S.Exp -> S.Exp -> S.Exp -> P ()
-writeScalar arr ix x =
-        shift $ \k -> do
-        let p1 =  WriteK arr ix x
-        p2     <- reset $ k ()
-        return $ p1 `seqK` p2
-
-proj :: Int -> Int -> Exp t a -> Exp t b
-proj i n tup = E (ProjE i n (unE tup))
-
-projArr :: Int -> Int -> Exp t a -> Exp t b
-projArr i n tup = E (ProjArrE i n (unE tup))
 
 instance ( IsElem a
          , IsElem b
@@ -415,3 +303,109 @@ instance ( Typeable t
     writeElem arr ix maybe_a = do
         writeElem (projArr 0 2 arr) ix (proj 0 2 maybe_a :: Exp t Bool)
         writeElem (projArr 1 2 arr) ix (proj 1 2 maybe_a :: Exp t a)
+
+#define isNum(ty, valcon)                           \
+instance Num (Exp t ty) where                       \
+{ e1 + e2     = binop (BinopE AddN) e1 e2           \
+; e1 - e2     = binop (BinopE SubN) e1 e2           \
+; e1 * e2     = binop (BinopE MulN) e1 e2           \
+; negate e    = unop (UnopE NegN) e                 \
+; fromInteger = E . ConstE . valcon . P.fromInteger \
+; abs e       = unop (UnopE AbsN) e                 \
+; signum e    = unop (UnopE SignumN) e              \
+}
+
+isNum(Int8,   Int8C)
+isNum(Int16,  Int16C)
+isNum(Int32,  Int32C)
+isNum(Int64,  Int64C)
+isNum(Word8,  Word8C)
+isNum(Word16, Word16C)
+isNum(Word32, Word32C)
+isNum(Word64, Word64C)
+isNum(Float,  FloatC)
+isNum(Double, DoubleC)
+
+#define isEnum(ty)                                        \
+instance Enum (Exp t ty) where                            \
+{ toEnum _   = error "embedded values are not enumerable" \
+; fromEnum _ = error "embedded values are not enumerable" \
+}
+
+isEnum(Int8)
+isEnum(Int16)
+isEnum(Int32)
+isEnum(Int64)
+isEnum(Word8)
+isEnum(Word16)
+isEnum(Word32)
+isEnum(Word64)
+
+#define isReal(ty)                                                           \
+instance Real (Exp t ty) where                                               \
+{ toRational _ = error "an embedded value cannot be converted to a Rational" \
+}
+
+isReal(Int8)
+isReal(Int16)
+isReal(Int32)
+isReal(Int64)
+isReal(Word8)
+isReal(Word16)
+isReal(Word32)
+isReal(Word64)
+isReal(Float)
+isReal(Double)
+
+#define isIntegral(ty)                                           \
+instance Integral (Exp t ty) where                               \
+{ quot = binop (BinopE DivN)                                     \
+; rem  = binop (BinopE ModI)                                     \
+; quotRem e1 e2 = (quot e1 e2, rem e1 e2)                        \
+; toInteger _ = error "cannot convert embedded value to Integer" \
+}
+
+isIntegral(Int8)
+isIntegral(Int16)
+isIntegral(Int32)
+isIntegral(Int64)
+isIntegral(Word8)
+isIntegral(Word16)
+isIntegral(Word32)
+isIntegral(Word64)
+
+#define isFractional(ty,valcon) \
+instance Fractional (Exp t ty) where \
+{ (/)                        = binop (BinopE DivN) \
+; recip (E (UnopE RecipF e)) = E e \
+; recip e                    = unop (UnopE RecipF) e \
+; fromRational               = E . ConstE . valcon . fromRational \
+}
+
+isFractional(Float, FloatC)
+isFractional(Double, DoubleC)
+
+#define isFloating(ty,valcon)        \
+instance Floating (Exp t ty) where   \
+{ pi      = (E . ConstE . valcon) pi \
+; exp     = unop (UnopE ExpF)        \
+; sqrt    = unop (UnopE SqrtF)       \
+; log     = unop (UnopE LogF)        \
+; (**)    = binop (BinopE PowF)      \
+; logBase = binop (BinopE LogBaseF)  \
+; sin     = unop (UnopE SinF)        \
+; tan     = unop (UnopE TanF)        \
+; cos     = unop (UnopE CosF)        \
+; asin    = unop (UnopE AsinF)       \
+; atan    = unop (UnopE AtanF)       \
+; acos    = unop (UnopE AcosF)       \
+; sinh    = unop (UnopE SinhF)       \
+; tanh    = unop (UnopE TanhF)       \
+; cosh    = unop (UnopE CoshF)       \
+; asinh   = unop (UnopE AsinhF)      \
+; atanh   = unop (UnopE AtanhF)      \
+; acosh   = unop (UnopE AcoshF)      \
+}
+
+isFloating(Float, FloatC)
+isFloating(Double, DoubleC)

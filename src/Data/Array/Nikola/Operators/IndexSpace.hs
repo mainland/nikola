@@ -146,8 +146,10 @@ appendP = append_
 
 enumFromN :: ( Typeable t
              , Shape sh
+             , IsNum t a
+             , IsNum t Ix
+             , IsElem (Exp t a)
              , IsElem (Exp t Ix)
-             , IsIntegral (Exp t Ix) (Exp t a)
              , Num (Exp t a)
              )
           => sh
@@ -159,8 +161,9 @@ enumFromStepN :: forall t sh a .
                  ( Typeable t
                  , Shape sh
                  , IsElem (Exp t Ix)
-                 , IsIntegral (Exp t Ix) (Exp t a)
+                 , IsElem (Exp t a)
                  , Num (Exp t a)
+                 , IsNum t a
                  )
               => sh
               -> Exp t a
