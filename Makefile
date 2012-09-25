@@ -60,7 +60,6 @@ GHC_FLAGS += \
 
 TARGETS	= \
 	mandel unit \
-	append-delayed append-push \
 	american \
 	blackscholes blackscholes-compile \
 	blackscholes-cuda blackscholes-openmp
@@ -79,18 +78,6 @@ GHC_OPT_FLAGS = -O2 -optc-O3
 #
 # Targets
 #
-
-search : $(SOURCE) examples/search/*.hs
-	@echo "Compiling and linking" $@
-	$(_QUIET)$(GHC) --make examples/search/Main.hs \
-		-odir obj -hidir obj \
-		-iexamples/search $(GHC_FLAGS) -o $@
-
-search-prof : search
-	@echo "Compiling and linking" $@
-	$(_QUIET)$(GHC) --make examples/search/Main.hs \
-		-odir obj -hidir obj \
-		-iexamples/search $(GHC_FLAGS)  -prof -auto-all -osuf po -o $@
 
 nikola : $(SOURCE) examples/nikola.hs
 	@echo "Compiling and linking" $@
@@ -128,30 +115,6 @@ blackscholes-compile : $(SOURCE) examples/blackscholes-compile/*.hs
 		-odir obj/blackscholes-compile -hidir obj/blackscholes-compile \
 		-iexamples/blackscholes-compile $(GHC_FLAGS) -o $@
 
-scan : $(SOURCE) examples/scan.hs
-	@echo "Compiling and linking" $@
-	$(_QUIET)$(GHC) --make examples/scan.hs \
-		-odir obj -hidir obj \
-		-iexamples/scan $(GHC_FLAGS) -o $@
-
-scan-opt : $(SOURCE) examples/scan.hs
-	@echo "Compiling and linking" $@
-	$(_QUIET)$(GHC) --make examples/scan.hs \
-		-odir scan-obj -hidir scan-obj \
-		-iexamples/scan $(GHC_FLAGS) $(GHC_OPT_FLAGS) -o $@
-
-radix : $(SOURCE) examples/radix/Main.hs
-	@echo "Compiling and linking" $@
-	$(_QUIET)$(GHC) --make examples/radix/Main.hs \
-		-odir obj -hidir obj \
-		-iexamples/radix $(GHC_FLAGS) -o $@
-
-radix-opt : $(SOURCE) examples/radix/Main.hs
-	@echo "Compiling and linking" $@
-	$(_QUIET)$(GHC) --make examples/radix/Main.hs \
-		-odir radix-obj -hidir radix-obj \
-		-iexamples/radix $(GHC_FLAGS) $(GHC_OPT_FLAGS) -o $@
-
 test : $(SOURCE) test.hs
 	@echo "Compiling and linking" $@
 	$(_QUIET)$(GHC) --make test.hs \
@@ -169,27 +132,6 @@ unit : $(SOURCE) tests/unit/Main.hs
 	@echo "Compiling and linking" $@
 	$(_QUIET)$(GHC) --make -itests/unit tests/unit/Main.hs \
 		-odir obj -hidir obj \
-		$(GHC_FLAGS) -o $@
-
-append-push : $(SOURCE) examples/append-push/*.hs
-	@echo "Compiling and linking" $@
-	$(_QUIET)$(GHC) --make examples/append-push/Main.hs \
-		-odir obj/append-push -hidir obj/append-push \
-		-iexamples/append-push $(GHC_FLAGS) -o $@
-
-append-delayed : $(SOURCE) examples/append-delayed/*.hs
-	@echo "Compiling and linking" $@
-	$(_QUIET)$(GHC) --make examples/append-delayed/Main.hs \
-		-odir obj/append-delayed -hidir obj/append-delayed \
-		-iexamples/append-delayed $(GHC_FLAGS) -o $@
-
-matmul : $(SOURCE) examples/matmul.hs
-	@echo "Compiling and linking" $@
-	$(_QUIET)$(GHC) --make examples/matmul.hs \
-		-odir obj -hidir obj \
-		-isrc \
-	        -hide-package monads-fd \
-	        -hide-package monads-tf \
 		$(GHC_FLAGS) -o $@
 
 blackschole.csv : ./dist/build/blackscholes/blackscholes
