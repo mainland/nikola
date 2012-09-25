@@ -406,7 +406,7 @@ instance Pretty Const where
     ppr (DoubleC f) = ppr f
 
 instance Show Const where
-    show = show . ppr
+    showsPrec p = shows . pprPrec p
 
 instance Pretty Unop where
     ppr Lnot    = text "not"
@@ -461,7 +461,7 @@ instance Pretty Unop where
     ppr Dacosh = text "acosh"
 
 instance Show Unop where
-    show = show . ppr
+    showsPrec p = shows . pprPrec p
 
 instance Pretty Binop where
     ppr Land = text "&&"
@@ -598,13 +598,13 @@ instance HasFixity Binop where
     fixity DlogBase = infixl_ mulPrec
 
 instance Show Binop where
-    show = show . ppr
+    showsPrec p = shows . pprPrec p
 
 instance Pretty Var where
     ppr (Var v) = text v
 
 instance Show Var where
-    show = show . ppr
+    showsPrec p = shows . pprPrec p
 
 instance Pretty ScalarType where
     pprPrec _ UnitT         = text "()"
@@ -622,7 +622,7 @@ instance Pretty ScalarType where
     pprPrec _ (TupleT taus) = tuple (map ppr taus)
 
 instance Show ScalarType where
-    show = show . ppr
+    showsPrec p = shows . pprPrec p
 
 instance Pretty Type where
     pprPrec p (ScalarT tau) =
@@ -642,14 +642,14 @@ instance Pretty Type where
         funargs xs  = parens (commasep xs)
 
 instance Show Type where
-    show = show . ppr
+    showsPrec p = shows . pprPrec p
 
 instance Pretty (Var, Type) where
     ppr (v, tau) =
         ppr v <+> text "::" <+> ppr tau
 
 instance Show (Var, Type) where
-    show = show . ppr
+    showsPrec p = shows . pprPrec p
 
 instance Pretty Exp where
     pprPrec _ (VarE v) =
@@ -758,7 +758,7 @@ instance Pretty Exp where
         text "<delayed>"
 
 instance Show Exp where
-    show = show . ppr
+    showsPrec p = shows . pprPrec p
 
 instance Pretty ProgH where
     ppr prog =
@@ -796,7 +796,7 @@ instance Pretty ProgH where
             [text "<delayed>"]
 
 instance Show ProgH where
-    show = show . ppr
+    showsPrec p = shows . pprPrec p
 
 instance Pretty ProcH where
     pprPrec p (ProcH bndrs proc) =
@@ -804,7 +804,7 @@ instance Pretty ProcH where
         text "\\" <> tuple (map ppr bndrs) <+> text "->" </> ppr proc
 
 instance Show ProcH where
-    show = show . ppr
+    showsPrec p = shows . pprPrec p
 
 instance Pretty ProgK where
     ppr prog =
@@ -860,7 +860,7 @@ instance Pretty ProgK where
             [text "<delayed>"]
 
 instance Show ProgK where
-    show = show . ppr
+    showsPrec p = shows . pprPrec p
 
 instance Pretty ProcK where
     pprPrec p (ProcK bndrs proc) =
@@ -868,4 +868,4 @@ instance Pretty ProcK where
         text "\\" <> tuple (map ppr bndrs) <+> text "->" </> ppr proc
 
 instance Show ProcK where
-    show = show . ppr
+    showsPrec p = shows . pprPrec p
