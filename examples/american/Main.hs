@@ -17,15 +17,11 @@ import qualified Prelude as P
 import Control.Monad
 import qualified Criterion as C
 import qualified Criterion.Main as C
-import Data.Int
 import System.Environment
 import Text.Printf
 
-import qualified Data.Array.Nikola.Backend.CUDA.Haskell as NH
-import qualified Data.Array.Nikola.Backend.CUDA.TH as NTH
 import Data.Array.Nikola.Util.Statistics
 
-import qualified Data.Vector.CUDA.Storable as CV
 import qualified Data.Vector.Storable as V
 
 import qualified American.Nikola as AMN
