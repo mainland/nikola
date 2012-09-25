@@ -12,7 +12,7 @@ module BlackScholes.Vector (
     blackscholes
   ) where
 
-type F = Float
+type F = Double
 
 blackscholes :: Bool -- @True@ for call, @False@ for put
              -> F    -- Stock price

@@ -19,7 +19,7 @@ import Prelude hiding (zipWith3)
 
 import Data.Array.Nikola.Backend.CUDA
 
-type F = Float
+type F = Double
 
 -- Nikola's compilation mechanism doesn't play well with polymorphism, so to
 -- make the @blackscholes@ function polymorphic in the numeric type, we need to

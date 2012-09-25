@@ -33,7 +33,7 @@ import Data.Array.Nikola.Util.Random
 import qualified BlackScholes.Nikola as BSN
 import qualified BlackScholes.Vector as BSV
 
-type F = Float
+type F = Double
 
 rISKFREE :: F
 rISKFREE = 0.02
