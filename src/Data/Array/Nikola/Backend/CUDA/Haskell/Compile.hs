@@ -178,7 +178,7 @@ compileProgH (BindH v tau m1 m2) = do
                  g
 
 compileProgH (AllocH atau e_sh) = do
-    (tau, _) <- inferArrayT atau
+    (tau, _) <- checkArrayT atau
     m_sh     <- mapM compileExp e_sh
     return $ do  sh   <- sequence m_sh >>= mapM fromIx
                  ptrs <- go (product sh) tau

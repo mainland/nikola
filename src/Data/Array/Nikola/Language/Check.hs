@@ -16,8 +16,8 @@ module Data.Array.Nikola.Language.Check (
 
     inferExp,
 
-    inferArrayT,
-    inferFunT,
+    checkArrayT,
+    checkFunT,
 
     checkExp,
     inferProgH,
@@ -31,7 +31,8 @@ module Data.Array.Nikola.Language.Check (
 import Prelude hiding (mapM)
 
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
-import Control.Monad (when,
+import Control.Monad ((>=>),
+                      when,
                       zipWithM_)
 import Control.Monad.Trans (MonadIO(..))
 import Data.Traversable
@@ -62,13 +63,6 @@ isFloatT _                = False
 isDoubleT :: Type -> Bool
 isDoubleT (ScalarT DoubleT) = True
 isDoubleT _                 = False
-
-checkEqT :: MonadCheck m => Type -> Type -> m ()
-checkEqT tau1 tau2
-    | tau1 == tau2 = return ()
-    | otherwise    = faildoc $
-                     text "Expected" <+> ppr tau2 <+>
-                     text "but got" <+> ppr tau1
 
 joinBoolT :: MonadCheck m => Type -> Type -> m Type
 joinBoolT tau@(ScalarT BoolT) (ScalarT BoolT) = return tau
@@ -121,23 +115,32 @@ joinNumT tau1 tau2 =
     faildoc $ text "Expected" <+> ppr tau2 <+>
               text "but got" <+> ppr tau1
 
-inferArrayT :: MonadCheck m => Type -> m (ScalarType, Int)
-inferArrayT (ArrayT tau n) =
-    return (tau, n)
+checkEqT :: MonadCheck m => Type -> Type -> m ()
+checkEqT tau1 tau2
+    | tau1 == tau2 = return ()
+    | otherwise    = faildoc $
+                     text "Expected" <+> ppr tau2 <+>
+                     text "but got" <+> ppr tau1
 
-inferArrayT tau =
-    faildoc $
-    text "Expected array type but got" <+>
-    ppr tau
+checkIntT :: MonadCheck m => Type -> m ()
+checkIntT tau = do
+    when (not (isIntT tau)) $ do
+        faildoc $ text "Expected integer type but got" <+> ppr tau
 
-inferFunT :: MonadCheck m => Type -> m ([Type], Type)
-inferFunT (FunT taus tau) =
-    return (taus, tau)
+checkScalarT :: forall m . MonadCheck m => Type -> m ScalarType
+checkScalarT (ScalarT tau) = return tau
+checkScalarT tau           = faildoc $
+                             text "Expected scalar type but got" <+> ppr tau
 
-inferFunT tau =
-    faildoc $
-    text "Expected function type but got" <+>
-    ppr tau
+checkArrayT :: MonadCheck m => Type -> m (ScalarType, Int)
+checkArrayT (ArrayT tau n) = return (tau, n)
+checkArrayT tau            = faildoc $
+                             text "Expected array type but got" <+> ppr tau
+
+checkFunT :: MonadCheck m => Type -> m ([Type], Type)
+checkFunT (FunT taus tau) = return (taus, tau)
+checkFunT tau             = faildoc $
+                            text "Expected function type but got" <+> ppr tau
 
 inferConst :: forall m . MonadCheck m => Const -> m ScalarType
 inferConst = go
@@ -273,7 +276,7 @@ inferExp = go
         return unitT
 
     go (TupleE es) = do
-        taus <- mapM inferScalarExp es
+        taus <- mapM (inferExp >=> checkScalarT) es
         return $ ScalarT (TupleT taus)
 
     go (ProjE i n e) = do
@@ -315,7 +318,7 @@ inferExp = go
         return $ FunT (map snd vtaus) tau
 
     go e@(AppE f es) = do
-        (taus, tau) <- go f >>= inferFunT
+        (taus, tau) <- go f >>= checkFunT
         taus'       <- mapM go es
         when (taus' /= taus) $ do
             faildoc $ text "Type mis-match in function call" <+>
@@ -366,8 +369,8 @@ inferExp = go
 
 
     go (IndexE v idx) = do
-       (tau, _) <- inferArrayExp v
-       checkIntExp idx
+       (tau, _) <- inferExp v >>= checkArrayT
+       inferExp idx >>= checkIntT
        return $ ScalarT tau
 
     go (DelayedE {}) =
@@ -377,26 +380,6 @@ checkExp :: forall m . MonadCheck m => Exp -> Type -> m ()
 checkExp e tau = do
     tau' <- inferExp e
     checkEqT tau tau'
-
-checkIntExp :: forall m . MonadCheck m => Exp -> m ()
-checkIntExp e = do
-    tau <- inferExp e
-    when (not (isIntT tau)) $ do
-        faildoc $ text "Expected integer type but got" <+> ppr tau
-
-inferScalarExp :: forall m . MonadCheck m => Exp -> m ScalarType
-inferScalarExp e = do
-    tau <- inferExp e
-    case tau of
-      ScalarT stau -> return stau
-      _            -> faildoc $ text "Expected scalar type but got" <+> ppr tau
-
-inferArrayExp :: forall m . MonadCheck m => Exp -> m (ScalarType, Int)
-inferArrayExp e = do
-    atau <- inferExp e
-    case atau of
-      ArrayT tau n -> return (tau, n)
-      _            -> faildoc $ text "Expected array type but got" <+> ppr atau
 
 inferProgH :: forall m . MonadCheck m => ProgH -> m Type
 inferProgH = go
@@ -419,7 +402,7 @@ inferProgH = go
         extendVarTypes [(v, tau)] $ go p2
 
     go (LiftH kproc args) = do
-        (taus, tau) <- inferProcK kproc >>= inferFunT
+        (taus, tau) <- inferProcK kproc >>= checkFunT
         taus' <- mapM inferExp args
         when (length taus' /= length taus) $ do
             faildoc $ text "Kernel proc" <+> ppr kproc <+>
@@ -440,8 +423,8 @@ inferProgH = go
         return tau_thene
 
     go (AllocH atau sh) = do
-        (_, n) <- inferArrayT atau
-        mapM_ checkIntExp sh
+        (_, n) <- checkArrayT atau
+        mapM_ (inferExp >=> checkIntT) sh
         when (length sh /= n) $
             faildoc $ text "Type mismatch in array allocation." <+>
                       text "Shape has" <+> ppr (length sh) <+> text "dimensions," <+>
@@ -499,8 +482,8 @@ inferProgK = go
         return tau_thene
 
     go (WriteK v idx x) = do
-        (tau, _) <- inferArrayExp v
-        checkIntExp idx
+        (tau, _) <- inferExp v >>= checkArrayT
+        inferExp idx >>= checkIntT
         tau' <- inferExp x
         checkEqT tau' (ScalarT tau)
         return unitT

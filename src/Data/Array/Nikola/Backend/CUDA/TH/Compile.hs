@@ -148,7 +148,7 @@ compileProgH (BindH v tau m1 m2) = do
     return [|$qm1 >>= $(TH.lamE [TH.varP (TH.mkName (unVar v))] qm2)|]
 
 compileProgH (AllocH atau e_sh) = do
-    (tau, _) <- inferArrayT atau
+    (tau, _) <- checkArrayT atau
     qe_sh    <- mapM compileExp e_sh
     return $ [|do let sh = R.shapeOfList $(TH.listE [ [|fromIntegral $qe|] | qe <- qe_sh])
                   let sz = R.size sh
@@ -205,7 +205,7 @@ compileExp (TupleE es) = do
     return $ TH.tupE qes
 
 compileExp (DimE i _ e) = do
-    (tau, _) <- inferExp e >>= inferArrayT
+    (tau, _) <- inferExp e >>= checkArrayT
     qe       <- compileExp e
     return [|case $qe of { NArray _ sh -> fromIntegral (R.listOfShape sh !! i) }|]
 

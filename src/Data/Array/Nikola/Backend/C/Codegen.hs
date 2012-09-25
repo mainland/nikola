@@ -117,7 +117,7 @@ compileExp (LetE v tau _ e1 e2) = do
 compileExp (LamE vtaus e) = do
     dialect <- fromLJust fDialect <$> getFlags
     fname   <- gensym "f"
-    tau_ret <- snd <$> (inferExp (LamE vtaus e) >>= inferFunT)
+    tau_ret <- snd <$> (inferExp (LamE vtaus e) >>= checkFunT)
     ctx     <- getContext
     compileFun dialect (Fun ctx) fname vtaus tau_ret (compileExp e)
 
@@ -299,7 +299,7 @@ compileHost (IfThenElseH test th el) = do
 
 compileHost (AllocH tau_arr sh) = do
     dialect  <- fromLJust fDialect <$> getFlags
-    (tau, _) <- inferArrayT tau_arr
+    (tau, _) <- checkArrayT tau_arr
     csh      <- mapM compileExp sh
     let csz  =  toSize csh
     cptr     <- allocPtr dialect csz tau
@@ -344,7 +344,7 @@ compileHostProc p@(ProcH vtaus m) = do
                      Last Nothing      -> gensym "host"
                      Last (Just fname) -> return fname
     tau_host    <- inferProcH p
-    tau_ret     <- snd <$> inferFunT tau_host
+    tau_ret     <- snd <$> checkFunT tau_host
     compileFun dialect (Proc Host) fname vtaus tau_ret $ do
     declareHeap dialect (numAllocs p)
     declareResult dialect
@@ -421,7 +421,7 @@ compileKernelProc :: Dialect -> String -> ProcK -> C [(Idx, [Exp] -> Exp)]
 compileKernelProc dialect fname p@(ProcK vtaus m) =
     inContext Kernel $ do
     tau_kern <- inferProcK p
-    tau_ret  <-snd <$> inferFunT tau_kern
+    tau_ret  <-snd <$> checkFunT tau_kern
     compileFun dialect (Proc Kernel) fname vtaus tau_ret (compileKernel m)
     idxs <- getIndices
     return [(idx, matchArgs vs bound) | (idx, bound) <- idxs]
@@ -599,7 +599,7 @@ compileCall :: Dialect             -- ^ Dialect
                                    -- arguments
             -> C CExp              -- ^ Result of calling the function
 compileCall dialect sort tau args mcf = do
-    tau_ret  <- snd <$> inferFunT tau
+    tau_ret  <- snd <$> checkFunT tau
     cargs    <- concatMap toCArgs <$> mapM compileExp args
     cvresult <- newCVar "result" tau_ret
     case (dialect, sort, tau_ret) of
