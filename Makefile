@@ -32,7 +32,7 @@ GHC_FLAGS += \
 	-package bytestring \
 	-package containers \
 	-package criterion \
-	-package cuda-0.4.1.2 \
+	-package cuda \
 	-package deepseq \
 	-package exception-transformers \
 	-package hmatrix \
