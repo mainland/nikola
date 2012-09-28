@@ -68,18 +68,6 @@ occ ExpA (LamE vtaus e) = do
     unionOcc $ occsDelete (map fst vtaus) occ
     return $ LamE vtaus e'
 
-occ ExpA (BinopE MaxO e1 e2) = do
-    (e1', occ1) <- withOcc $ occ ExpA e1
-    (e2', occ2) <- withOcc $ occ ExpA e2
-    unionOcc $ Map.map (const Many) (occ1 `Map.union` occ2)
-    return $ BinopE MaxO e1' e2'
-
-occ ExpA (BinopE MinO e1 e2) = do
-    (e1', occ1) <- withOcc $ occ ExpA e1
-    (e2', occ2) <- withOcc $ occ ExpA e2
-    unionOcc $ Map.map (const Many) (occ1 `Map.union` occ2)
-    return $ BinopE MinO e1' e2'
-
 occ ExpA (IfThenElseE e1 e2 e3) = do
     (e1', occ1) <- withOcc $ occ ExpA e1
     (e2', occ2) <- withOcc $ occ ExpA e2
