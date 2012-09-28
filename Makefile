@@ -36,7 +36,7 @@ GHC_FLAGS += \
 	-package deepseq \
 	-package exception-transformers \
 	-package hmatrix \
-	-package language-c-quote-0.4.1 \
+	-package language-c-quote \
 	-package logict \
 	-package mainland-pretty \
 	-package mersenne-random-pure64 \
