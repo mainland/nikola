@@ -5,8 +5,11 @@ import Data.Array.Repa.Repr.ForeignPtr
 import Data.Word
 import Foreign (castForeignPtr)
 import qualified Graphics.Gloss as G
+import System.Environment (getArgs)
 import System.IO.Unsafe (unsafePerformIO)
 
+import Config
+import ParseConfig
 --import qualified Mandelbrot.Nikola.Implementation as MN
 import qualified Mandelbrot.Repa as MR
 
@@ -20,8 +23,9 @@ makePicture arr = G.bitmapOfForeignPtr h w (castForeignPtr (toForeignPtr arr)) F
 
 main :: IO ()
 main = do
-    let size  = 512
-        limit = 255
+    (opts, _) <- getArgs >>= parseArgs defaultConfig
+    let size  = fromLJust confSize opts
+        limit = fromLJust confLimit opts
         lowx  = -0.25
         lowy  = -1.0
         highx =  0.0
