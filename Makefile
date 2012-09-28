@@ -23,6 +23,7 @@ GHC_FLAGS+=-O
 #GHC_FLAGS+=-ddump-to-file
 #GHC_FLAGS+=-ddump-simpl
 #GHC_FLAGS+=-dsuppress-all -dppr-case-as-let -dppr-cols200
+#GHC_FLAGS+=-ddump-splices
 
 GHC_FLAGS += \
 	-hide-all-packages \
