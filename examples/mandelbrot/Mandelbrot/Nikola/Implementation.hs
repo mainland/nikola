@@ -3,7 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module Mandel where
+module Mandelbrot.Nikola.Implementation where
 
 import qualified Prelude as P
 import Prelude hiding (map, zipWith)

@@ -36,6 +36,7 @@ GHC_FLAGS += \
 	-package cuda \
 	-package deepseq \
 	-package exception-transformers \
+	-package gloss \
 	-package hmatrix \
 	-package language-c-quote \
 	-package logict \
@@ -122,7 +123,7 @@ test : $(SOURCE) test.hs
 		-odir obj -hidir obj \
 		$(GHC_FLAGS) -o $@
 
-mandelbrot : $(SOURCE) examples/mandelbrot/Mandel.hs examples/mandelbrot/Main.hs
+mandelbrot : $(SOURCE) $(shell find examples/mandelbrot -type f)
 	@echo "Compiling and linking" $@
 	$(_QUIET)$(GHC) --make examples/mandelbrot/Main.hs \
 		-iexamples/mandelbrot \
