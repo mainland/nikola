@@ -54,10 +54,10 @@ instance IsElem a => Manifest D a where
     manifest (ADelayed sh f) v = do
     p1 <- reset $ do  i <- parfor sh
                       write v i (f i)
-                      return $ ReturnK UnitE
+                      return $ ReturnE UnitE
     shift $ \k -> do
     p2 <- reset $ k ()
-    return $ p1 `seqK` p2
+    return $ p1 `seqE` p2
 
 -- | Construct a delayed array from a function mapping indices to values.
 fromFunction :: forall sh a . (Shape sh)

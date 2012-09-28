@@ -26,6 +26,7 @@ import Control.Applicative
 import Control.Monad.State
 import Data.Dynamic
 import System.Mem.StableName
+-- import Text.PrettyPrint.Mainland
 
 import Data.Array.Nikola.Backend.Flags
 import Data.Array.Nikola.Language.Check
@@ -61,49 +62,27 @@ detectSharing ExpA e =
                      <*> inNewScope False (cachedDetectE ExpA e2)
                      <*> inNewScope False (cachedDetectE ExpA e3)
 
+    detectE ExpA (BindE v tau m1 m2) = do
+        m1' <- detectE ExpA m1
+        m2' <- extendVarTypes [(v, tau)] $
+               inNewScope False $
+               detectE ExpA m2
+        return $ BindE v tau m1' m2'
+
+    detectE ExpA (ForE isPar vs es body) = do
+        es'   <- mapM detectLocal es
+        body' <- extendVarTypes (vs `zip` repeat ixT) $
+                 inNewScope False $
+                 detectE ExpA body
+        return $ ForE isPar vs es' body'
+      where
+        detectLocal :: Exp -> R Exp Exp
+        detectLocal e = inNewScope False $ detectE ExpA e
+
     detectE ExpA (DelayedE comp) =
         comp >>= cachedDetectE ExpA
 
     detectE w a = checkTraverseFam cachedDetectE w a
-
-detectSharing ProgKA p =
-    reset $ detectK ProgKA p
-  where
-    cachedDetectK :: AST a -> a -> R ProgK a
-    cachedDetectK ExpA   e = detectSharing ExpA e
-    cachedDetectK ProgKA p = do
-        obSharing <- fromLJust fObsSharing <$> getFlags
-        if obSharing
-          then cacheProgK p (detectK ProgKA p)
-          else detectK ProgKA p
-
-    cachedDetectK w a = checkTraverseFam cachedDetectK w a
-
-    detectK :: AST a -> a -> R ProgK a
-    detectK ProgKA (DelayedK comp) =
-        comp >>= cachedDetectK ProgKA
-
-    detectK w a = checkTraverseFam cachedDetectK w a
-
-detectSharing ProgHA p =
-    reset $ detectH ProgHA p
-  where
-    cachedDetectH :: AST a -> a -> R ProgH a
-    cachedDetectH ExpA p   = detectSharing ExpA p
-    cachedDetectH ProgKA p = detectSharing ProgKA p
-    cachedDetectH ProgHA p = do
-        obSharing <- fromLJust fObsSharing <$> getFlags
-        if obSharing
-          then cacheProgH p (detectH ProgHA p)
-          else detectH ProgHA p
-
-    cachedDetectH w a = checkTraverseFam cachedDetectH w a
-
-    detectH :: AST a -> a -> R ProgH a
-    detectH ProgHA (DelayedH comp) =
-        comp >>= cachedDetectH ProgHA
-
-    detectH w a = checkTraverseFam cachedDetectH w a
 
 detectSharing w a = checkTraverseFam detectSharing w a
 
@@ -123,29 +102,3 @@ cacheExp x comp = do
       Nothing -> do  e <- comp >>= mkLetE
                      insertExp sn e
                      return e
-
-cacheProgH :: Typeable a
-           => a
-           -> R ProgH ProgH
-           -> R ProgH ProgH
-cacheProgH x comp = do
-    sn      <- liftIO $ makeStableName $! x
-    maybe_p <- lookupProgH sn
-    case maybe_p of
-      Just p  -> return p
-      Nothing -> do  p <- comp
-                     insertProgH sn p
-                     return p
-
-cacheProgK :: Typeable a
-           => a
-           -> R ProgK ProgK
-           -> R ProgK ProgK
-cacheProgK x comp = do
-    sn      <- liftIO $ makeStableName $! x
-    maybe_p <- lookupProgK sn
-    case maybe_p of
-      Just p  -> return p
-      Nothing -> do  p <- comp
-                     insertProgK sn p
-                     return p

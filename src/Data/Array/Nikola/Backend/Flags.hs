@@ -18,12 +18,16 @@ module Data.Array.Nikola.Backend.Flags (
 
 import Data.Function (on)
 import Data.Monoid (Monoid(..), Last(..))
+import Text.PrettyPrint.Mainland
 
 data Dialect = SequentialC
              | OpenMP
              | CUDA
              | OpenCL
   deriving (Eq, Ord, Enum, Show)
+
+instance Pretty Dialect where
+    ppr = text . show
 
 data Flags = Flags
     { fDialect    :: Last Dialect  -- ^ The language dialect to which we compile.

@@ -49,50 +49,52 @@ import Data.Array.Nikola.Language.Syntax
 -- so we perform an initial normalization pass and then do another final
 -- normalization pass after other optimizations have had a chance to run.
 
-optimizeHostProgram :: ProcH -> R r ProcH
+optimizeHostProgram :: Exp -> R r Exp
 optimizeHostProgram =
     return
-    >=> oPass (norm ProcHA)
-    -- >=> whenDialect CUDA (oPass (mergeParfor ProcHA))
-    >=> whenDialect CUDA (splitKernels ProcHA)
-    >=> oPass (shareBindings ProcHA)
-    >=> aPass (mergeBounds ProcHA)
-    >=> oPass (norm ProcHA)
-    >=> oPass (occ ProcHA)
-    >=> oPass (simpl ProcHA)
-    >=> oPass (norm ProcHA)
-    >=> oPass (lambdaLift ProcHA)
+    >=> oPass (norm ExpA)
+    -- >=> whenDialect CUDA (oPass (mergeParfor ExpA))
+    >=> whenDialect CUDA (splitKernels ExpA)
+    >=> oPass (shareBindings ExpA)
+    >=> aPass (mergeBounds ExpA)
+    >=> oPass (norm ExpA)
+    >=> oPass (occ ExpA)
+    >=> oPass (simpl ExpA)
+    >=> oPass (norm ExpA)
+    >=> oPass (simpl ExpA)
+    >=> oPass (lambdaLift ExpA)
 
-liftHostProgram :: ProcH -> R r ProcH
+liftHostProgram :: Exp -> R r Exp
 liftHostProgram =
     return
-    >=> oPass (lambdaLift ProcHA)
+    >=> oPass (lambdaLift ExpA)
 
 whenDialect :: Dialect
-            -> (ProcH -> R r ProcH)
-            -> ProcH
-            -> R r ProcH
+            -> (Exp -> R r Exp)
+            -> Exp
+            -> R r Exp
 whenDialect dialect f p = do
     flags <- getFlags
     if (fromLJust fDialect flags == dialect)
       then f p
       else return p
 
-oPass :: (ProcH -> O ProcH) -> ProcH -> R r ProcH
+oPass :: (Exp -> O Exp) -> Exp -> R r Exp
 oPass f = liftIO . evalO . f
 
-aPass :: (ProcH -> A ProcH) -> ProcH -> R r ProcH
+aPass :: (Exp -> A Exp) -> Exp -> R r Exp
 aPass f = liftIO . evalA . f
 
 -- Helpers
 
-ifK :: E.Exp t a -> ProgK -> ProgK
-ifK e p = IfThenElseK (unE e) p (ReturnK UnitE)
+ifE :: E.Exp t a -> Exp -> Exp
+ifE e p = IfThenElseE (unE e) p (ReturnE UnitE)
 
 -- The optimization monad
 data OEnv = OEnv
     { oVarVarSubst :: Map Var Var
     , oVarExpSubst :: Map Var Exp
+    , oContext     :: Context
     , oVarTypes    :: Map Var Type
     , oOcc         :: Map Var Occ
     }
@@ -100,6 +102,7 @@ data OEnv = OEnv
 defaultOEnv :: OEnv
 defaultOEnv = OEnv { oVarVarSubst = Map.empty
                    , oVarExpSubst = Map.empty
+                   , oContext     = Host
                    , oVarTypes    = Map.empty
                    , oOcc         = Map.empty
                    }
@@ -122,6 +125,10 @@ instance MonadSubst Var Exp O where
     putTheta (Theta theta' _) = modify $ \s -> s { oVarExpSubst = theta' }
 
 instance MonadCheck O where
+    getContext = gets oContext
+
+    setContext ctx = modify $ \s -> s { oContext = ctx }
+
     lookupVarType v = do
         maybe_tau <- gets $ \s -> Map.lookup v (oVarTypes s)
         case maybe_tau of
@@ -164,9 +171,9 @@ withOcc act = do
     modify $ \s -> s { oOcc = old_occ }
     return (a, occ)
 
-setOcc :: Map Var Occ -> O ()
-setOcc occ =
-    modify $ \s -> s { oOcc = occ }
+unionOcc :: Map Var Occ -> O ()
+unionOcc occ =
+    modify $ \s -> s { oOcc = oOcc s `occsJoin` occ }
 
 -- Deciding whether or not things must be equal ("must be equal" implies
 -- "equal", but "equal" does not imply "must be equal")
@@ -196,70 +203,52 @@ instance MustEq Exp where
     _                       ==! _                       = False
 
 occ :: AST a -> a -> O a
-occ ExpA (VarE v) = do  v' <- occ VarA v
-                        occVar v'
-                        return $ VarE v'
-
-occ ExpA (BinopE MaxO e1 e2) = do
-    (e1', occ1) <- withOcc $ occ ExpA e1
-    (e2', occ2) <- withOcc $ occ ExpA e2
-    setOcc $ Map.map (const Many) (occ1 `Map.union` occ2)
-    return $ BinopE MaxO e1' e2'
-
-occ ExpA (BinopE MinO e1 e2) = do
-    (e1', occ1) <- withOcc $ occ ExpA e1
-    (e2', occ2) <- withOcc $ occ ExpA e2
-    setOcc $ Map.map (const Many) (occ1 `Map.union` occ2)
-    return $ BinopE MinO e1' e2'
+occ ExpA e@(VarE v) = do
+    occVar v
+    return e
 
 occ ExpA (LetE v tau _ e1 e2) = do
     (e1', occ1) <- withOcc $ occ ExpA e1
     (e2', occ2) <- withOcc $ occ ExpA e2
     let occ = Map.findWithDefault Never v occ2
-    setOcc $ occsDelete [v] occ1 `occsJoin` occ2
+    unionOcc $ occ1 `occsJoin` occsDelete [v] occ2
     return $ LetE v tau occ e1' e2'
 
 occ ExpA (LamE vtaus e) = do
     (e', occ) <- withOcc $ occ ExpA e
-    setOcc $ occsDelete (map fst vtaus) occ
+    unionOcc $ occsDelete (map fst vtaus) occ
     return $ LamE vtaus e'
+
+occ ExpA (BinopE MaxO e1 e2) = do
+    (e1', occ1) <- withOcc $ occ ExpA e1
+    (e2', occ2) <- withOcc $ occ ExpA e2
+    unionOcc $ Map.map (const Many) (occ1 `Map.union` occ2)
+    return $ BinopE MaxO e1' e2'
+
+occ ExpA (BinopE MinO e1 e2) = do
+    (e1', occ1) <- withOcc $ occ ExpA e1
+    (e2', occ2) <- withOcc $ occ ExpA e2
+    unionOcc $ Map.map (const Many) (occ1 `Map.union` occ2)
+    return $ BinopE MinO e1' e2'
 
 occ ExpA (IfThenElseE e1 e2 e3) = do
     (e1', occ1) <- withOcc $ occ ExpA e1
     (e2', occ2) <- withOcc $ occ ExpA e2
     (e3', occ3) <- withOcc $ occ ExpA e3
-    setOcc $ occ1 `occsJoin` (occ2 `occsMeet` occ3)
+    unionOcc $ occ1 `occsJoin` (occ2 `occsMeet` occ3)
     return $ IfThenElseE e1' e2' e3'
 
-occ ProgKA (ForK vs es p) = do
-    vs'         <- traverse (occ VarA) vs
-    (es', occs) <- withOcc $ traverse (occ ExpA) es
-    setOcc $ occsDelete vs occs
-    ForK vs' es' <$> occ ProgKA p
+occ ExpA (ForE isPar vs es p) = do
+    (es', occ_es) <- withOcc $ traverse (occ ExpA) es
+    (p',  occ_p)  <- withOcc $ occ ExpA p
+    unionOcc $ occ_es `occsJoin` occsDelete vs occ_p
+    return $ ForE isPar vs es' p'
 
-occ ProgKA (ParforK vs es p) = do
-    vs'         <- traverse (occ VarA) vs
-    (es', occs) <- withOcc $ traverse (occ ExpA) es
-    setOcc $ occsDelete vs occs
-    ParforK vs' es' <$> occ ProgKA p
-
-occ ProgKA (IfThenElseK e1 p1 p2) = do
-    (e1', occ1) <- withOcc $ occ ExpA e1
-    (p1', occ2) <- withOcc $ occ ProgKA p1
-    (p2', occ3) <- withOcc $ occ ProgKA p2
-    setOcc $ occ1 `occsJoin` (occ2 `occsMeet` occ3)
-    return $ IfThenElseK e1' p1' p2'
-
-occ ProgKA (WriteK v idx e) = WriteK <$> occ ExpA v
-                                     <*> occ ExpA idx
-                                     <*> occ ExpA e
-
-occ ProgHA (IfThenElseH e1 p1 p2) = do
-    (e1', occ1) <- withOcc $ occ ExpA e1
-    (p1', occ2) <- withOcc $ occ ProgHA p1
-    (p2', occ3) <- withOcc $ occ ProgHA p2
-    setOcc $ occ1 `occsJoin` (occ2 `occsMeet` occ3)
-    return $ IfThenElseH e1' p1' p2'
+occ ExpA (BindE v tau p1 p2) = do
+    (p1', occ1) <- withOcc $ occ ExpA p1
+    (p2', occ2) <- withOcc $ occ ExpA p2
+    unionOcc (occ1 `occsJoin` occ2)
+    return $ BindE v tau p1' p2'
 
 occ w a = traverseFam occ w a
 
@@ -269,17 +258,17 @@ splitKernels :: AST a -> a -> R r a
 splitKernels = split
   where
     split :: AST a -> a -> R r a
-    split ProgHA (LiftH (ProcK [] p) []) = do
-        resetH $ splitK ProgKA p
+    split ExpA (CallE (LamE [] p) []) = do
+        resetH $ splitK ExpA p
 
     split w a = checkTraverseFam split w a
 
-    splitK :: AST a -> a -> R ProgK a
+    splitK :: AST a -> a -> R Exp a
     -- Sequential parallel fors must be split into separate kernels.
-    splitK ProgKA (SeqK m1@(ParforK {}) m2) = do
-        m1' <- checkTraverseFam splitK ProgKA m1
-        m2' <- reset $ checkTraverseFam splitK ProgKA m2
-        SeqK m1' <$> isolateK m2'
+    splitK ExpA (SeqE m1@(ForE True _ _ _) m2) = do
+        m1' <- checkTraverseFam splitK ExpA m1
+        m2' <- reset $ checkTraverseFam splitK ExpA m2
+        SeqE m1' <$> isolateK m2'
 
     splitK w a = checkTraverseFam splitK w a
 
@@ -356,8 +345,8 @@ simpl ExpA (BinopE op e1 e2) = do  e1' <- simpl ExpA e1
     -- Default
     go op e1 e2 = return $ BinopE op e1 e2
 
-simpl ProgHA (LiftH (ProcK [] (SeqK m1 (ReturnK e))) []) =
-    simpl ProgHA (SeqH (LiftH (ProcK [] m1) []) (ReturnH e))
+simpl ExpA (CallE (LamE [] (SeqE m1 (ReturnE e))) []) =
+    simpl ExpA (SeqE (CallE (LamE [] m1) []) (ReturnE e))
 
 simpl w a = traverseFam simpl w a
 
@@ -393,37 +382,40 @@ mergeParfor :: forall a m . (MonadSubst Var Var m, MonadSubst Var Exp m) => AST 
 mergeParfor VarA v        = lookupSubst VarA v VarA (return v)
 mergeParfor ExpA (VarE v) = lookupSubst VarA v ExpA (VarE <$> mergeParfor VarA v)
 
-mergeParfor ProcKA (ProcK vtaus p) = do
-    ProcK vtaus <$> (fromMnfK <$> go (toMnfK p))
+mergeParfor ExpA (LamE vtaus p) = do
+    LamE vtaus <$> (fromMnf <$> go (toMnf p))
   where
-    go :: Mnf ProgK -> m (Mnf ProgK)
+    go :: Mnf Exp -> m (Mnf Exp)
     go [] =
         return []
 
-    go ((seq1, ParforK [v1] [e1] p1) : (seq2, ParforK [v2] [e2] p2) : ms) = do
+    go ((seq1, ForE True [v1] [e1] p1) : (seq2, ForE True [v2] [e2] p2) : ms) = do
         insertSubst VarA v2 VarA v1
-        let p1' = ifK ((E . VarE) v1 <* (E e1 :: E.Exp t Int32)) p1
-        let p2' = ifK ((E . VarE) v1 <* (E e2 :: E.Exp t Int32)) p2
-        go ((seq1, ParforK [v1] [BinopE MaxO e1 e2] (sync p1' p2')) : ms)
+        let p1' = ifE ((E . VarE) v1 <* (E e1 :: E.Exp t Int32)) p1
+        let p2' = ifE ((E . VarE) v1 <* (E e2 :: E.Exp t Int32)) p2
+        go ((seq1, ForE True [v1] [BinopE MaxO e1 e2] (sync p1' p2')) : ms)
       where
         sync = case seq2 of
-                 SeqM -> \m1 m2 -> m1 `seqK` SyncK `seqK` m2
-                 ParM -> seqK
+                 SeqM -> syncE
+                 ParM -> seqE
                  _    -> error "mergeParfor: saw bind between parallel fors"
 
     go ((s,m) : ms) = do
-        m'  <- mergeParfor ProgKA m
+        m'  <- mergeParfor ExpA m
         ms' <- go ms
         return $ (s,m') : ms'
 
 mergeParfor w      a    = traverseFam mergeParfor w a
 
 -- Convert monadic actions to a normal form
-data SeqM = SeqM
+data SeqM = LetM Var Type
+          | SeqM
           | ParM
           | BindM Var Type
 
 instance Pretty SeqM where
+    ppr (LetM v tau)  = text "let" <+> ppr v <+> text "::" <+> ppr tau <+>
+                        text "="
     ppr SeqM          = text ">>"
     ppr ParM          = text "||"
     ppr (BindM v tau) = text ">>=" <+> text "\\" <+> ppr v <+> text "::" <+> ppr tau <+> text "->"
@@ -432,39 +424,44 @@ type Mnf a = [(SeqM, a)]
 
 instance Pretty a => Pretty (Mnf a) where
     ppr [] = empty
-    ppr ((s, m):ms) = ppr m </> ppr s </> ppr ms
+    ppr ((LetM v tau, e):ms) = text "let" <+> ppr v <+> text "::" <+> ppr tau <+>
+                               text "=" <+> ppr e </> ppr ms
+    ppr ((s, m):ms)          = ppr m </> ppr s </> ppr ms
 
-toMnfK :: ProgK -> Mnf ProgK
-toMnfK (SeqK (ReturnK {}) m)         = toMnfK m
-toMnfK (SeqK (SeqK m1 m2) m3)        = toMnfK (SeqK m1 (SeqK m2 m3))
-toMnfK (SeqK (ParK m1 m2) m3)        = toMnfK (SeqK m1 (ParK m2 m3))
-toMnfK (SeqK (BindK v tau m1 m2) m3) = toMnfK (BindK v tau m1 (SeqK m2 m3))
-toMnfK (SeqK m1 m2)                  = (SeqM, m1) : toMnfK m2
+toMnf :: Exp -> Mnf Exp
+toMnf (LetE v tau _ e m)            = (LetM v tau, e) : toMnf m
 
-toMnfK (ParK (ReturnK {}) m)         = toMnfK m
-toMnfK (ParK (SeqK m1 m2) m3)        = toMnfK (ParK m1 (SeqK m2 m3))
-toMnfK (ParK (ParK m1 m2) m3)        = toMnfK (ParK m1 (ParK m2 m3))
-toMnfK (ParK (BindK v tau m1 m2) m3) = toMnfK (BindK v tau m1 (ParK m2 m3))
-toMnfK (ParK m1 m2)                  = (ParM, m1) : toMnfK m2
+toMnf (SeqE (ReturnE {}) m)         = toMnf m
+toMnf (SeqE (SeqE m1 m2) m3)        = toMnf (SeqE m1 (SeqE m2 m3))
+toMnf (SeqE (ParE m1 m2) m3)        = toMnf (SeqE m1 (ParE m2 m3))
+toMnf (SeqE (BindE v tau m1 m2) m3) = toMnf (BindE v tau m1 (SeqE m2 m3))
+toMnf (SeqE m1 m2)                  = (SeqM, m1) : toMnf m2
 
-toMnfK (BindK v tau (SeqK m1 m2) m3) = toMnfK (SeqK m1 (BindK v tau m2 m3))
-toMnfK (BindK v tau (ParK m1 m2) m3) = toMnfK (ParK m1 (BindK v tau m2 m3))
-toMnfK (BindK v2 tau2
-          (BindK v1 tau1 m1 m2) m3)  = toMnfK (BindK v1 tau1 m1
-                                                 (BindK v2 tau2 m2 m3))
-toMnfK (BindK v tau m1 m2)           = (BindM v tau, m1) : toMnfK m2
+toMnf (ParE (ReturnE {}) m)         = toMnf m
+toMnf (ParE (SeqE m1 m2) m3)        = toMnf (ParE m1 (SeqE m2 m3))
+toMnf (ParE (ParE m1 m2) m3)        = toMnf (ParE m1 (ParE m2 m3))
+toMnf (ParE (BindE v tau m1 m2) m3) = toMnf (BindE v tau m1 (ParE m2 m3))
+toMnf (ParE m1 m2)                  = (ParM, m1) : toMnf m2
 
-toMnfK m                             = [(SeqM, m)]
+toMnf (BindE v tau (SeqE m1 m2) m3) = toMnf (SeqE m1 (BindE v tau m2 m3))
+toMnf (BindE v tau (ParE m1 m2) m3) = toMnf (ParE m1 (BindE v tau m2 m3))
+toMnf (BindE v2 tau2
+          (BindE v1 tau1 m1 m2) m3) = toMnf (BindE v1 tau1 m1 (BindE v2 tau2 m2 m3))
+toMnf (BindE v tau m1 m2)           = (BindM v tau, m1) : toMnf m2
 
-fromMnfK :: Mnf ProgK -> ProgK
-fromMnfK []              = error "fromMnfK: empty list"
-fromMnfK [(SeqM, m)]     = m
-fromMnfK [(ParM, _)]     = error "fromMnfK: last action is a par"
-fromMnfK [(BindM {}, _)] = error "fromMnfK: last action is a bind"
+toMnf m                             = [(SeqM, m)]
 
-fromMnfK ((SeqM, m)       :ms) = SeqK m $ fromMnfK ms
-fromMnfK ((ParM, m)       :ms) = ParK m $ fromMnfK ms
-fromMnfK ((BindM v tau, m):ms) = BindK v tau m $ fromMnfK ms
+fromMnf :: Mnf Exp -> Exp
+fromMnf []              = error "fromMnf: empty list"
+fromMnf [(LetM {}, _)]  = error "fromMnf: last action is a let"
+fromMnf [(SeqM, m)]     = m
+fromMnf [(ParM, _)]     = error "fromMnf: last action is a par"
+fromMnf [(BindM {}, _)] = error "fromMnf: last action is a bind"
+
+fromMnf ((LetM v tau, e) :ms) = LetE v tau Many e $ fromMnf ms
+fromMnf ((SeqM, m)       :ms) = SeqE m $ fromMnf ms
+fromMnf ((ParM, m)       :ms) = ParE m $ fromMnf ms
+fromMnf ((BindM v tau, m):ms) = BindE v tau m $ fromMnf ms
 
 -- Normalize monadic actions
 
@@ -472,42 +469,35 @@ norm :: (MonadCheck m, MonadSubst Var Var m, MonadSubst Var Exp m) => AST a -> a
 norm VarA v        = lookupSubst VarA v VarA (return v)
 norm ExpA (VarE v) = lookupSubst VarA v ExpA (VarE <$> norm VarA v)
 
-norm ProgHA (SeqH (ReturnH {}) m)                    = norm ProgHA m
-norm ProgHA (SeqH (SeqH m1 m2) m3)                   = norm ProgHA (SeqH m1 (SeqH m2 m3))
-norm ProgHA (SeqH (BindH v tau m1 m2) m3)            = norm ProgHA (BindH v tau m1 (SeqH m2 m3))
-norm ProgHA (SeqH m1 (ReturnH UnitE))                = do  m1' <- norm ProgHA m1
-                                                           tau <- inferProgH m1' >>= checkMT
-                                                           if tau == unitT
-                                                             then norm ProgHA m1
-                                                             else norm ProgHA $ SeqH m1' (ReturnH UnitE)
-norm ProgHA (BindH v _ (ReturnH e) m)                = do  insertSubst VarA v ExpA e
-                                                           norm ProgHA m
-norm ProgHA (BindH v tau (SeqH m1 m2) m3)            = norm ProgHA (SeqH m1 (BindH v tau m2 m3))
-norm ProgHA (BindH v2 tau2 (BindH v1 tau1 m1 m2) m3) = norm ProgHA (BindH v1 tau1 m1 (BindH v2 tau2 m2 m3))
-norm ProgHA (LiftH (ProcK [] (ReturnK e)) [])        = do  m <- ReturnH <$> norm ExpA e
-                                                           norm ProgHA m
-
-norm ProgKA (SeqK (ReturnK {}) m)                    = norm ProgKA m
-norm ProgKA (SeqK (SeqK m1 m2) m3)                   = norm ProgKA (SeqK m1 (SeqK m2 m3))
-norm ProgKA (ParK (ParK m1 m2) m3)                   = norm ProgKA (ParK m1 (ParK m2 m3))
-norm ProgKA (SeqK (BindK v tau m1 m2) m3)            = norm ProgKA (BindK v tau m1 (SeqK m2 m3))
-norm ProgKA (SeqK m1 (ReturnK UnitE))                = do  m1' <- norm ProgKA m1
-                                                           tau <- inferProgK m1' >>= checkMT
-                                                           if tau == unitT
-                                                             then norm ProgKA m1
-                                                             else norm ProgKA $ SeqK m1' (ReturnK UnitE)
-norm ProgKA (BindK v tau (SeqK m1 m2) m3)            = norm ProgKA (SeqK m1 (BindK v tau m2 m3))
-norm ProgKA (BindK v2 tau2 (BindK v1 tau1 m1 m2) m3) = norm ProgKA (BindK v1 tau1 m1 (BindK v2 tau2 m2 m3))
+norm ExpA (SeqE (ReturnE {}) m)                    = norm ExpA m
+norm ExpA (SeqE (SeqE m1 m2) m3)                   = norm ExpA (SeqE m1 (SeqE m2 m3))
+norm ExpA (ParE (ParE m1 m2) m3)                   = norm ExpA (ParE m1 (ParE m2 m3))
+norm ExpA (SeqE (BindE v tau m1 m2) m3)            = norm ExpA (BindE v tau m1 (SeqE m2 m3))
+norm ExpA (SeqE m1 (ReturnE UnitE))                = do  m1' <- norm ExpA m1
+                                                         tau <- inferExp m1' >>= checkMT
+                                                         if tau == unitT
+                                                           then norm ExpA m1
+                                                           else norm ExpA $ SeqE m1' (ReturnE UnitE)
+norm ExpA (BindE v _ (ReturnE e) m)                = do  insertSubst VarA v ExpA e
+                                                         norm ExpA m
+norm ExpA (BindE v tau (SeqE m1 m2) m3)            = norm ExpA (SeqE m1 (BindE v tau m2 m3))
+norm ExpA (BindE v2 tau2 (BindE v1 tau1 m1 m2) m3) = norm ExpA (BindE v1 tau1 m1 (BindE v2 tau2 m2 m3))
+norm ExpA (CallE (LamE [] (ReturnE e)) [])         = do  m <- ReturnE <$> norm ExpA e
+                                                         norm ExpA m
 
 norm w a = checkTraverseFam norm w a
 
 -- Lambda-lift kernels
 
 lambdaLift :: forall m a . MonadCheck m => AST a -> a -> m a
-lambdaLift ProgHA (LiftH (ProcK vtaus m) es) = do  let vs' =  Set.toList (fvs ProgKA m)
-                                                   taus'   <- mapM lookupVarType vs'
-                                                   return $ LiftH (ProcK (vtaus ++ vs' `zip` taus') m) (es ++ map VarE vs')
-lambdaLift w      a                          = checkTraverseFam lambdaLift w a
+lambdaLift ExpA (CallE (LamE vtaus m) es) = do
+    let vs' =  Set.toList (fvs ExpA m)
+    taus'   <- mapM lookupVarType vs'
+    return $ CallE (LamE (vtaus ++ vs' `zip` taus') m)
+                   (es ++ map VarE vs')
+
+lambdaLift w a =
+    checkTraverseFam lambdaLift w a
 
 -- Free variables
 fvs :: AST a -> a -> Set Var
@@ -517,24 +507,15 @@ vars :: Fold AST (Set Var -> (Set Var, Set Var))
 vars = go
   where
     go :: Fold AST (Set Var -> (Set Var, Set Var))
-    go VarA   v                          = useVar v
-    go ExpA   (LetE v _ _ e1 e2)         = go ExpA e1 `mappend`
-                                           bindVar v (go ExpA e2)
-    go ExpA   (LamE vtaus e)             = bindVars (map fst vtaus) (go ExpA e)
-    go ProgKA (BindK v _ p1 p2)          = go ProgKA p1 `mappend`
-                                           bindVar v (go ProgKA p2)
-    go ProgKA (ForK vs es p)             = foldMap (go ExpA) es `mappend`
-                                           bindVars vs (go ProgKA p)
-    go ProgKA (ParforK vs es p)          = foldMap (go ExpA) es `mappend`
-                                           bindVars vs (go ProgKA p)
-    go ProgKA (WriteK v idx e)           = go ExpA v `mappend`
-                                           go ExpA idx `mappend`
-                                           go ExpA e
-    go ProcKA (ProcK vtaus p)            = bindVars (map fst vtaus) (go ProgKA p)
-    go ProgHA (BindH v _ p1 p2)          = go ProgHA p1 `mappend`
-                                           bindVar v (go ProgHA p2)
-    go ProcHA (ProcH vtaus p)            = bindVars (map fst vtaus) (go ProgHA p)
-    go w      a                          = foldFam go w a
+    go VarA v                   = useVar v
+    go ExpA (LetE v _ _ e1 e2)  = go ExpA e1 `mappend`
+                                  bindVar v (go ExpA e2)
+    go ExpA (LamE vtaus e)      = bindVars (map fst vtaus) (go ExpA e)
+    go ExpA (BindE v _ p1 p2)   = go ExpA p1 `mappend`
+                                  bindVar v (go ExpA p2)
+    go ExpA (ForE _ vs es p)    = foldMap (go ExpA) es `mappend`
+                                  bindVars vs (go ExpA p)
+    go w    a                   = foldFam go w a
 
     useVar :: Var -> (Set Var -> (Set Var, Set Var))
     useVar v = \bound -> (if v `Set.member` bound then mempty else Set.singleton v, mempty)
@@ -644,38 +625,17 @@ subst = go
                                                 bind VarA w v $ \v'-> do
                                                 LetE v' tau occ  e1' <$> go VarA w ExpA e2
 
-    go VarA w ExpA (LamE vtaus e)     = do  let (vs, taus) = unzip vtaus
-                                            binds VarA w vs $ \vs' -> do
-                                            LamE (vs' `zip` taus) <$> go VarA w ExpA e
+    go VarA w ExpA (LamE vtaus e)         = do  let (vs, taus) = unzip vtaus
+                                                binds VarA w vs $ \vs' -> do
+                                                LamE (vs' `zip` taus) <$> go VarA w ExpA e
 
-    go VarA w ProgHA (BindH v tau p1 p2)  = do  p1' <- go VarA w ProgHA p1
+    go VarA w ExpA (BindE v tau p1 p2)    = do  p1' <- go VarA w ExpA p1
                                                 bind VarA w v $ \v' -> do
-                                                BindH v' tau p1' <$> go VarA w ProgHA p2
+                                                BindE v' tau p1' <$> go VarA w ExpA p2
 
-    go VarA w ProcHA (ProcH vtaus p)  = do  let (vs, taus) = unzip vtaus
-                                            binds VarA w vs $ \vs' -> do
-                                            ProcH (vs' `zip` taus) <$> go VarA w ProgHA p
-
-    go VarA w ProgKA (BindK v tau p1 p2)  = do  p1' <- go VarA w ProgKA p1
-                                                bind VarA w v $ \v' -> do
-                                                BindK v' tau p1' <$> go VarA w ProgKA p2
-
-    go VarA w ProgKA (ForK vs es p)    = do  es' <- traverse (go VarA w ExpA) es
-                                             binds VarA w vs $ \vs' -> do
-                                             ForK vs' es' <$> go VarA w ProgKA p
-
-    go VarA w ProgKA (ParforK vs es p) = do  es' <- traverse (go VarA w ExpA) es
-                                             binds VarA w vs $ \vs' -> do
-                                             ParforK vs' es' <$> go VarA w ProgKA p
-
-    go VarA w ProgKA (WriteK v idx e)  = WriteK <$> go VarA w ExpA v
-                                                <*> go VarA w ExpA idx
-                                                <*> go VarA w ExpA e
-
-    go VarA w ProcKA (ProcK vtaus p)  = do  let (vs, taus) = unzip vtaus
-                                            binds VarA w vs $ \vs' -> do
-                                            p' <- go VarA w ProgKA p
-                                            return $ ProcK (vs' `zip` taus) p'
+    go VarA w ExpA (ForE isPar vs es p)   = do  es' <- traverse (go VarA w ExpA) es
+                                                binds VarA w vs $ \vs' -> do
+                                                ForE isPar vs' es' <$> go VarA w ExpA p
 
     go w1 w2 w a = traverseFam (go w1 w2) w a
 
@@ -793,10 +753,10 @@ class (Applicative m, Monad m, MonadIO m) => MonadInterp m a where
     extendVars :: [(Var, a)] -> m b -> m b
 
 mergeBounds :: forall m . (MonadInterp m Range) => Traversal AST m
-mergeBounds ProgKA (ParforK vs es p) = do
+mergeBounds ExpA (ForE True vs es p) = do
     (ds, es')  <- unzip <$> mapM simplBound (vs `zip` es)
     extendVars (vs `zip` ds) $ do
-    ParforK vs es' <$> (fromMnfK <$> go (toMnfK p))
+    ForE True vs es' <$> (fromMnf <$> go (toMnf p))
   where
     simplBound :: (Var, Exp) -> m (Range, Exp)
     simplBound (_, e) = do
@@ -806,33 +766,31 @@ mergeBounds ProgKA (ParforK vs es p) = do
           Range i -> return (d, iToExp i)
           T       -> return (d, e')
 
-    go :: Mnf ProgK -> m (Mnf ProgK)
+    go :: Mnf Exp -> m (Mnf Exp)
     go [] =
         return []
 
-    go ((seq1, IfThenElseK e1 p1a p1b):(seq2, IfThenElseK e2 p2a p2b):ms) | e1 ==! e2 =
-        go ((seq2, IfThenElseK e1 (seq' p1a p2a) (seq' p1b p2b)):ms)
+    go ((seq1, IfThenElseE e1 p1a p1b):(seq2, IfThenElseE e2 p2a p2b):ms) | e1 ==! e2 =
+        go ((seq2, IfThenElseE e1 (p1a `seq'` p2a) (p1b `seq'` p2b)):ms)
       where
         seq' = case seq1 of
-                 ParM -> parK
-                 _    -> seqK
+                 ParM -> parE
+                 _    -> seqE
 
-    go ((_, IfThenElseK e1 p1a p1b):(_, SyncK):(seq3, IfThenElseK e2 p2a p2b):ms) | e1 ==! e2 =
-        go ((seq3, IfThenElseK e1 (sync p1a p2a) (sync p1b p2b)):ms)
-      where
-        sync m1 m2 = m1 `seqK` SyncK `seqK` m2
+    go ((_, IfThenElseE e1 p1a p1b):(_, SyncE):(seq3, IfThenElseE e2 p2a p2b):ms) | e1 ==! e2 =
+        go ((seq3, IfThenElseE e1 (p1a `syncE` p2a) (p1b `syncE` p2b)):ms)
 
-    go ((s, m@(IfThenElseK (BinopE LtO (VarE v) e) p1 _)):ms) = do
+    go ((s, m@(IfThenElseE (BinopE LtO (VarE v) e) p1 _)):ms) = do
         d1 <- lookupVar v
         d2 <- Just <$> rangeE e
         if d1 == d2
           then go ((s,p1):ms)
-          else do  m'  <- mergeBounds ProgKA m
+          else do  m'  <- mergeBounds ExpA m
                    ms' <- go ms
                    return $ (s,m') : ms'
 
     go ((s,m) : ms) = do
-        m'  <- mergeBounds ProgKA m
+        m'  <- mergeBounds ExpA m
         ms' <- go ms
         return $ (s,m') : ms'
 

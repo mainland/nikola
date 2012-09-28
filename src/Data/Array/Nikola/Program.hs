@@ -24,6 +24,7 @@ import Data.Array.Nikola.Exp
 import Data.Array.Nikola.Language.Check
 import Data.Array.Nikola.Language.Monad
 import Data.Array.Nikola.Language.Syntax hiding (Var, Exp)
+import qualified Data.Array.Nikola.Language.Syntax as S
 
 -- | Evaluate an expression, split the current kernel context, and return the
 -- value of the expression in a new kernel context.
@@ -37,18 +38,18 @@ splitExp e = do
           resetH $ k (E (VarE x))
     shiftH $ \k -> do
         m1  <- reset $ k ()
-        tau <- inferProgH m1
-        return $ bindH x tau m1 m2
-    return $ ReturnK (unE e)
+        tau <- inferExp m1 >>= checkMT
+        return $ bindE x tau m1 m2
+    return $ ReturnE (unE e)
   where
     tau :: ScalarType
     tau = typeOf (undefined :: Exp t a)
 
 -- | Isolate a kernel program, running it in a completely separate kernel.
-isolateK :: ProgK -> P ProgK
+isolateK :: S.Exp -> P S.Exp
 isolateK p = do
     shift $ \k -> do
-    m1 <- resetH $ k (ReturnK UnitE)
+    m1 <- resetH $ k (ReturnE UnitE)
     shiftH $ \_ -> do
-        return $ m1 `seqH` LiftH (ProcK [] p) []
-    return $ ReturnK UnitE
+        return $ m1 `seqE` CallE (LamE [] p) []
+    return $ ReturnE UnitE

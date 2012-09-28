@@ -124,7 +124,7 @@ instance Append PSH PSH PSH t a where
         m' = shift $ \k -> do
             p1 <- reset $ m1 >>= \(Z:.i,x) -> k (Z:.i,x)
             p2 <- reset $ m2 >>= \(Z:.i,x) -> k (Z:.i+n1,x)
-            return $ p1 `ParK` p2
+            return $ p1 `parE` p2
 
 append :: (Append r1 r2 D t a)
        => Array r1 (DIM1 t) a

@@ -46,16 +46,18 @@ evalCEx m = do
     return (cexDefs env, a)
 
 data CExEnv = CExEnv
-    {  cexUniq     :: !Int
-    ,  cexDefs     :: [C.Definition]
-    ,  cexVarTypes :: Map.Map Var Type
-    ,  cexVarIdxs  :: Map.Map Var Int
+    { cexUniq     :: !Int
+    , cexDefs     :: [C.Definition]
+    , cexContext  :: Context
+    , cexVarTypes :: Map.Map Var Type
+    , cexVarIdxs  :: Map.Map Var Int
     }
 
 emptyCExEnv :: CExEnv
 emptyCExEnv = CExEnv
     { cexUniq     = 0
     , cexDefs     = []
+    , cexContext  = Host
     , cexVarTypes = Map.empty
     , cexVarIdxs  = Map.empty
     }
@@ -87,6 +89,10 @@ instance MonadIO CEx where
                               return (s, x)
 
 instance MonadCheck CEx where
+    getContext = gets cexContext
+
+    setContext ctx = modify $ \s -> s { cexContext = ctx }
+
     lookupVarType v = do
         maybe_tau <- gets $ \s -> Map.lookup v (cexVarTypes s)
         case maybe_tau of
@@ -134,10 +140,11 @@ gensym s = do
     modify $ \s -> s { cexUniq = u + 1 }
     return $ s ++ show u
 
-addKernel :: ProcK -> CEx (String, [(Idx, [Exp] -> Exp)])
-addKernel p = do
-    fname        <- gensym "kernel"
-    (idxs, defs) <- liftIO $ runC flags (compileKernelProc CUDA fname p)
+addKernel :: Exp -> CEx (String, [(Idx, [Exp] -> Exp)])
+addKernel e = do
+    let (vtaus, body) =  splitLamE e
+    fname             <- gensym "kernel"
+    (idxs, defs)      <- liftIO $ runC flags (compileKernelFun CUDA fname vtaus body)
     modify $ \s -> s { cexDefs = cexDefs s ++ defs }
     return (fname, idxs)
   where
@@ -156,55 +163,24 @@ toIx n = return $ Int32V (fromIntegral n)
 -- the GPU kernels. It isn't particularly efficient---if you want efficiency,
 -- use the Template Haskell back-end in
 -- "Data.Array.Nikola.Backend.CUDA.TH.Compile".
-compileToEx :: ProcH -> CEx (Ex Val)
-compileToEx (ProcH vtaus p) =
-    extendVars vtaus $
-    compileProgH p
+compileToEx :: Exp -> CEx (Ex Val)
+compileToEx e = do
+    let (vtaus, body) = splitLamE e
+    extendVars vtaus $ do
+    compileExp body
 
-compileProgH :: ProgH -> CEx (Ex Val)
-compileProgH (ReturnH e) =
-    compileExp e
-
-compileProgH (SeqH m1 m2) = do
-    f <- compileProgH m1
-    g <- compileProgH m2
-    return $ f >> g
-
-compileProgH (BindH v tau m1 m2) = do
-    f <- compileProgH m1
-    g <- extendVars [(v,tau)] $
-         compileProgH m2
-    return $ do  f >>= pushVal
-                 g
-
-compileProgH (AllocH atau e_sh) = do
-    (tau, _) <- checkArrayT atau
-    m_sh     <- mapM compileExp e_sh
-    return $ do  sh   <- sequence m_sh >>= mapM fromIx
-                 ptrs <- go (product sh) tau
-                 return $ ArrayV ptrs sh
-  where
-    go :: Int -> ScalarType -> Ex PtrVal
-    go sz (TupleT taus) =
-        TupPtrV <$> mapM (go sz) taus
-
-    go sz tau = do
-        ptr :: CU.ForeignDevicePtr Word8 <-
-               liftIO $ CU.mallocForeignDevPtrArray (sz*sizeOfT tau)
-        return $ PtrV (CU.castForeignDevPtr ptr)
-
-compileProgH (LiftH p es) = do
-    (f, idxs)  <- addKernel p
-    midxs      <- mapM (interpIdx es) idxs
-    margs      <- mapM compileExp es
-    compileKernelCall f midxs margs
-  where
-    interpIdx :: [Exp] -> (Idx, [Exp] -> Exp) -> CEx (Idx, Ex Val)
-    interpIdx es (idx, f) = do
-        val <- compileExp (f es)
-        return (idx, val)
-
-compileProgH m = faildoc $ text "Cannot compile:" <+> ppr m
+compileConst :: Const -> CEx (Ex Val)
+compileConst (BoolC b)   = return $ return $ BoolV   b
+compileConst (Int8C n)   = return $ return $ Int8V   n
+compileConst (Int16C n)  = return $ return $ Int16V  n
+compileConst (Int32C n)  = return $ return $ Int32V  n
+compileConst (Int64C n)  = return $ return $ Int64V  n
+compileConst (Word8C n)  = return $ return $ Word8V   n
+compileConst (Word16C n) = return $ return $ Word16V  n
+compileConst (Word32C n) = return $ return $ Word32V  n
+compileConst (Word64C n) = return $ return $ Word64V  n
+compileConst (FloatC f)  = return $ return $ FloatV  f
+compileConst (DoubleC f) = return $ return $ DoubleV f
 
 compileExp :: Exp -> CEx (Ex Val)
 compileExp (VarE v) = do
@@ -212,28 +188,10 @@ compileExp (VarE v) = do
     return $ gets (\s -> exVals s !! i)
 
 compileExp (ConstE c) =
-    go c
-  where
-    go :: Const -> CEx (Ex Val)
-    go (BoolC b)   = return $ return $ BoolV   b
-    go (Int8C n)   = return $ return $ Int8V   n
-    go (Int16C n)  = return $ return $ Int16V  n
-    go (Int32C n)  = return $ return $ Int32V  n
-    go (Int64C n)  = return $ return $ Int64V  n
-    go (Word8C n)  = return $ return $ Word8V   n
-    go (Word16C n) = return $ return $ Word16V  n
-    go (Word32C n) = return $ return $ Word32V  n
-    go (Word64C n) = return $ return $ Word64V  n
-    go (FloatC f)  = return $ return $ FloatV  f
-    go (DoubleC f) = return $ return $ DoubleV f
+    compileConst c
 
 compileExp UnitE =
     return $ return UnitV
-
-compileExp (DimE i _ e) = do
-    me <- compileExp e
-    return $ do  ArrayV _ sh <- me
-                 toIx (sh !! i)
 
 compileExp (LetE v tau _ e1 e2) = do
     f <- compileExp e1
@@ -257,6 +215,41 @@ compileExp (AppE f es) = do
                  x <- f
                  popVals (length vals)
                  return x
+
+compileExp (CallE f es) = do
+    (fname, idxs) <- addKernel f
+    midxs         <- mapM (interpIdx es) idxs
+    margs         <- mapM compileExp es
+    let cudaIdxs  =  [(dim, boundsOf dim midxs) | dim <- [CudaDimX, CudaDimY, CudaDimZ]
+                                                , let bs = boundsOf dim midxs
+                                                , not (null bs)]
+    mdims <- cudaGridDims cudaIdxs
+    return $ do  mod            <- getCUDAModule
+                 f              <- liftIO $ CU.getFun mod fname
+                 (tdims, gdims) <- mdims
+                 args           <- sequence margs
+                 liftIO $ toFunParams args $ \fparams ->
+                          CU.launchKernel f tdims gdims 0 Nothing fparams
+                 return UnitV
+  where
+    interpIdx :: [Exp] -> (Idx, [Exp] -> Exp) -> CEx (Idx, Ex Val)
+    interpIdx es (idx, f) = do
+        val <- compileExp (f es)
+        return (idx, val)
+
+    -- Given a list of CUDA dimensiions (x, y, z) and their bounds (each
+    -- dimension may be used in more than one loop, leading to more than one
+    -- bound), return an action in the 'Ex' monad that yields a pair
+    -- consisting of the thread block dimensions and the grid dimensions,
+    cudaGridDims :: [(CudaDim, [Ex Val])] -> CEx (Ex ((Int, Int, Int), (Int, Int, Int)))
+    cudaGridDims []              = return $ return ((1, 1, 1), (1, 1, 1))
+    cudaGridDims [(CudaDimX, _)] = return $ return ((480, 1, 1), (128, 1, 1))
+    cudaGridDims _               = error "cudaGridDims: failed to compute grid dimensions"
+
+    -- Given a CUDA dimension (x, y, or z) and a list of indices and their
+    -- bounds, return the list of bounds for the given CUDA dimension.
+    boundsOf :: CudaDim -> [(Idx, Ex Val)] -> [Ex Val]
+    boundsOf dim idxs = [val | (CudaThreadIdx dim', val) <- idxs, dim' == dim]
 
 compileExp (BinopE op e1 e2) = do
     tau <- inferExp e1
@@ -292,41 +285,43 @@ compileExp (IfThenElseE e_test e_then e_else) = do
     return $ do  BoolV v_test <- m_test
                  if v_test then m_then else m_else
 
-compileExp e = faildoc $ text "Cannot compile:" <+> ppr e
+compileExp (ReturnE e) =
+    compileExp e
 
-instance Pretty CU.FunParam where
-    ppr (CU.IArg i)  = text "IArg" <+> ppr i
-    ppr (CU.FArg f)  = text "FArg" <+> ppr f
-    ppr (CU.VArg {}) = text "VArg"
-    ppr _            = text "TArg"
+compileExp (SeqE m1 m2) = do
+    f <- compileExp m1
+    g <- compileExp m2
+    return $ f >> g
 
-compileKernelCall :: String -> [(Idx, Ex Val)] -> [Ex Val] -> CEx (Ex Val)
-compileKernelCall fname midxs margs = do
-    let cudaIdxs = [(dim, boundsOf dim midxs) | dim <- [CudaDimX, CudaDimY, CudaDimZ]
-                                              , let bs = boundsOf dim midxs
-                                              , not (null bs)]
-    mdims <- cudaGridDims cudaIdxs
-    return $ do  mod            <- getCUDAModule
-                 f              <- liftIO $ CU.getFun mod fname
-                 (tdims, gdims) <- mdims
-                 args           <- sequence margs
-                 liftIO $ toFunParams args $ \fparams ->
-                          CU.launchKernel f tdims gdims 0 Nothing fparams
-                 return UnitV
+compileExp (BindE v tau m1 m2) = do
+    f <- compileExp m1
+    g <- extendVars [(v,tau)] $
+         compileExp m2
+    return $ do  f >>= pushVal
+                 g
+
+compileExp (AllocE atau e_sh) = do
+    (tau, _) <- checkArrayT atau
+    m_sh     <- mapM compileExp e_sh
+    return $ do  sh   <- sequence m_sh >>= mapM fromIx
+                 ptrs <- go (product sh) tau
+                 return $ ArrayV ptrs sh
   where
-    -- Given a list of CUDA dimensiions (x, y, z) and their bounds (each
-    -- dimension may be used in more than one loop, leading to more than one
-    -- bound), return an action in the 'Ex' monad that yields a pair
-    -- consisting of the thread block dimensions and the grid dimensions,
-    cudaGridDims :: [(CudaDim, [Ex Val])] -> CEx (Ex ((Int, Int, Int), (Int, Int, Int)))
-    cudaGridDims []              = return $ return ((1, 1, 1), (1, 1, 1))
-    cudaGridDims [(CudaDimX, _)] = return $ return ((480, 1, 1), (128, 1, 1))
-    cudaGridDims _               = error "cudaGridDims: failed to compute grid dimensions"
+    go :: Int -> ScalarType -> Ex PtrVal
+    go sz (TupleT taus) =
+        TupPtrV <$> mapM (go sz) taus
 
-    -- Given a CUDA dimension (x, y, or z) and a list of indices and their
-    -- bounds, return the list of bounds for the given CUDA dimension.
-    boundsOf :: CudaDim -> [(Idx, Ex Val)] -> [Ex Val]
-    boundsOf dim idxs = [val | (CudaThreadIdx dim', val) <- idxs, dim' == dim]
+    go sz tau = do
+        ptr :: CU.ForeignDevicePtr Word8 <-
+               liftIO $ CU.mallocForeignDevPtrArray (sz*sizeOfT tau)
+        return $ PtrV (CU.castForeignDevPtr ptr)
+
+compileExp (DimE i _ e) = do
+    me <- compileExp e
+    return $ do  ArrayV _ sh <- me
+                 toIx (sh !! i)
+
+compileExp e = faildoc $ text "Cannot compile:" <+> ppr e
 
 class ToFunParams a where
     toFunParams :: a -> ([CU.FunParam] -> IO b) -> IO b

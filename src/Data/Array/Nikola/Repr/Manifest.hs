@@ -75,8 +75,8 @@ alloca sh = do
     let atau  =  ArrayT tau (rank sh)
     shiftH $ \k -> do
         p         <- reset $ extendVarTypes [(v, atau)] $ k ()
-        let alloc =  AllocH atau (map unE (listOfShape sh))
-        return $ BindH v atau alloc p
+        let alloc =  AllocE atau (map unE (listOfShape sh))
+        return $ BindE v atau alloc p
     shift $ \k -> do
     extendVarTypes [(v, atau)] $ k (AManifest sh (VarE v))
   where

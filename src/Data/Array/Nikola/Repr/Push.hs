@@ -45,10 +45,10 @@ instance IsElem a => Manifest PSH a where
     manifest (APush _ m) v = do
     p1 <- reset $ do  (i, x) <- m
                       write v i x
-                      return $ ReturnK UnitE
+                      return $ ReturnE UnitE
     shift $ \k -> do
     p2 <- reset $ k ()
-    return $ p1 `seqK` p2
+    return $ p1 `seqE` p2
 
 -- | Construct a push array from a function mapping indices to values.
 mkPushArray :: forall sh a . (Shape sh)

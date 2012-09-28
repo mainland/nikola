@@ -37,14 +37,6 @@ module Data.Array.Nikola.Language.Monad (
 
     lookupExp,
     insertExp,
-    lookupProgH,
-    insertProgH,
-    lookupProgK,
-    insertProgK,
-
-    lamK,
-
-    lamH,
 
     lamE,
     letE,
@@ -71,25 +63,23 @@ import Data.Array.Nikola.Language.Syntax
 type StableNameHash = Int
 
 data REnv = REnv
-    {  rUniq        :: Int
-    ,  rFlags       :: Flags
-    ,  rVarTypes    :: Map.Map Var Type
-    ,  rHost        :: H ()
-    ,  rExpCache    :: IntMap.IntMap [(Dynamic, Exp)]
-    ,  rProgHCache  :: IntMap.IntMap [(Dynamic, ProgH)]
-    ,  rProgKCache  :: IntMap.IntMap [(Dynamic, ProgK)]
+    {  rUniq     :: Int
+    ,  rFlags    :: Flags
+    ,  rContext  :: Context
+    ,  rVarTypes :: Map.Map Var Type
+    ,  rHost     :: H ()
+    ,  rExpCache :: IntMap.IntMap [(Dynamic, Exp)]
     }
   deriving (Typeable)
 
 emptyREnv :: Flags -> REnv
 emptyREnv flags = REnv
-    {  rUniq        = 0
-    ,  rFlags       = flags
-    ,  rVarTypes    = Map.empty
-    ,  rHost        = R $ \s k -> k s ()
-    ,  rExpCache    = IntMap.empty
-    ,  rProgHCache  = IntMap.empty
-    ,  rProgKCache  = IntMap.empty
+    {  rUniq     = 0
+    ,  rFlags    = flags
+    ,  rContext  = Host
+    ,  rVarTypes = Map.empty
+    ,  rHost     = R $ \s k -> k s ()
+    ,  rExpCache = IntMap.empty
     }
 
 defaultREnv :: REnv
@@ -97,12 +87,6 @@ defaultREnv = emptyREnv defaultFlags
 
 instance Show (StableName Exp) where
     show _ = "StableName Exp"
-
-instance Show (StableName ProgH) where
-    show _ = "StableName ProgH"
-
-instance Show (StableName ProgK) where
-    show _ = "StableName ProgK"
 
 newtype R r a = R { unR :: REnv -> (REnv -> a -> IO (REnv, r)) -> IO (REnv, r) }
   deriving (Typeable)
@@ -148,11 +132,11 @@ shift f = R $ \s k ->
     in
       runR (f c) s
 
-resetH :: P ProgK -> R r ProgH
+resetH :: P Exp -> R r Exp
 resetH m = reset $ do
     (host, p) <- savingH $ reset m
     host
-    return (LiftH (ProcK [] p) [])
+    return (CallE (LamE [] p) [])
   where
     savingH :: R r a -> R r (H (), a)
     savingH m = do
@@ -163,7 +147,7 @@ resetH m = reset $ do
         modify $ \s -> s { rHost = old_host }
         return (host, a)
 
-shiftH :: ((() -> H ProgH) -> H ProgH) -> P ()
+shiftH :: ((() -> H Exp) -> H Exp) -> P ()
 shiftH m = do
     let m' = shift $ \k -> m k
     modify $ \s -> s { rHost = rHost s >> m' }
@@ -172,27 +156,31 @@ getFlags :: R r Flags
 getFlags = gets rFlags
 
 instance MonadCheck (R r) where
+    getContext = gets rContext
+
+    setContext ctx = modify $ \s -> s { rContext = ctx }
+
     lookupVarType v = do
         maybe_tau <- gets $ \s -> Map.lookup v (rVarTypes s)
         case maybe_tau of
           Just tau -> return tau
           Nothing ->  faildoc $ text "Variable" <+> ppr v <+>
-                                text "not in scope during reification."
+                                text "not in scope."
 
     extendVarTypes vtaus act = do
-        old_vars <- gets rVarTypes
         modify $ \s -> s { rVarTypes = foldl' insert (rVarTypes s) vtaus }
         x  <- act
-        modify $ \s -> s { rVarTypes = old_vars }
+        modify $ \s -> s { rVarTypes = foldl' delete (rVarTypes s) vtaus }
         return x
       where
         insert m (k, v) = Map.insert k v m
+        delete m (k, _) = Map.delete k m
 
 -- | Our monad for constructing host programs
-type H a = R ProgH a
+type H a = R Exp a
 
 -- | Our monad for constructing kernels
-type P a = R ProgK a
+type P a = R Exp a
 
 gensym :: String -> R r Var
 gensym v = do
@@ -201,35 +189,8 @@ gensym v = do
     return $ Var (v ++ "_" ++ show u)
 
 lookupExp :: Typeable a => StableName a -> R r (Maybe Exp)
-lookupExp sn =
-    lookupCache sn rExpCache
-
-insertExp :: Typeable a => StableName a -> Exp -> R r ()
-insertExp sn e =
-    modify $ \s -> s { rExpCache = insertCache sn e (rExpCache s) }
-
-lookupProgH :: Typeable a => StableName a -> R r (Maybe ProgH)
-lookupProgH sn =
-    lookupCache sn rProgHCache
-
-insertProgH :: Typeable a => StableName a -> ProgH -> R r ()
-insertProgH sn p =
-    modify $ \s -> s { rProgHCache = insertCache sn p (rProgHCache s) }
-
-lookupProgK :: Typeable a => StableName a -> R r (Maybe ProgK)
-lookupProgK sn =
-    lookupCache sn rProgKCache
-
-insertProgK :: Typeable a => StableName a -> ProgK -> R r ()
-insertProgK sn p =
-    modify $ \s -> s { rProgKCache = insertCache sn p (rProgKCache s) }
-
-lookupCache :: Typeable a
-            => StableName a
-            -> (REnv -> IntMap.IntMap [(Dynamic, b)])
-            -> R r (Maybe b)
-lookupCache sn lbl = do
-    cache <- gets lbl
+lookupExp sn = do
+    cache <- gets rExpCache
     case IntMap.lookup hash cache of
       Just xs -> return $ Prelude.lookup  (Just sn)
                                           [(fromDynamic d,x) | (d,x) <- xs]
@@ -238,31 +199,18 @@ lookupCache sn lbl = do
     hash :: StableNameHash
     hash = hashStableName sn
 
-insertCache :: forall a b . Typeable a
-            => StableName a
-            -> b
-            -> IntMap.IntMap [(Dynamic, b)]
-            -> IntMap.IntMap [(Dynamic, b)]
-insertCache sn x cache =
-    IntMap.alter add (hashStableName sn) cache
+insertExp :: Typeable a => StableName a -> Exp -> R r ()
+insertExp sn e =
+    modify $ \s -> s { rExpCache = IntMap.alter add (hashStableName sn) (rExpCache s) }
   where
-    add :: Maybe [(Dynamic, b)] -> Maybe [(Dynamic, b)]
-    add Nothing   = Just [(toDyn sn, x)]
-    add (Just xs) = Just ((toDyn sn, x) : xs)
-
-lamK :: [(Var, Type)] -> R ProcK ProcK -> R ProcK ProcK
-lamK vtaus m = do
-    ProcK vtaus' p <- reset $ extendVarTypes vtaus m
-    return $ ProcK (vtaus ++ vtaus') p
-
-lamH :: [(Var, Type)] -> R ProcH ProcH -> R ProcH ProcH
-lamH vtaus m = do
-    ProcH vtaus' p <- reset $ extendVarTypes vtaus m
-    return $ ProcH (vtaus ++ vtaus') p
+    add :: Maybe [(Dynamic, Exp)] -> Maybe [(Dynamic, Exp)]
+    add Nothing   = Just [(toDyn sn, e)]
+    add (Just xs) = Just ((toDyn sn, e) : xs)
 
 lamE :: [(Var, Type)] -> R Exp Exp -> R Exp Exp
 lamE vtaus m = do
-    e <- reset $ extendVarTypes vtaus m
+    e <- extendVarTypes vtaus $ reset $
+             m
     case e of
       LamE vtaus' e  -> return $ LamE (vtaus ++ vtaus') e
       _              -> return $ LamE vtaus e
@@ -270,7 +218,7 @@ lamE vtaus m = do
 letE :: Var -> Type -> Exp -> R Exp Exp
 letE v tau e =
     shift $ \k -> do
-    body <- reset $ extendVarTypes [(v, tau)] $ do
+    body <- extendVarTypes [(v, tau)] $ reset $
             k (VarE v)
     return $ LetE v tau Many e body
 
@@ -278,25 +226,15 @@ mkLetE :: Exp -> R Exp Exp
 mkLetE e@(VarE {})   = return e
 mkLetE e@(ConstE {}) = return e
 mkLetE e@(UnitE {})  = return e
-mkLetE e             = do  v    <- gensym "v"
-                           tau  <- inferExp e
+mkLetE e             = do  tau  <- inferExp e
+                           v    <- if isFunT tau then gensym "f" else gensym "v"
                            letE v tau e
 
 inNewScope :: Bool -> R a a -> R r a
 inNewScope isLambda comp = do
-    a <- reset $ do
-         expCache   <- gets rExpCache
-         hprogCache <- gets rProgHCache
-         kprogCache <- gets rProgKCache
-         when isLambda $ do
-           modify $ \s -> s { rExpCache   = IntMap.empty
-                            , rProgHCache = IntMap.empty
-                            , rProgKCache = IntMap.empty
-                            }
-         a <- comp
-         modify $ \s -> s { rExpCache   = expCache
-                          , rProgHCache = hprogCache
-                          , rProgKCache = kprogCache
-                          }
-         return a
+    expCache <- gets rExpCache
+    when isLambda $ do
+      modify $ \s -> s { rExpCache = IntMap.empty }
+    a <- reset comp
+    modify $ \s -> s { rExpCache = expCache }
     return a

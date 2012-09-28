@@ -346,19 +346,19 @@ instance (rsh ~ Rsh sh,
 -- itself is never evaluated, so it is perfectly acceptable (and expected!) to
 -- pass 'undefined' as the second argument (with a proper type signature of
 -- course!).
-compileSig :: forall a b . (Compilable a b, Reifiable a ProcH)
+compileSig :: forall a b . (Compilable a b, Reifiable a Exp)
            => a
            -> b
            -> ExpQ
 compileSig a _ = do
     (_, p)  <- liftIO $ flip runR env $
-               reify a >>= detectSharing ProcHA >>= optimizeHostProgram
-    (kernels, cdefs, (vtaus, qbody)) <- liftIO $ evalCEx (compileToExpQ p)
+               reify a >>= detectSharing ExpA >>= optimizeHostProgram
+    (kernels, cdefs, (vtaus, qbody, isMonadic)) <- liftIO $ evalCEx (compileToExpQ p)
     let pexpq :: PreExpQ a
         pexpq = PreExpQ (return ())
         pexpq' :: PreExpQ b
         pexpq' = precompile pexpq
-    execNQ kernels cdefs vtaus qbody (unPreExpQ pexpq') >>= finalizeExpQ
+    execNQ kernels cdefs vtaus qbody (unPreExpQ pexpq') >>= finalizeExpQ isMonadic
   where
     env :: REnv
     env = emptyREnv flags
@@ -366,12 +366,14 @@ compileSig a _ = do
     flags :: Flags
     flags = defaultFlags { fOptimize = ljust 1 }
 
-finalizeExpQ :: NQEnv -> ExpQ
-finalizeExpQ env = do
+finalizeExpQ :: Bool -> NQEnv -> ExpQ
+finalizeExpQ isMonadic env = do
     kernelDecQs <- kernelDecQs (nqKernels env) (nqCDefs env)
     TH.lamE (map return (nqLamPats env)) $
-      TH.letE (kernelDecQs ++ map return (nqDecs env))
-      [|N.currentContext `seq` unsafePerformIO $(nqBody env)|]
+      TH.letE (kernelDecQs ++ map return (nqDecs env)) $
+      if isMonadic
+      then [|N.currentContext `seq` unsafePerformIO $(nqBody env)|]
+      else [|N.currentContext `seq` $(nqBody env)|]
   where
     kernelDecQs :: [String] -> [C.Definition] -> Q [DecQ]
     kernelDecQs [] _ =
@@ -402,7 +404,7 @@ finalizeExpQ env = do
 -- their "natural" Haskell representation, i.e., 'Exp t Double' is compiled to
 -- 'Double', and compiles Nikola arrays to Repa arrays with the type tag
 -- 'R.CUF'.
-compile :: forall a . (Compilable a (Compiled a), Reifiable a ProcH) => a -> ExpQ
+compile :: forall a . (Compilable a (Compiled a), Reifiable a Exp) => a -> ExpQ
 compile a = compileSig a (undefined :: Compiled a)
 
 -- The 'Compiled' type function specifies the default compilation scheme for

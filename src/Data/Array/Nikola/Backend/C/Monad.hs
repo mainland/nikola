@@ -15,8 +15,6 @@
 -- Portability : non-portable
 
 module Data.Array.Nikola.Backend.C.Monad (
-    Context(..),
-
     PtrCExp(..),
     CExp(..),
 
@@ -32,11 +30,6 @@ module Data.Array.Nikola.Backend.C.Monad (
     runC,
 
     getFlags,
-
-    getContext,
-    inContext,
-    ifHostContext,
-    ifKernelContext,
 
     useIndex,
     getIndices,
@@ -82,11 +75,6 @@ import Data.Array.Nikola.Backend.Flags
 import Data.Array.Nikola.Language.Check
 import Data.Array.Nikola.Language.Syntax
 
--- | Code generation context
-data Context = Host
-             | Kernel
-  deriving (Eq, Ord, Show)
-
 -- | C representation of Nikola array data
 data PtrCExp = PtrCE C.Exp
              | TupPtrCE [PtrCExp]
@@ -123,23 +111,6 @@ instance ToExp CExp where
     toExp ce = faildoc $ text "Cannot convert" <+>
                          (squotes . ppr) ce <+>
                          text "to a C expression"
-
-instance MonadCheck C where
-    lookupVarType v = do
-        maybe_tau <- gets $ \s -> Map.lookup v (cVarTypes s)
-        case maybe_tau of
-          Just tau -> return tau
-          Nothing  -> faildoc $ text "Variable" <+> ppr v <+>
-                      text "not in scope"
-
-    extendVarTypes vtaus act = do
-        old_cVarTypes <- gets cVarTypes
-        modify $ \s -> s { cVarTypes = foldl' insert (cVarTypes s) vtaus }
-        x  <- act
-        modify $ \s -> s { cVarTypes = old_cVarTypes }
-        return x
-      where
-        insert m (k, v) = Map.insert k v m
 
 -- Loop index variable
 data Idx = CIdx
@@ -247,35 +218,29 @@ runC flags m = do
         prototypes = (reverse . cPrototypes) env
         globals    = (reverse . cGlobals) env
 
+instance MonadCheck C where
+    getContext = gets cContext
+
+    setContext ctx = modify $ \s -> s { cContext = ctx }
+
+    lookupVarType v = do
+        maybe_tau <- gets $ \s -> Map.lookup v (cVarTypes s)
+        case maybe_tau of
+          Just tau -> return tau
+          Nothing  -> faildoc $ text "Variable" <+> ppr v <+>
+                      text "not in scope"
+
+    extendVarTypes vtaus act = do
+        old_cVarTypes <- gets cVarTypes
+        modify $ \s -> s { cVarTypes = foldl' insert (cVarTypes s) vtaus }
+        x  <- act
+        modify $ \s -> s { cVarTypes = old_cVarTypes }
+        return x
+      where
+        insert m (k, v) = Map.insert k v m
+
 getFlags :: C Flags
 getFlags = gets cFlags
-
-getContext :: C Context
-getContext =
-    gets cContext
-
-inContext :: Context -> C a -> C a
-inContext ctx act = do
-    old_varTypes <- gets cVarTypes
-    old_ctx      <- gets cContext
-    modify $ \s -> s { cContext = ctx  }
-    when (ctx == Kernel) $
-        modify $ \s -> s { cVarTypes = Map.filter isFunT (cVarTypes s) }
-    a <- act
-    modify $ \s -> s { cVarTypes = old_varTypes
-                     , cContext  = old_ctx
-                     }
-    return a
-
-ifHostContext :: C () -> C ()
-ifHostContext act = do
-    ctx <- gets cContext
-    when (ctx == Host) act
-
-ifKernelContext :: C () -> C ()
-ifKernelContext act = do
-    ctx <- gets cContext
-    when (ctx == Kernel) act
 
 useIndex :: (Idx, Exp) -> C ()
 useIndex idx =

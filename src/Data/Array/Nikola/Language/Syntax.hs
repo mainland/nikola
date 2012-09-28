@@ -38,24 +38,19 @@ module Data.Array.Nikola.Language.Syntax (
     ixScalarT,
     ixT,
     isScalarT,
+    isUnitT,
     isArrayT,
     isFunT,
+    isMT,
     flattenT,
 
     Exp(..),
+    splitLamE,
 
-    ProgH(..),
-    ProcH(..),
-    ProgK(..),
-    ProcK(..),
-
-    seqK,
-    parK,
-    bindK,
-    syncK,
-
-    seqH,
-    bindH
+    seqE,
+    parE,
+    bindE,
+    syncE
 ) where
 
 import Data.Generics (Data, Typeable)
@@ -194,6 +189,10 @@ isScalarT :: Type -> Bool
 isScalarT (ScalarT {}) = True
 isScalarT _            = False
 
+isUnitT :: Type -> Bool
+isUnitT (ScalarT UnitT) = True
+isUnitT _               = False
+
 isArrayT :: Type -> Bool
 isArrayT (ArrayT {}) = True
 isArrayT _           = False
@@ -201,6 +200,10 @@ isArrayT _           = False
 isFunT :: Type -> Bool
 isFunT (FunT {}) = True
 isFunT _         = False
+
+isMT :: Type -> Bool
+isMT (MT {}) = True
+isMT _       = False
 
 flattenT :: Type -> [Type]
 flattenT (ScalarT (TupleT taus)) =
@@ -219,7 +222,7 @@ instance Pretty Occ where
     ppr = text . show
 
 occJoin :: Occ -> Occ -> Occ
-occJoin Never occ  = occ
+occJoin Never occ   = occ
 occJoin Once  Never = Once
 occJoin Once  _     = Many
 occJoin Many  _     = Many
@@ -227,7 +230,7 @@ occJoin Many  _     = Many
 occMeet :: Occ -> Occ -> Occ
 occMeet Never occ   = occ
 occMeet Once  Never = Once
-occMeet Once  Once  = Many
+occMeet Once  Once  = Once
 occMeet Once  Many  = Many
 occMeet Many  _     = Many
 
@@ -235,18 +238,38 @@ occMeet Many  _     = Many
 data Exp = VarE Var
          | ConstE Const
          | UnitE
+
          | TupleE [Exp]
          | ProjE Int Int Exp
-         | ProjArrE Int Int Exp
-         | DimE Int Int Exp
+
          | LetE Var Type Occ Exp Exp
+
          | LamE [(Var, Type)] Exp
          | AppE Exp [Exp]
+         | CallE Exp [Exp]
+
          | UnopE Unop Exp
          | BinopE Binop Exp Exp
+
          | IfThenElseE Exp Exp Exp
+
          | SwitchE Exp [(Int, Exp)] (Maybe Exp)
+
+         | ReturnE Exp
+         | SeqE Exp Exp
+         | ParE Exp Exp
+         | BindE Var Type Exp Exp
+
+         | AllocE Type [Exp]
+         | DimE Int Int Exp
+         | ProjArrE Int Int Exp
          | IndexE Exp Exp
+         | WriteE Exp Exp Exp
+
+         | ForE Bool [Var] [Exp] Exp
+
+         | SyncE
+
          | DelayedE (R Exp Exp)
   deriving (Eq, Ord, Typeable)
 
@@ -267,82 +290,36 @@ instance Num Exp where
     abs e    = UnopE AbsN e
     signum e = UnopE SignumN e
 
--- | Host programs. These are monadic.
-data ProgH = ReturnH Exp
-           | SeqH ProgH ProgH
-           | LetH Var Type Exp ProgH
-           | BindH Var Type ProgH ProgH
-           | LiftH ProcK [Exp]
-           | IfThenElseH Exp ProgH ProgH
-           | AllocH Type [Exp]
-           | DelayedH (R ProgH ProgH)
-  deriving (Typeable)
-
--- | Host Procedures. The body of a procedure (in contrast to a function) is
--- monadic.
-data ProcH = ProcH [(Var, Type)] ProgH
-  deriving (Typeable)
-
--- | Kernel programs. These are monadic.
-data ProgK = ReturnK Exp
-           | SeqK ProgK ProgK
-           | ParK ProgK ProgK
-           | LetK Var Type Exp ProgK
-           | BindK Var Type ProgK ProgK
-           | ForK [Var] [Exp] ProgK
-           | ParforK [Var] [Exp] ProgK
-           | IfThenElseK Exp ProgK ProgK
-           | WriteK Exp Exp Exp
-           | SyncK
-           | DelayedK (R ProgK ProgK)
-  deriving (Typeable)
-
--- | Kernel Procedures. The body of a procedure (in contrast to a function) is
--- monadic.
-data ProcK = ProcK [(Var, Type)] ProgK
-  deriving (Typeable)
+splitLamE :: Exp -> ([(Var, Type)], Exp)
+splitLamE (LamE vtaus e) = (vtaus, e)
+splitLamE e              = ([], e)
 
 -- | Smart constructors to keep monads in normal form
-infixl 1  `seqK`, `parK`, `syncK`, `seqH`
+infixl 1  `seqE`, `parE`, `syncE`
 
-seqK :: ProgK -> ProgK -> ProgK
-seqK (ReturnK {})        m  = m
-seqK (SeqK m1 m2)        m3 = seqK m1 (seqK m2 m3)
-seqK (LetK v tau e m1)   m2 = letK v tau e (seqK m1 m2)
-seqK (BindK v tau m1 m2) m3 = bindK v tau m1 (seqK m2 m3)
-seqK m1                  m2 = SeqK m1 m2
+seqE :: Exp -> Exp -> Exp
+seqE (ReturnE {})        m  = m
+seqE (SeqE m1 m2)        m3 = seqE m1 (seqE m2 m3)
+seqE (LetE v tau _ e m1) m2 = letE v tau e (seqE m1 m2)
+seqE (BindE v tau m1 m2) m3 = bindE v tau m1 (seqE m2 m3)
+seqE m1                  m2 = SeqE m1 m2
 
-parK :: ProgK -> ProgK -> ProgK
-parK (ReturnK {}) m  = m
-parK (ParK m1 m2) m3 = parK m1 (parK m2 m3)
-parK m1           m2 = ParK m1 m2
+parE :: Exp -> Exp -> Exp
+parE (ReturnE {}) m  = m
+parE (ParE m1 m2) m3 = parE m1 (parE m2 m3)
+parE m1           m2 = ParE m1 m2
 
-bindK :: Var -> Type -> ProgK -> ProgK -> ProgK
-bindK v  tau  (SeqK m1 m2) m3          = seqK m1 (bindK v tau m2 m3)
-bindK v2 tau2 (LetK v1 tau1 e m1)   m2 = letK v1 tau1 e (bindK v2 tau2 m1 m2)
-bindK v2 tau2 (BindK v1 tau1 m1 m2) m3 = bindK v1 tau1 m1 (bindK v2 tau2 m2 m3)
-bindK v  tau  m1                    m2 = BindK v tau m1 m2
+bindE :: Var -> Type -> Exp -> Exp -> Exp
+bindE v  tau  (SeqE m1 m2) m3          = seqE m1 (bindE v tau m2 m3)
+bindE v2 tau2 (LetE v1 tau1 _ e m1) m2 = letE v1 tau1 e (bindE v2 tau2 m1 m2)
+bindE v2 tau2 (BindE v1 tau1 m1 m2) m3 = bindE v1 tau1 m1 (bindE v2 tau2 m2 m3)
+bindE v  tau  m1                    m2 = BindE v tau m1 m2
 
-letK :: Var -> Type -> Exp -> ProgK -> ProgK
-letK v tau e m = LetK v tau e m
+letE :: Var -> Type -> Exp -> Exp -> Exp
+letE v tau e m = LetE v tau Many e m
 
-syncK :: ProgK -> ProgK -> ProgK
-syncK m1 m2 = m1 `seqK` SyncK `seqK` m2
-
-seqH :: ProgH -> ProgH -> ProgH
-seqH (ReturnH {})        m  = m
-seqH (SeqH m1 m2)        m3 = seqH m1 (seqH m2 m3)
-seqH (LetH v tau e m1)   m2 = letH v tau e (seqH m1 m2)
-seqH (BindH v tau m1 m2) m3 = bindH v tau m1 (seqH m2 m3)
-seqH m1                  m2 = SeqH m1 m2
-
-letH :: Var -> Type -> Exp -> ProgH -> ProgH
-letH v tau e m = LetH v tau e m
-
-bindH :: Var -> Type -> ProgH -> ProgH -> ProgH
-bindH v  tau  (SeqH m1 m2) m3          = seqH m1 (bindH v tau m2 m3)
-bindH v2 tau2 (BindH v1 tau1 m1 m2) m3 = bindH v1 tau1 m1 (bindH v2 tau2 m2 m3)
-bindH v  tau  m1                    m2 = BindH v tau m1 m2
+syncE :: Exp -> Exp -> Exp
+syncE m1 m2 = m1 `seqE` SyncE `seqE` m2
 
 landPrec :: Int
 landPrec = 3
@@ -579,14 +556,6 @@ instance Pretty Exp where
         parensIf (p > appPrec) $
         text "#" <> ppr i <+> pprPrec appPrec1 e
 
-    pprPrec p (ProjArrE i _ e) =
-        parensIf (p > appPrec) $
-        text "#" <> ppr i <+> pprPrec appPrec1 e
-
-    pprPrec p (DimE i _ e) =
-        parensIf (p > appPrec) $
-        text "dim#" <> ppr i <+> pprPrec appPrec1 e
-
     pprPrec p (LetE v tau Many e1 e2) =
         parensIf (p > appPrec) $
         text "let" <+> text "{" <+>
@@ -608,6 +577,10 @@ instance Pretty Exp where
     pprPrec p (AppE f es) =
         parensIf (p > appPrec) $
         folddoc (<+/>) (map (pprPrec appPrec1) (f : es))
+
+    pprPrec p (CallE f es) =
+        parensIf (p > appPrec) $
+        text "call" <+> folddoc (<+/>) (pprMonadic appPrec1 f : map (pprPrec appPrec1) es)
 
     pprPrec p (UnopE op e) =
         parensIf (p >= opp) $
@@ -659,8 +632,40 @@ instance Pretty Exp where
         pprAlt :: (Doc, Doc) -> Doc
         pprAlt (p, e) = p <+> text "->" <+> align  e
 
+    pprPrec p e@(ReturnE {}) =
+        pprMonadic p e
+
+    pprPrec p e@(SeqE {}) =
+        pprMonadic p e
+
+    pprPrec p e@(ParE {}) =
+        pprMonadic p e
+
+    pprPrec p e@(BindE {}) =
+        pprMonadic p e
+
+    pprPrec p e@(AllocE {}) =
+        pprMonadic p e
+
+    pprPrec p (DimE i _ e) =
+        parensIf (p > appPrec) $
+        text "dim#" <> ppr i <+> pprPrec appPrec1 e
+
+    pprPrec p (ProjArrE i _ e) =
+        parensIf (p > appPrec) $
+        text "#" <> ppr i <+> pprPrec appPrec1 e
+
     pprPrec _ (IndexE arr idx) =
         pprPrec appPrec1 arr <> brackets (ppr idx)
+
+    pprPrec p e@(WriteE {}) =
+        pprMonadic p e
+
+    pprPrec p e@(ForE {}) =
+        pprMonadic p e
+
+    pprPrec p e@(SyncE {}) =
+        pprMonadic p e
 
     pprPrec _ (DelayedE _) =
         text "<delayed>"
@@ -668,112 +673,55 @@ instance Pretty Exp where
 instance Show Exp where
     showsPrec p = shows . pprPrec p
 
-instance Pretty ProgH where
-    ppr prog =
-        case (go prog) of
-          [p] -> p
-          ps  -> embraceStack ps
-      where
-        go :: ProgH -> [Doc]
-        go (ReturnH e) =
-            [text "return" <+> pprPrec appPrec1 e]
+pprMonadic :: Int -> Exp -> Doc
+pprMonadic p (LamE vtaus e) =
+    parensIf (p > appPrec) $ nest 2 $
+    text "\\" <> tuple (map ppr vtaus) <+> text "->" </> pprMonadic 0 e
 
-        go (SeqH m1 m2) =
-            ppr m1 : go m2
+pprMonadic _ e =
+    case go e of
+      [m] -> m
+      ms  -> embraceStack ms
+  where
+    go :: Exp -> [Doc]
+    go (LetE v tau _ e m) =
+        (text "let" <+> ppr (v, tau) <+> text "=" <+> ppr e) : go m
 
-        go  (LetH v tau e m) =
-            (text "let" <+> ppr (v, tau) <+> text "=" <+> ppr e) : go m
+    go (LamE vtaus e) =
+        [nest 2 $ text "\\" <> tuple (map ppr vtaus) <+> text "->" </> pprMonadic 0 e]
 
-        go  (BindH v tau m1 m2) =
-            (ppr (v, tau) <+> text "<-" <+/> nest 2 (ppr m1)) : go m2
+    go (CallE f es) =
+        [text "call" <+> pprMonadic appPrec1 f <+> tuple (map ppr es)]
 
-        go (IfThenElseH testp thenp elsep) =
-            [align $ text "if" <+> ppr testp </>
-                     text "then" <+> align (ppr thenp) </>
-                     text "else" <+> align (ppr elsep)]
+    go (ReturnE e) =
+        [text "return" <+> pprPrec appPrec1 e]
 
-        go (LiftH proc args) =
-            [text "lift" <+>
-                  pprPrec appPrec1 proc <+>
-                  tuple (map ppr args)]
+    go (SeqE m1 m2) =
+        ppr m1 : go m2
 
-        go (AllocH tau sh) =
-            [text "alloc" <+> pprPrec appPrec1 tau <> brackets (commasep (map ppr sh))]
+    go (ParE m1 m2) =
+        [align (ppr m1 </> text "||" </> ppr m2)]
 
-        go (DelayedH {}) =
-            [text "<delayed>"]
+    go (BindE v tau m1 m2) =
+        (ppr (v, tau) <+> text "<-" <+/> nest 2 (ppr m1)) : go m2
 
-instance Show ProgH where
-    showsPrec p = shows . pprPrec p
+    go (AllocE tau sh) =
+        [text "alloc" <+> pprPrec appPrec1 tau <> brackets (commasep (map ppr sh))]
 
-instance Pretty ProcH where
-    pprPrec p (ProcH bndrs proc) =
-        parensIf (p > appPrec) $ nest 2 $
-        text "\\" <> tuple (map ppr bndrs) <+> text "->" </> ppr proc
+    go (WriteE v idx x) =
+        [text "write" <+> pprPrec appPrec1 v <>
+         brackets (ppr idx) <+> pprPrec appPrec1 x]
 
-instance Show ProcH where
-    showsPrec p = shows . pprPrec p
+    go (ForE isPar vs es prog) =
+        [align $ nest 4 $
+         (if isPar then text "parfor" else text "for") <>
+         parens (commasep (replicate (length vs) (text "0")) <+> text "<=" <+>
+                 commasep (map ppr vs) <+> text "<" <+>
+                 commasep (map ppr es)) </>
+         pprMonadic 0 prog]
 
-instance Pretty ProgK where
-    ppr prog =
-        case (go prog) of
-          [p] -> p
-          ps  -> embraceStack ps
-      where
-        go :: ProgK -> [Doc]
-        go (ReturnK e) =
-            [text "return" <+> pprPrec appPrec1 e]
+    go SyncE =
+        [text "sync"]
 
-        go (SeqK m1 m2) =
-            ppr m1 : go m2
-
-        go (ParK m1 m2) =
-            [align (ppr m1 </> text "||" </> ppr m2)]
-
-        go  (LetK v tau e m) =
-            (text "let" <+> ppr (v, tau) <+> text "=" <+> ppr e) : go m
-
-        go  (BindK v tau m1 m2) =
-            (ppr (v, tau) <+> text "<-" <+/> nest 2 (ppr m1)) : go m2
-
-        go (ForK vs es prog) =
-            [align $ nest 4 $
-             text "for" <> parens
-                 (commasep (replicate (length vs) (text "0")) <+> text "<=" <+>
-                  commasep (map ppr vs) <+> text "<" <+>
-                  commasep (map ppr es)) </>
-             ppr prog]
-
-        go (ParforK vs es prog) =
-            [align $ nest 4 $
-             text "parfor" <> parens
-                 (commasep (replicate (length vs) (text "0")) <+> text "<=" <+>
-                  commasep (map ppr vs) <+> text "<" <+>
-                  commasep (map ppr es)) </>
-             ppr prog]
-
-        go (IfThenElseK testp thenp elsep) =
-            [align $ text "if" <+> ppr testp </>
-                     text "then" <+> align (ppr thenp) </>
-                     text "else" <+> align (ppr elsep)]
-
-        go (WriteK v idx x) =
-            [text "write" <+> pprPrec appPrec1 v <>
-             brackets (ppr idx) <+> pprPrec appPrec1 x]
-
-        go SyncK =
-            [text "sync"]
-
-        go (DelayedK {}) =
-            [text "<delayed>"]
-
-instance Show ProgK where
-    showsPrec p = shows . pprPrec p
-
-instance Pretty ProcK where
-    pprPrec p (ProcK bndrs proc) =
-        parensIf (p > appPrec) $ nest 2 $
-        text "\\" <> tuple (map ppr bndrs) <+> text "->" </> ppr proc
-
-instance Show ProcK where
-    showsPrec p = shows . pprPrec p
+    go e =
+        [ppr e]

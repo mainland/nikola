@@ -43,21 +43,21 @@ import Data.Array.Nikola.Language.Syntax hiding (Exp, Var)
 class Typeable a => Reifiable a b where
     reify :: a -> R b b
 
--- These are the base cases for procedure reification.
-instance (IsElem (Exp t a)) => Reifiable (Exp t a) ProcH where
-    reify e = liftK $ returnK e
+-- These are the base cases
+instance (IsElem (Exp t a)) => Reifiable (Exp t a) S.Exp where
+    reify e = return $ unE e
 
-instance Reifiable (P ()) ProcH where
-    reify m = liftK $ m >> return (ReturnK UnitE)
+instance Reifiable (P ()) S.Exp where
+    reify m = liftK $ m >> return (ReturnE UnitE)
 
-instance (IsElem (Exp t a)) => Reifiable (P (Exp t a)) ProcH where
+instance (IsElem (Exp t a)) => Reifiable (P (Exp t a)) S.Exp where
     reify m = liftK $ m >>= returnK
 
 instance (Typeable r,
           Shape sh,
           IsElem a,
           Manifest r a)
-      => Reifiable (Array r sh a) ProcH where
+      => Reifiable (Array r sh a) S.Exp where
     reify arr = liftK $ do
         AManifest _ arr <- mkManifest arr
         returnK $ E arr
@@ -66,52 +66,20 @@ instance (Typeable r,
           Shape sh,
           IsElem a,
           Manifest r a)
-      => Reifiable (P (Array r sh a)) ProcH where
+      => Reifiable (P (Array r sh a)) S.Exp where
     reify m = liftK $ do
         AManifest _ arr <- m >>= mkManifest
         returnK $ E arr
 
-liftK :: P ProgK -> R ProcH ProcH
+liftK :: P S.Exp -> R S.Exp S.Exp
 liftK m =
-    lamH [] $ do
-    ProcH [] <$> resetH m
+    lamE [] $ do
+    LamE [] <$> resetH m
 
-returnK :: Exp t a -> P ProgK
-returnK = return . ReturnK . unE
+returnK :: Exp t a -> P S.Exp
+returnK = return . ReturnE . unE
 
 -- These are the inductive cases
-
-instance (IsElem (Exp t a),
-          Reifiable b ProcH)
-    => Reifiable (Exp t a -> b) ProcH where
-    reify f = do
-        v <- gensym "x"
-        lamH [(v, ScalarT tau)] $ do
-        reify $ f (E (VarE v))
-      where
-        tau :: ScalarType
-        tau = typeOf (undefined :: Exp t a)
-
-instance (Shape sh,
-          IsElem a,
-          Reifiable b ProcH) => Reifiable (Array M sh a -> b) ProcH where
-    reify f = do
-        v        <- gensym "vec"
-        let n    =  rank (undefined :: sh)
-        let dims =  [DimE i n (VarE v) | i <- [0..n-1]]
-        let sh   =  shapeOfList (P.map E dims)
-        lamH [(v, ArrayT tau n)] $ do
-        reify $ f (AManifest sh (VarE v))
-      where
-        tau :: ScalarType
-        tau = typeOf (undefined :: a)
-
--- Base case
-
-instance (IsElem (Exp t a)) => Reifiable (Exp t a) S.Exp where
-    reify e = return $ unE e
-
--- Inductive case
 
 instance (IsElem (Exp t a),
           Reifiable b S.Exp)
@@ -123,6 +91,20 @@ instance (IsElem (Exp t a),
       where
         tau :: ScalarType
         tau = typeOf (undefined :: Exp t a)
+
+instance (Shape sh,
+          IsElem a,
+          Reifiable b S.Exp) => Reifiable (Array M sh a -> b) S.Exp where
+    reify f = do
+        v        <- gensym "vec"
+        let n    =  rank (undefined :: sh)
+        let dims =  [DimE i n (VarE v) | i <- [0..n-1]]
+        let sh   =  shapeOfList (P.map E dims)
+        lamE [(v, ArrayT tau n)] $ do
+        reify $ f (AManifest sh (VarE v))
+      where
+        tau :: ScalarType
+        tau = typeOf (undefined :: a)
 
 -- | @vapply@ is a bit tricky... We first build a @DelayedE@ AST node containing
 -- an action that reifies the lambda. Then we wrap the result in enough

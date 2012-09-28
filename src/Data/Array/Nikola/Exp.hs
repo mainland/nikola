@@ -226,9 +226,9 @@ indexScalar arr ix =
 writeScalar :: S.Exp -> S.Exp -> S.Exp -> P ()
 writeScalar arr ix x =
         shift $ \k -> do
-        let p1 =  WriteK arr ix x
+        let p1 =  WriteE arr ix x
         p2     <- reset $ k ()
-        return $ p1 `seqK` p2
+        return $ p1 `seqE` p2
 
 proj :: Int -> Int -> Exp t a -> Exp t b
 proj i n tup = E (ProjE i n (unE tup))

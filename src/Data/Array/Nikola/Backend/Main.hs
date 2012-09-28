@@ -43,7 +43,7 @@ import Data.Array.Nikola.Language.Monad
 import Data.Array.Nikola.Language.Optimize
 import Data.Array.Nikola.Language.Reify
 import Data.Array.Nikola.Language.Sharing
-import Data.Array.Nikola.Language.Syntax hiding (Exp, Var)
+import Data.Array.Nikola.Language.Syntax
 
 -- | Parse a positive number.
 pos :: (Num a, Ord a, Read a)
@@ -126,16 +126,15 @@ printUsage options exitCode = do
   putStr (usageInfo ("Usage: " ++ p ++ " [OPTIONS]") options)
   exitWith exitCode
 
-defaultMain :: Reifiable a ProcH => a -> IO ()
+defaultMain :: Reifiable a Exp => a -> IO ()
 defaultMain = defaultMainWith defaultFlags
 
-defaultMainWith :: Reifiable a ProcH => Flags -> a -> IO ()
+defaultMainWith :: Reifiable a Exp => Flags -> a -> IO ()
 defaultMainWith f a = do
     args    <- getArgs
     (f', _) <- parseArgs f defaultOptions args
-
-    proc      <- snd <$> runR (reify a >>= detectSharing ProcHA >>= optimize f')
-                              (emptyREnv f')
+    proc    <- snd <$> runR (reify a >>= detectSharing ExpA >>= optimize f')
+                            (emptyREnv f')
     when (fromLJust fVerbosity f' > 0) $ do
         pprIO f' stderr proc
     code <- compileProgram f' proc
@@ -145,7 +144,7 @@ defaultMainWith f a = do
       Last (Just path) -> do  h <- openFile path WriteMode
                               pprIO f' h code `finally` hClose h
 
-optimize :: Flags -> ProcH -> R r ProcH
+optimize :: Flags -> Exp -> R r Exp
 optimize f p
     | fromLJust fOptimize f > 0 = optimizeHostProgram p
     | otherwise                 = liftHostProgram p

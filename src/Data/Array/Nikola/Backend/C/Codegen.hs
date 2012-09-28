@@ -4,6 +4,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- |
@@ -17,7 +18,7 @@
 
 module Data.Array.Nikola.Backend.C.Codegen (
     compileProgram,
-    compileKernelProc
+    compileKernelFun
   ) where
 
 import Control.Applicative ((<$>),
@@ -47,21 +48,45 @@ import Data.Array.Nikola.Language.Generic
 import Data.Array.Nikola.Language.Syntax
 -- import Data.Array.Nikola.Pretty
 
-compileProgram :: Flags -> ProcH -> IO [C.Definition]
+-- Compile a program to a C function
+compileProgram :: Flags -> Exp -> IO [C.Definition]
 compileProgram flags p = do
     snd <$> runC flags go
   where
+    (vtaus, body) = splitLamE p
+
     go :: C CExp
     go = do
-        case fromLJust fDialect flags of
-          CUDA   -> do  addInclude "\"cuda.h\""
-                        addInclude "\"cuda_runtime_api.h\""
-          OpenMP -> do  addInclude "<stdlib.h>"
-                        addInclude "<inttypes.h>"
-                        addInclude "<math.h>"
-                        addInclude "<omp.h>"
-          _      -> return ()
-        compileHostProc p
+        let dialect = fromLJust fDialect flags
+        addIncludes dialect
+        flags    <- getFlags
+        fname    <- case fFunction flags of
+                      Last Nothing      -> gensym "host"
+                      Last (Just fname) -> return fname
+        tau_host <- inferExp p
+        tau_ret  <- snd <$> checkFunT tau_host
+        compileFun dialect Host Host fname vtaus tau_ret $ do
+        declareHeap dialect (numAllocs p)
+        declareResult dialect
+        addFinalStm (returnResult dialect)
+        addFinalStm [cstm|done: $stm:gc|]
+        ce <- compileExp body
+        mark ce
+        return ce
+
+    addIncludes :: Dialect -> C ()
+    addIncludes CUDA = do
+        addInclude "\"cuda.h\""
+        addInclude "\"cuda_runtime_api.h\""
+
+    addIncludes OpenMP = do
+        addInclude "<stdlib.h>"
+        addInclude "<inttypes.h>"
+        addInclude "<math.h>"
+        addInclude "<omp.h>"
+
+    addIncludes _ =
+        return ()
 
 -- Compile a constant to a C expression
 compileConst :: Const -> C CExp
@@ -94,20 +119,6 @@ compileExp (ProjE i _ e) = do
       TupCE ces -> return $ ces !! i
       _ -> faildoc $ ppr e <+> text "::" <+> ppr tau <+> text "-->" <+> ppr ce
 
-compileExp (ProjArrE i _ e) = do
-    ce  <- compileExp e
-    tau <- inferExp e
-    case ce of
-      ArrayCE (TupPtrCE ptr) sh -> return $ ArrayCE (ptr !! i) sh
-      _ -> faildoc $ ppr e <+> text "::" <+> ppr tau <+> text "-->" <+> ppr ce
-
-compileExp (DimE i _ e) = do
-    ce  <- compileExp e
-    tau <- inferExp e
-    case ce of
-      ArrayCE _ sh -> return (sh !! i)
-      _ -> faildoc $ ppr e <+> text "::" <+> ppr tau <+> text "-->" <+> ppr ce
-
 compileExp (LetE v tau _ e1 e2) = do
     ce1 <- bindExp (Just (unVar v)) e1
     extendVarTypes [(v, tau)] $ do
@@ -119,15 +130,24 @@ compileExp (LamE vtaus e) = do
     fname   <- gensym "f"
     tau_ret <- snd <$> (inferExp (LamE vtaus e) >>= checkFunT)
     ctx     <- getContext
-    compileFun dialect (Fun ctx) fname vtaus tau_ret (compileExp e)
+    compileFun dialect ctx ctx fname vtaus tau_ret (compileExp e)
 
 compileExp (AppE f es) = do
     dialect <- fromLJust fDialect <$> getFlags
     ctx     <- getContext
     tau     <- inferExp f
     cf      <- compileExp f
-    compileCall dialect (Fun ctx) tau es $ \cargs -> do
-        return $ ScalarCE [cexp|($cf)($args:cargs)|]
+    compileCall dialect ctx ctx tau es $ \maybe_cresult cargs ->
+        case maybe_cresult of
+          Nothing      -> addStm [cstm|($cf)($args:cargs);|]
+          Just cresult -> addStm [cstm|$cresult = ($cf)($args:cargs);|]
+
+compileExp (CallE f es) =
+    inContext Kernel $ do
+    dialect           <- fromLJust fDialect <$> getFlags
+    tau               <- inferExp f
+    let (vtaus, body) =  splitLamE f
+    callKernelFun dialect vtaus body tau es
 
 compileExp (UnopE op e) = do
     tau <- inferExp e >>= checkScalarT
@@ -201,9 +221,9 @@ compileExp (BinopE op e1 e2) = do
     go :: Binop -> ScalarType -> CExp -> CExp -> C.Exp
     go EqO _ ce1 ce2 = [cexp|$ce1 == $ce2|]
     go NeO _ ce1 ce2 = [cexp|$ce1 != $ce2|]
-    go GtO _ ce1 ce2 = [cexp|$ce1 > $ce2|]
+    go GtO _ ce1 ce2 = [cexp|$ce1 >  $ce2|]
     go GeO _ ce1 ce2 = [cexp|$ce1 >= $ce2|]
-    go LtO _ ce1 ce2 = [cexp|$ce1 < $ce2|]
+    go LtO _ ce1 ce2 = [cexp|$ce1 <  $ce2|]
     go LeO _ ce1 ce2 = [cexp|$ce1 <= $ce2|]
 
     go MaxO _ ce1 ce2 = [cexp|$ce1 > $ce2 ? $ce1 : $ce2 |]
@@ -232,13 +252,24 @@ compileExp (BinopE op e1 e2) = do
                    text "at type" <+> ppr tau
 
 compileExp (IfThenElseE test th el) = do
-    tau <- inferExp th
-    compileIfThenElse test th el tau compileExp
+    tau      <- inferExp th
+    ctest    <- compileExp test
+    cvresult <- newCVar "ifte_result" tau
+    cthitems <- inNewBlock_ $ do
+                cresult <- compileExp th
+                assignC cvresult cresult
+    celitems <- inNewBlock_ $ do
+                cresult <- compileExp el
+                assignC cvresult cresult
+    case celitems of
+      [] -> addStm [cstm|if ($ctest) { $items:cthitems }|]
+      _  -> addStm [cstm|if ($ctest) { $items:cthitems } else { $items:celitems }|]
+    return cvresult
 
 compileExp e@(SwitchE e_scrut cases dflt) = do
     tau      <- inferExp e
     cscrut   <- compileExp e_scrut
-    cvresult <- newCVar "result" tau
+    cvresult <- newCVar "switch_result" tau
     ccases   <- (++) <$> mapM (compileCase cvresult) cases
                      <*> compileDefault cvresult dflt
     addStm [cstm|switch ($cscrut) { $stms:ccases }|]
@@ -261,48 +292,27 @@ compileExp e@(SwitchE e_scrut cases dflt) = do
                  assignC cvresult ce
         return [[cstm|default: { $items:items }|]]
 
-compileExp (IndexE arr idx) = do
-    carr <- compileExp arr
-    cidx <- compileExp idx
-    return $ ScalarCE [cexp|$carr[$cidx]|]
-
-compileExp e@(DelayedE {}) =
-    faildoc $ text "Cannot compile:" <+> ppr e
-
-compileHost :: ProgH -> C CExp
-compileHost (ReturnH UnitE) =
+compileExp (ReturnE UnitE) =
     return VoidCE
 
-compileHost (ReturnH e) = do
-    ce <- compileExp e
-    return ce
+compileExp (ReturnE e) =
+    compileExp e
 
-compileHost (SeqH m1 m2) = do
-    compileHost m1
-    compileHost m2
+compileExp (SeqE m1 m2) = do
+    compileExp m1
+    compileExp m2
 
-compileHost (LetH v tau e m) = do
-    ce1 <- compileExp e
+compileExp (ParE m1 m2) = do
+    compileExp m1
+    compileExp m2
+
+compileExp (BindE v tau m1 m2) = do
+    ce1 <- compileExp m1
     extendVarTypes [(v, tau)] $ do
     extendVarTrans [(v, ce1)] $ do
-    compileHost m
+    compileExp m2
 
-compileHost (BindH v tau m1 m2) = do
-    ce1 <- compileHost m1
-    extendVarTypes [(v, tau)] $ do
-    extendVarTrans [(v, ce1)] $ do
-    compileHost m2
-
-compileHost (LiftH k es) = do
-    dialect <- fromLJust fDialect <$> getFlags
-    tau_k   <- inferProcK k
-    callKernelProc dialect k tau_k es
-
-compileHost (IfThenElseH test th el) = do
-    tau <- inferProgH th
-    compileIfThenElse test th el tau compileHost
-
-compileHost (AllocH tau_arr sh) = do
+compileExp (AllocE tau_arr sh) = do
     dialect  <- fromLJust fDialect <$> getFlags
     (tau, _) <- checkArrayT tau_arr
     csh      <- mapM compileExp sh
@@ -338,128 +348,38 @@ compileHost (AllocH tau_arr sh) = do
         ctau :: C.Type
         ctau = [cty|$ty:(toCType tau) *|]
 
-compileHost m@(DelayedH {}) =
-    faildoc $ text "Cannot compile:" <+> ppr m
+compileExp (DimE i _ e) = do
+    ce  <- compileExp e
+    tau <- inferExp e
+    case ce of
+      ArrayCE _ sh -> return (sh !! i)
+      _ -> faildoc $ ppr e <+> text "::" <+> ppr tau <+> text "-->" <+> ppr ce
 
-compileHostProc :: ProcH -> C CExp
-compileHostProc p@(ProcH vtaus m) = do
-    flags       <- getFlags
-    let dialect =  fromLJust fDialect flags
-    fname       <- case fFunction flags of
-                     Last Nothing      -> gensym "host"
-                     Last (Just fname) -> return fname
-    tau_host    <- inferProcH p
-    tau_ret     <- snd <$> checkFunT tau_host
-    compileFun dialect (Proc Host) fname vtaus tau_ret $ do
-    declareHeap dialect (numAllocs p)
-    declareResult dialect
-    addFinalStm (returnResult dialect)
-    addFinalStm [cstm|done: $stm:gc|]
-    ce <- compileHost m
-    mark ce
-    return ce
+compileExp (ProjArrE i _ e) = do
+    ce  <- compileExp e
+    tau <- inferExp e
+    case ce of
+      ArrayCE (TupPtrCE ptr) sh -> return $ ArrayCE (ptr !! i) sh
+      _ -> faildoc $ ppr e <+> text "::" <+> ppr tau <+> text "-->" <+> ppr ce
 
-compileKernel :: ProgK -> C CExp
-compileKernel (ReturnK UnitE) =
-    return VoidCE
+compileExp (IndexE arr idx) = do
+    carr <- compileExp arr
+    cidx <- compileExp idx
+    return $ ScalarCE [cexp|$carr[$cidx]|]
 
-compileKernel (ReturnK e) = do
-    compileExp e
-
-compileKernel (SeqK m1 m2) = do
-    compileKernel m1
-    compileKernel m2
-
-compileKernel (ParK m1 m2) = do
-    compileKernel m1
-    compileKernel m2
-
-compileKernel (LetK v tau e m) = do
-    cv <- newCVar (unVar v) tau
-    ce <- compileExp e
-    assignC cv ce
-    extendVarTypes [(v, tau)] $ do
-    extendVarTrans [(v, cv)] $ do
-    compileKernel m
-
-compileKernel (BindK v tau m1 m2) = do
-    cv  <- newCVar (unVar v) tau
-    ce1 <- compileKernel m1
-    assignC cv ce1
-    extendVarTypes [(v, tau)] $ do
-    extendVarTrans [(v, cv)] $ do
-    compileKernel m2
-
-compileKernel (ForK vs es m) = do
-    dialect <- fromLJust fDialect <$> getFlags
-    compileFor dialect False (vs `zip` es) m
-
-compileKernel (ParforK vs es m) = do
-    dialect <- fromLJust fDialect <$> getFlags
-    compileFor dialect True (vs `zip` es) m
-
-compileKernel (IfThenElseK test th el) = do
-    tau <- inferProgK th
-    compileIfThenElse test th el tau compileKernel
-
-compileKernel (WriteK arr idx e) = do
+compileExp (WriteE arr idx e) = do
     carr <- compileExp arr
     cidx <- compileExp idx
     ce   <- compileExp e
     addStm [cstm|$carr[$cidx] = $ce;|]
     return VoidCE
 
-compileKernel SyncK = do
-    dialect <- fromLJust fDialect <$> getFlags
-    case dialect of
-      CUDA -> addStm [cstm|__syncthreads();|]
-      _    -> return ()
-    return VoidCE
-
-compileKernel m =
-    faildoc $ text "Cannot compile:" <+> ppr m
-
--- Compile a kernel procedure given a dialect. The result is a function and a
--- list of indices and their bounds. A bound is represented as a function from
--- the kernel's arguments to an expression.
-compileKernelProc :: Dialect -> String -> ProcK -> C [(Idx, [Exp] -> Exp)]
-compileKernelProc dialect fname p@(ProcK vtaus m) =
-    inContext Kernel $ do
-    tau_kern <- inferProcK p
-    tau_ret  <-snd <$> checkFunT tau_kern
-    compileFun dialect (Proc Kernel) fname vtaus tau_ret (compileKernel m)
-    idxs <- getIndices
-    return [(idx, matchArgs vs bound) | (idx, bound) <- idxs]
-  where
-    vs = map fst vtaus
-
--- Given a list of parameters, an expression written in terms of the parameters,
--- and a list of arguments, @matchArgs@ rewrites the expression in terms of the
--- arguments. We use this to take a loop bound, which occurs in the body of a
--- kernel, and rewrite it to the equivalent expression in the caller's
--- context. This allows the caller to work with the loop bounds and compute
--- things like the proper CUDA grid and thread block parameters.
-matchArgs :: [Var]
-          -> Exp
-          -> [Exp]
-          -> Exp
-matchArgs vs e args = runIdentity (go ExpA e)
-  where
-    go :: Traversal AST Identity
-    go ExpA e@(VarE v) =
-        case findIndex (== v) vs of
-          Nothing -> Identity e
-          Just i  -> Identity (args !! i)
-
-    go w a = traverseFam go w a
-
--- Compile a for or parallel for loop
-compileFor :: Dialect -> Bool -> [(Var, Exp)] -> ProgK -> C CExp
-compileFor dialect isParallel bounds m = do
-    tau      <- extendVarTypes (map fst bounds `zip` repeat ixT) $
-                inferProgK m
-    cvresult <- newCVar "result" tau
-    go bounds (allIdxs dialect) cvresult
+compileExp (ForE isPar vs es m) = do
+    dialect  <- fromLJust fDialect <$> getFlags
+    tau      <- extendVarTypes (vs `zip` repeat ixT) $
+                inferExp m
+    cvresult <- newCVar "for_result" tau
+    go (vs `zip` es) (allIdxs dialect) cvresult
     return cvresult
   where
     go :: [(Var, Exp)] -> [Idx] -> CExp -> C ()
@@ -467,17 +387,18 @@ compileFor dialect isParallel bounds m = do
         fail "compileFor: the impossible happened!"
 
     go [] _ cvresult = do
-        cresult <- compileKernel m
+        cresult <- compileExp m
         assignC cvresult cresult
 
     go ((v@(Var i),bound):is) (idx:idxs) cresult = do
+        dialect <- fromLJust fDialect <$> getFlags
         useIndex (idx,bound)
         let cv =  ScalarCE [cexp|$id:i|]
         cbound <- bindExp (Just "bound") bound
         extendVarTypes [(v, ixT)] $ do
         extendVarTrans [(v, cv)] $ do
         body <- inNewBlock_ $ go is idxs cresult
-        when (isParallel && dialect == OpenMP) $
+        when (isPar && dialect == OpenMP) $
             addStm [cstm|$pragma:("omp parallel for")|]
         addStm [cstm|for ($ty:(toCType ixT) $id:i = $(idxInit idx);
                           $id:i < $cbound;
@@ -489,50 +410,79 @@ compileFor dialect isParallel bounds m = do
     allIdxs CUDA = map CudaThreadIdx [CudaDimX, CudaDimY, CudaDimZ] ++ repeat CIdx
     allIdxs _    = repeat CIdx
 
--- Compile an if/then/else
-compileIfThenElse :: Exp -> a -> a
-                  -> Type
-                  -> (a -> C CExp)
-                  -> C CExp
-compileIfThenElse test th el tau compile = do
-    ctest    <- compileExp test
-    cvresult <- newCVar "result" tau
-    cthitems <- inNewBlock_ $ do
-                cresult <- compile th
-                assignC cvresult cresult
-    celitems <- inNewBlock_ $ do
-                cresult <- compile el
-                assignC cvresult cresult
-    case celitems of
-      [] -> addStm [cstm|if ($ctest) { $items:cthitems }|]
-      _  -> addStm [cstm|if ($ctest) { $items:cthitems } else { $items:celitems }|]
-    return cvresult
+compileExp SyncE = do
+    dialect <- fromLJust fDialect <$> getFlags
+    case dialect of
+      CUDA -> addStm [cstm|__syncthreads();|]
+      _    -> return ()
+    return VoidCE
 
--- Call a kernel procedure
-callKernelProc :: Dialect
-               -> ProcK
-               -> Type
-               -> [Exp]
-               -> C CExp
-callKernelProc dialect p tau es = do
+compileExp e@(DelayedE {}) =
+    faildoc $ text "Cannot compile:" <+> ppr e
+
+-- | Compile a kernel function given a dialect. The result is a list of indices
+-- and their bounds. A bound is represented as a function from the kernel's
+-- arguments to an expression.
+compileKernelFun :: Dialect -> String -> [(Var, Type)] -> Exp -> C [(Idx, [Exp] -> Exp)]
+compileKernelFun dialect fname vtaus m =
+    inContext Kernel $ do
+    tau_kern <- inferExp (LamE vtaus m)
+    tau_ret  <- snd <$> checkFunT tau_kern
+    compileFun dialect Host Kernel fname vtaus tau_ret (compileExp m)
+    idxs <- getIndices
+    return [(idx, matchArgs vs bound) | (idx, bound) <- idxs]
+  where
+    vs = map fst vtaus
+
+    -- Given a list of parameters, an expression written in terms of the parameters,
+    -- and a list of arguments, @matchArgs@ rewrites the expression in terms of the
+    -- arguments. We use this to take a loop bound, which occurs in the body of a
+    -- kernel, and rewrite it to the equivalent expression in the caller's
+    -- context. This allows the caller to work with the loop bounds and compute
+    -- things like the proper CUDA grid and thread block parameters.
+    matchArgs :: [Var]
+              -> Exp
+              -> [Exp]
+              -> Exp
+    matchArgs vs e args = runIdentity (go ExpA e)
+      where
+        go :: Traversal AST Identity
+        go ExpA e@(VarE v) =
+            case findIndex (== v) vs of
+              Nothing -> Identity e
+              Just i  -> Identity (args !! i)
+
+        go w a = traverseFam go w a
+
+-- | Call a kernel function (from the host).
+callKernelFun :: Dialect
+              -> [(Var, Type)]
+              -> Exp
+              -> Type
+              -> [Exp]
+              -> C CExp
+callKernelFun dialect vtaus p tau es = do
     kern      <- gensym "kern"
     let cf    =  ScalarCE [cexp|$id:kern|]
-    idxs      <- compileKernelProc dialect kern p
+    idxs      <- compileKernelFun dialect kern vtaus p
     let idxs' =  [(idx, f es) | (idx, f) <- idxs]
-    inBlock $ compileCall dialect (Proc Kernel) tau es (callKernel dialect cf idxs')
+    compileCall dialect Host Kernel tau es (callKernel dialect cf idxs')
   where
-    callKernel :: Dialect -> CExp -> [(Idx, Exp)] -> [C.Exp] -> C CExp
-    callKernel CUDA cf idxs cargs = do
+    callKernel :: Dialect -> CExp -> [(Idx, Exp)] -> Maybe CExp -> [C.Exp] -> C ()
+    callKernel CUDA cf idxs _ cargs = inBlock $ do
         let cudaIdxs = [(dim, boundsOf dim idxs) | dim <- [CudaDimX, CudaDimY, CudaDimZ]
                                                  , let bs = boundsOf dim idxs
                                                  , not (null bs)]
         addLocal [cdecl|typename dim3 gridDims;|]
         addLocal [cdecl|typename dim3 blockDims;|]
         mapM_ (setGridDim (cudaGridDims cudaIdxs)) [CudaDimX, CudaDimY, CudaDimZ]
-        return $ ScalarCE [cexpCU|$cf<<<blockDims,gridDims>>>($args:cargs)|]
+        addStm [cstmCU|$cf<<<blockDims,gridDims>>>($args:cargs);|]
 
-    callKernel _ cf _ cargs =
-        return $ ScalarCE [cexpCU|$cf($args:cargs)|]
+    callKernel _ cf _ Nothing cargs =
+        addStm [cstm|$cf($args:cargs);|]
+
+    callKernel _ cf _ (Just cresult) cargs =
+        addStm [cstm|$cresult = $cf($args:cargs);|]
 
     setGridDim :: [(CudaDim, ([Exp], Exp, Exp))] -> CudaDim -> C ()
     setGridDim dims dim =
@@ -554,75 +504,73 @@ callKernelProc dialect p tau es = do
     boundsOf :: CudaDim -> [(Idx, Exp)] -> [Exp]
     boundsOf dim idxs = [e | (CudaThreadIdx dim', e) <- idxs, dim' == dim]
 
-data FunSort = Proc Context
-             | Fun Context
+returnResultsByReference :: Dialect -> Context -> Context -> Type -> Bool
+returnResultsByReference _ callerCtx calleeCtx tau
+    | isUnitT tau                             = False
+    | calleeCtx == callerCtx && isScalarT tau = False
+    | otherwise                               = True
 
 compileFun :: Dialect
-           -> FunSort
+           -> Context
+           -> Context
            -> String
            -> [(Var, Type)]
            -> Type
            -> C CExp
            -> C CExp
-compileFun dialect sort fname vtaus tau_ret mbody = do
+compileFun dialect callerCtx calleeCtx fname vtaus tau_ret mbody = do
     (ps, body) <- inNewFunction $
                   extendParams vtaus $ do
                   cresult <- mbody
-                  if returnResultsByReference
-                     then do  cvresult <- toCResultParam tau_ret
+                  if returnResultsByReference dialect callerCtx calleeCtx tau_ret
+                     then do  cvresult <- toCResultParam (dialect, callerCtx, calleeCtx) tau_ret
                               assignC cvresult cresult
                      else addStm [cstm|return $cresult;|]
-    case (dialect, sort) of
-      (CUDA, Proc Host) ->
+    case (dialect, callerCtx, calleeCtx) of
+      (CUDA, Host,   Host) ->
           addGlobal [cedeclCU|typename cudaError_t $id:fname($params:ps) { $items:body }|]
-      (_,    Proc Host) ->
-          addGlobal [cedecl|int $id:fname($params:ps) { $items:body }|]
-      (CUDA, Proc Kernel) ->
+      (CUDA, Host,   Kernel) ->
           addGlobal [cedeclCU|extern "C" __global__ void $id:fname($params:ps) { $items:body }|]
-      (_,    Proc Kernel) ->
-          addGlobal [cedecl|void $id:fname($params:ps) { $items:body }|]
-      (CUDA, Fun Kernel) ->
+      (CUDA, Kernel, Kernel) ->
           addGlobal [cedeclCU|__device__ $ty:ctau_ret $id:fname($params:ps) { $items:body }|]
-      (_,    Fun _) ->
+      (_,    Host,   Host) ->
+          addGlobal [cedecl|int $id:fname($params:ps) { $items:body }|]
+      (_,    Host,   Kernel) ->
+          addGlobal [cedecl|void $id:fname($params:ps) { $items:body }|]
+      (_,    Kernel, Kernel) ->
           addGlobal [cedecl|$ty:ctau_ret $id:fname($params:ps) { $items:body } |]
-    return $ ScalarCE [cexp|$id:fname|]
+      (_,    Kernel, Host) ->
+          fail "Cannot call host function from device"
+    return $ FunCE [cexp|$id:fname|]
   where
     ctau_ret :: C.Type
     ctau_ret = toCType tau_ret
 
-    returnResultsByReference :: Bool
-    returnResultsByReference =
-        case (dialect, sort, tau_ret) of
-          (_, Fun _, tau) | isScalarT tau -> False
-          _                               -> True
-
-compileCall :: Dialect             -- ^ Dialect
-            -> FunSort             -- ^ Function sort
-            -> Type                -- ^ The type of the function to call
-            -> [Exp]               -- ^ Function arguments
-            -> ([C.Exp] -> C CExp) -- ^ Function to generate the call given its
-                                   -- arguments
-            -> C CExp              -- ^ Result of calling the function
-compileCall dialect sort tau args mcf = do
+compileCall :: Dialect                         -- ^ Dialect
+            -> Context                         -- ^ Caller's context
+            -> Context                         -- ^ Callee's context
+            -> Type                            -- ^ The type of the function to call
+            -> [Exp]                           -- ^ Function arguments
+            -> (Maybe CExp -> [C.Exp] -> C ()) -- ^ Function to generate the
+                                               -- call given a destination for
+                                               -- the result of the call and the
+                                               -- arguments to the call
+            -> C CExp                          -- ^ Result of calling the function
+compileCall dialect callerCtx calleeCtx tau args mcf = do
     tau_ret  <- snd <$> checkFunT tau
     cargs    <- concatMap toCArgs <$> mapM compileExp args
-    cvresult <- newCVar "result" tau_ret
-    case (dialect, sort, tau_ret) of
-      (CUDA, Proc Kernel, _) ->
-          do  cudaresult <- toCUDAResultParam tau_ret
-              ccall      <- mcf (cargs ++ toCArgs cudaresult)
-              addStm [cstm|$ccall;|]
-              assignCUDAResult tau_ret cvresult cudaresult
-      (_, Fun _, ScalarT UnitT) ->
-          do  ccall <- mcf cargs
-              addStm [cstm|$ccall;|]
-      (_, Fun _, tau) | isScalarT tau ->
-          do  ccall <- mcf cargs
-              addStm [cstm|$cvresult = $ccall;|]
-      (_, _, _) ->
-          do  ccall <- mcf (cargs ++ toCResultArgs cvresult)
-              addStm [cstm|$ccall;|]
-    return cvresult
+    let callCtx = (dialect, callerCtx, calleeCtx)
+    case tau_ret of
+      ScalarT UnitT -> do  mcf Nothing cargs
+                           return VoidCE
+      _ | calleeCtx == callerCtx && isScalarT tau_ret -> do
+          cresult <- newCVar "call_result" tau_ret
+          mcf (Just cresult) cargs
+          return cresult
+        | otherwise -> do
+          toCResultArgs callCtx tau_ret $ \cresult cresultargs -> do
+          mcf Nothing (cargs ++ cresultargs)
+          return cresult
 
 --
 -- Result codes
@@ -700,20 +648,22 @@ mark (ArrayCE ptr _) =
 mark (FunCE _) =
     return ()
 
-numAllocs :: ProcH -> Int
+numAllocs :: Exp -> Int
 numAllocs p =
-    getSum (go ProcHA p)
+    getSum (go ExpA p)
   where
     go :: Fold AST (Sum Int)
-    go ProgHA (AllocH (ArrayT tau _) _) = Sum (numScalarTs tau)
-    go w      a                         = foldFam go w a
+    go ExpA (AllocE (ArrayT tau _) _) = Sum (numScalarTs tau)
+    go w    a                         = foldFam go w a
 
     numScalarTs :: ScalarType -> Int
     numScalarTs (TupleT taus) = sum (map numScalarTs taus)
     numScalarTs _             = 1
 
 -- | Extend the current function's set of parameters
-extendParams :: [(Var, Type)] -> C a -> C a
+extendParams :: [(Var, Type)]
+             -> C a
+             -> C a
 extendParams vtaus act = do
     cvs <- mapM toCParam vtaus
     extendVarTypes vtaus $ do
@@ -723,10 +673,47 @@ extendParams vtaus act = do
     vs :: [Var]
     vs = map fst vtaus
 
--- | Type associated with a CExp thing
-type family CExpType a :: *
-type instance CExpType PtrCExp    = PtrType
-type instance CExpType CExp       = Type
+-- | Conversion to C type
+class IsCType a where
+    toCType :: a -> C.Type
+
+instance IsCType ScalarType where
+    toCType UnitT       = [cty|void|]
+    toCType BoolT       = [cty|typename uint8_t|]
+    toCType Int8T       = [cty|typename int8_t|]
+    toCType Int16T      = [cty|typename int16_t|]
+    toCType Int32T      = [cty|typename int32_t|]
+    toCType Int64T      = [cty|typename int64_t|]
+    toCType Word8T      = [cty|typename uint8_t|]
+    toCType Word16T     = [cty|typename uint16_t|]
+    toCType Word32T     = [cty|typename uint32_t|]
+    toCType Word64T     = [cty|typename uint64_t|]
+    toCType FloatT      = [cty|float|]
+    toCType DoubleT     = [cty|double|]
+    toCType (TupleT {}) = error "toCType: cannot convert tuple type to C type"
+
+instance IsCType PtrType where
+    toCType (PtrT tau) = [cty|$ty:(toCType tau)*|]
+
+instance IsCType Type where
+    toCType (ScalarT tau) =
+        toCType tau
+
+    toCType (ArrayT (TupleT {}) _) =
+        error "toCType: cannot convert array of tuple to C type"
+
+    toCType (ArrayT tau _) =
+        [cty|$ty:(toCType tau)*|]
+
+    toCType (FunT taus tau) =
+        [cty|$ty:(toCType tau) (*)($params:params)|]
+      where
+        -- XXX not quite right...
+        params :: [C.Param]
+        params = map (\tau -> [cparam|$ty:(toCType tau)|]) (concatMap flattenT taus)
+
+    toCType (MT tau) =
+        toCType tau
 
 -- | C variable allocation
 class NewCVar a where
@@ -759,7 +746,7 @@ instance NewCVar PtrType where
 
     newCVar v tau = do
         ctemp <- gensym v
-        addParam [cparam|$ty:(toCType tau)* $id:ctemp|]
+        addLocal [cdecl|$ty:(toCType tau)* $id:ctemp;|]
         return $ PtrCE [cexp|$id:ctemp|]
 
 instance NewCVar Type where
@@ -778,11 +765,16 @@ instance NewCVar Type where
 
     newCVar v tau@(FunT {}) = do
         ctemp <- gensym v
-        addParam [cparam|$ty:(toCType tau) $id:ctemp|]
+        addLocal [cdecl|$ty:(toCType tau) $id:ctemp;|]
         return $ FunCE [cexp|$id:ctemp|]
 
     newCVar v (MT tau) =
         newCVar v tau
+
+-- | Type associated with a CExp thing
+type family CExpType a :: *
+type instance CExpType PtrCExp = PtrType
+type instance CExpType CExp    = Type
 
 -- | C assignment
 class AssignC a where
@@ -822,112 +814,13 @@ instance AssignC CExp where
         faildoc $ text "assignC: cannot assign" <+> ppr ce2 <+>
                   text "to" <+> ppr ce1
 
--- | C assignment
-class AssignCUDAResult a where
-    assignCUDAResult :: CExpType a
-                     -> a    -- ^ Destination
-                     -> a    -- ^ Source
-                     -> C ()
-
-instance AssignCUDAResult PtrCExp where
-    assignCUDAResult tau ce1@(PtrCE {}) ce2@(PtrCE {}) = do
-        addStm [cstm|cudaMemcpy(&$ce1,
-                                $ce2,
-                                sizeof($ty:(toCType tau)),
-                                cudaMemcpyDeviceToHost);|]
-        addStm [cstm|cudaFree($ce2);|]
-
-    assignCUDAResult (PtrT (TupleT taus)) (TupPtrCE ces1) (TupPtrCE ces2)
-        |  length ces1 == length taus && length ces2 == length taus =
-        zipWith3M_ assignCUDAResult (map PtrT taus) ces1 ces2
-
-    assignCUDAResult _ ce1 ce2 =
-        faildoc $ text "assignCUDAResult: cannot assign" <+> ppr ce2 <+>
-                  text "to" <+> ppr ce1
-
-instance AssignCUDAResult CExp where
-    assignCUDAResult _ VoidCE VoidCE =
-        return ()
-
-    assignCUDAResult tau ce1@(ScalarCE {}) ce2@(ScalarCE {}) = do
-        addStm [cstm|cudaMemcpy(&$ce1,
-                                $ce2,
-                                sizeof($ty:(toCType tau)),
-                                cudaMemcpyDeviceToHost);|]
-        addStm [cstm|cudaFree($ce2);|]
-
-    assignCUDAResult (ScalarT (TupleT taus)) (TupCE ces1) (TupCE ces2)
-        | length ces1 == length taus && length ces2 == length taus =
-        zipWith3M_ assignCUDAResult (map ScalarT taus) ces1 ces2
-
-    assignCUDAResult (ArrayT tau n) (ArrayCE arr1 dims1) (ArrayCE arr2 dims2)
-        | length dims1 == n && length dims2 == n = do
-        assignCUDAResult (PtrT tau) arr1 arr2
-        zipWithM_ (assignCUDAResult ixT) dims1 dims2
-
-    assignCUDAResult tau@(FunT {}) (FunCE ce1) (FunCE ce2) = do
-        addStm [cstm|cudaMemcpy(&$ce1,
-                                $ce2,
-                                sizeof($ty:(toCType tau)),
-                                cudaMemcpyDeviceToHost);|]
-        addStm [cstm|cudaFree($ce2);|]
-
-    assignCUDAResult (MT tau) ce1 ce2 = do
-        assignCUDAResult tau ce1 ce2
-
-    assignCUDAResult _ ce1 ce2 =
-        faildoc $ text "assignCUDAResult: cannot assign" <+> ppr ce2 <+>
-                  text "to" <+> ppr ce1
-
--- | Convert an 'a' into a C type
-class IsCType a where
-    toCType :: a -> C.Type
-
-instance IsCType ScalarType where
-    toCType UnitT           = [cty|void|]
-    toCType BoolT           = [cty|typename uint8_t|]
-    toCType Int8T           = [cty|typename int8_t|]
-    toCType Int16T          = [cty|typename int16_t|]
-    toCType Int32T          = [cty|typename int32_t|]
-    toCType Int64T          = [cty|typename int64_t|]
-    toCType Word8T          = [cty|typename uint8_t|]
-    toCType Word16T         = [cty|typename uint16_t|]
-    toCType Word32T         = [cty|typename uint32_t|]
-    toCType Word64T         = [cty|typename uint64_t|]
-    toCType FloatT          = [cty|float|]
-    toCType DoubleT         = [cty|double|]
-    toCType (TupleT {})     = error "toCType: cannot convert tuple type to C types"
-
-instance IsCType PtrType where
-    toCType (PtrT tau) = [cty|$ty:(toCType tau)*|]
-
-instance IsCType Type where
-    toCType (ScalarT tau) =
-        toCType tau
-
-    toCType (ArrayT (TupleT {}) _) =
-        error "toCType: cannot convert array of tuple type to C types"
-
-    toCType (ArrayT tau _) =
-        [cty|$ty:(toCType tau)*|]
-
-    toCType (FunT taus tau) =
-        [cty|$ty:(toCType tau) (*)($params:params)|]
-      where
-        -- XXX not quite right...
-        params :: [C.Param]
-        params = map (\tau -> [cparam|$ty:(toCType tau)|]) (concatMap flattenT taus)
-
-    toCType (MT tau) =
-        toCType tau
-
 -- | Convert an 'a' into function parameters
 class IsCParam a where
     type CParam a :: *
 
-    toCParam          :: (Var, a) -> C (CParam a)
-    toCResultParam    :: a        -> C (CParam a)
-    toCUDAResultParam :: a        -> C (CParam a)
+    toCParam :: (Var, a) -> C (CParam a)
+
+    toCResultParam :: (Dialect, Context, Context) -> a -> C (CParam a)
 
 instance IsCParam ScalarType where
     type CParam ScalarType = CExp
@@ -943,31 +836,24 @@ instance IsCParam ScalarType where
         addParam [cparam|$ty:(toCType tau) $id:ctemp|]
         return $ ScalarCE [cexp|$id:ctemp|]
 
-    toCResultParam UnitT =
+    toCResultParam _ UnitT =
         return VoidCE
 
-    toCResultParam (TupleT taus) =
-        TupCE <$> mapM toCResultParam taus
+    toCResultParam ctx (TupleT taus) =
+        TupCE <$> mapM (toCResultParam ctx) taus
 
-    toCResultParam tau = do
-        ctemp <- gensym "result"
-        addParam [cparam|$ty:(toCType tau)* $id:ctemp|]
+    toCResultParam (CUDA, Host, Kernel) tau = do
+        ctemp <- gensym "cuscalar_resultparam"
+        addParam [cparam|$ty:ctau* $id:ctemp|]
         return $ ScalarCE [cexp|*$id:ctemp|]
-
-    toCUDAResultParam UnitT =
-        return VoidCE
-
-    toCUDAResultParam (TupleT taus) =
-        TupCE <$> mapM toCUDAResultParam taus
-
-    toCUDAResultParam tau = do
-        ctemp <- gensym "result"
-        addLocal [cdecl|$ty:ctau* $id:ctemp;|]
-        addStm [cstm|cudaMalloc(&$id:ctemp, sizeof($ty:ctau));|]
-        return $ ScalarCE [cexp|$id:ctemp|]
       where
         ctau :: C.Type
         ctau = toCType tau
+
+    toCResultParam _ tau = do
+        ctemp <- gensym "scalar_resultparam"
+        addParam [cparam|$ty:(toCType tau)* $id:ctemp|]
+        return $ ScalarCE [cexp|*$id:ctemp|]
 
 instance IsCParam PtrType where
     type CParam PtrType = PtrCExp
@@ -983,31 +869,21 @@ instance IsCParam PtrType where
         addParam [cparam|$ty:(toCType tau)* $id:ctemp|]
         return $ PtrCE [cexp|$id:ctemp|]
 
-    toCResultParam (PtrT UnitT) =
+    toCResultParam _ (PtrT UnitT) =
         return $ PtrCE [cexp|NULL|]
 
-    toCResultParam (PtrT (TupleT taus)) =
-        TupPtrCE <$> mapM (toCResultParam . PtrT) taus
+    toCResultParam ctx (PtrT (TupleT taus)) =
+        TupPtrCE <$> mapM (toCResultParam ctx . PtrT) taus
 
-    toCResultParam (PtrT tau) = do
-        ctemp <- gensym "result"
+    toCResultParam (CUDA, Host, Kernel) (PtrT tau) = do
+        ctemp <- gensym "cuptr_resultparam"
         addParam [cparam|$ty:(toCType tau)** $id:ctemp|]
         return $ PtrCE [cexp|*$id:ctemp|]
 
-    toCUDAResultParam (PtrT UnitT) =
-        return $ PtrCE [cexp|NULL|]
-
-    toCUDAResultParam (PtrT (TupleT taus)) =
-        TupPtrCE <$> mapM (toCUDAResultParam . PtrT) taus
-
-    toCUDAResultParam (PtrT tau) = do
-        ctemp <- gensym "result"
+    toCResultParam _ (PtrT tau) = do
+        ctemp <- gensym "ptr_resultparam"
         addParam [cparam|$ty:(toCType tau)** $id:ctemp|]
-        addStm [cstm|cudaMalloc(&$id:ctemp, sizeof($ty:(ctau)*));|]
-        return $ PtrCE [cexp|$id:ctemp|]
-      where
-        ctau :: C.Type
-        ctau = toCType tau
+        return $ PtrCE [cexp|*$id:ctemp|]
 
 instance IsCParam Type where
     type CParam Type = CExp
@@ -1031,53 +907,34 @@ instance IsCParam Type where
     toCParam (v, MT tau) =
         toCParam (v, tau)
 
-    toCResultParam (ScalarT tau) =
-        toCResultParam tau
+    toCResultParam ctx (ScalarT tau) =
+        toCResultParam ctx tau
 
-    toCResultParam (ArrayT tau n) = do
-        cptr  <- toCResultParam (PtrT tau)
-        cdims <- replicateM n (toCResultParam ixT)
+    toCResultParam ctx (ArrayT tau n) = do
+        cptr  <- toCResultParam ctx (PtrT tau)
+        cdims <- replicateM n (toCResultParam ctx ixT)
         return $ ArrayCE cptr cdims
 
-    toCResultParam tau@(FunT {}) = do
-        ctemp <- gensym "f"
+    toCResultParam (CUDA, Host, Kernel) tau@(FunT {}) = do
+        ctemp <- gensym "funresult_param"
         addParam [cparam|$ty:(toCType tau)* $id:ctemp|]
         return $ FunCE [cexp|*$id:ctemp|]
 
-    toCResultParam (MT tau) =
-        toCResultParam tau
-
-    toCUDAResultParam (ScalarT tau) =
-        toCUDAResultParam tau
-
-    toCUDAResultParam (ArrayT tau n) = do
-        cptr  <- toCUDAResultParam (PtrT tau)
-        cdims <- replicateM n (toCUDAResultParam ixScalarT)
-        return $ ArrayCE cptr cdims
-
-    toCUDAResultParam tau@(FunT {}) = do
-        ctemp <- gensym "f"
+    toCResultParam _ tau@(FunT {}) = do
+        ctemp <- gensym "funresult_param"
         addParam [cparam|$ty:(toCType tau)* $id:ctemp|]
-        addStm [cstm|cudaMalloc(&$id:ctemp, sizeof($ty:ctau));|]
-        return $ FunCE [cexp|$id:ctemp|]
-      where
-        ctau :: C.Type
-        ctau = toCType tau
+        return $ FunCE [cexp|*$id:ctemp|]
 
-    toCUDAResultParam (MT tau) =
-        toCResultParam tau
+    toCResultParam ctx (MT tau) =
+        toCResultParam ctx tau
 
 -- | Convert an 'a' into a list of C function arguments.
 class IsCArg a where
-    toCArgs       :: a -> [C.Exp]
-    toCResultArgs :: a -> [C.Exp]
+    toCArgs :: a -> [C.Exp]
 
 instance IsCArg PtrCExp where
     toCArgs (PtrCE ce)    = [[cexp|$ce|]]
     toCArgs (TupPtrCE es) = concatMap toCArgs es
-
-    toCResultArgs (PtrCE ce)    = [[cexp|&$ce|]]
-    toCResultArgs (TupPtrCE es) = concatMap toCResultArgs es
 
 instance IsCArg CExp where
     toCArgs VoidCE            = []
@@ -1086,11 +943,124 @@ instance IsCArg CExp where
     toCArgs (ArrayCE ce dims) = toCArgs ce ++ concatMap toCArgs dims
     toCArgs (FunCE ce)        = [ce]
 
-    toCResultArgs VoidCE            = []
-    toCResultArgs (ScalarCE ce)     = [[cexp|&$ce|]]
-    toCResultArgs (TupCE es)        = concatMap toCResultArgs es
-    toCResultArgs (ArrayCE ce dims) = toCResultArgs ce ++ concatMap toCResultArgs dims
-    toCResultArgs (FunCE ce)        = [[cexp|&$ce|]]
+-- | Convert an 'a' into a list of C function result arguments
+class IsCResultArg a where
+    type CResultArg a :: *
+
+    toCResultArgs :: (Dialect, Context, Context)
+                  -> a
+                  -> (CResultArg a -> [C.Exp] -> C b)
+                  -> C b
+
+instance IsCResultArg a => IsCResultArg [a] where
+    type CResultArg [a] = [CResultArg a]
+
+    toCResultArgs ctx xs (kont :: [CResultArg a] -> [C.Exp] -> C b) =
+        go [] [] xs
+      where
+        go :: [CResultArg a] -> [C.Exp] -> [a] -> C b
+        go ces cargs [] =
+            kont ces cargs
+
+        go ces cargs (x:xs) =
+            toCResultArgs ctx x $ \ces' cargs' ->
+            go (ces ++ [ces']) (cargs ++ cargs') xs
+
+instance IsCResultArg ScalarType where
+    type CResultArg ScalarType = CExp
+
+    toCResultArgs _ UnitT kont =
+        kont VoidCE []
+
+    toCResultArgs ctx (TupleT taus) kont =
+        toCResultArgs ctx taus $ \ces cargs ->
+        kont (TupCE ces) cargs
+
+    toCResultArgs (CUDA, Host, Kernel) tau kont = do
+        ce_h <- gensym "scalar_resultarg"
+        ce_d <- gensym "cuscalar_resultarg"
+        addLocal [cdecl|$ty:ctau  $id:ce_h;|]
+        addLocal [cdecl|$ty:ctau* $id:ce_d;|]
+        addStm [cstm|cudaMalloc(&$id:ce_d, sizeof($ty:ctau));|]
+        x <- kont (ScalarCE [cexp|$id:ce_h|]) [[cexp|$id:ce_d|]]
+        addStm [cstm|cudaMemcpy(&$id:ce_h,
+                                $id:ce_d,
+                                sizeof($ty:ctau),
+                                cudaMemcpyDeviceToHost);|]
+        addStm [cstm|cudaFree($id:ce_d);|]
+        return x
+      where
+        ctau :: C.Type
+        ctau = toCType tau
+
+    toCResultArgs _ tau kont = do
+        ce <- gensym "scalar_resultarg"
+        addLocal [cdecl|$ty:(toCType tau) $id:ce;|]
+        kont (ScalarCE [cexp|$id:ce|]) [[cexp|&$id:ce|]]
+
+instance IsCResultArg PtrType where
+    type CResultArg PtrType = PtrCExp
+
+    toCResultArgs ctx (PtrT (TupleT taus)) kont =
+        toCResultArgs ctx (map PtrT taus) $ \ces cargs ->
+        kont (TupPtrCE ces) cargs
+
+    toCResultArgs (CUDA, Host, Kernel) (PtrT tau) kont = do
+        ce_h <- gensym "ptr_resultarg"
+        ce_d <- gensym "cuptr_resultarg"
+        addLocal [cdecl|$ty:ctau*  $id:ce_h = NULL;|]
+        addLocal [cdecl|$ty:ctau** $id:ce_d = NULL;|]
+        addStm [cstm|cudaMalloc(&$id:ce_d, sizeof($ty:ctau*));|]
+        x <- kont (PtrCE [cexp|$id:ce_h|]) [[cexp|$id:ce_d|]]
+        addStm [cstm|cudaMemcpy(&$id:ce_h,
+                                $id:ce_d,
+                                sizeof($ty:ctau*),
+                                cudaMemcpyDeviceToHost);|]
+        addStm [cstm|cudaFree($id:ce_d);|]
+        return x
+      where
+        ctau :: C.Type
+        ctau = toCType tau
+
+    toCResultArgs _ (PtrT tau) kont = do
+        ce <- gensym "ptr_resultarg"
+        addLocal [cdecl|$ty:ctau* $id:ce = NULL;|]
+        x <- kont (PtrCE [cexp|$id:ce|]) [[cexp|&$id:ce|]]
+        return x
+      where
+        ctau :: C.Type
+        ctau = toCType tau
+
+instance IsCResultArg Type where
+    type CResultArg Type = CExp
+
+    toCResultArgs ctx (ScalarT tau) kont =
+        toCResultArgs ctx tau kont
+
+    toCResultArgs ctx (ArrayT tau n) kont =
+        toCResultArgs ctx (PtrT tau)        $ \ce_ptr  cargs_ptr ->
+        toCResultArgs ctx (replicate n ixT) $ \ces_dim cargs_dim ->
+        kont (ArrayCE ce_ptr ces_dim) (cargs_ptr ++ cargs_dim)
+
+    toCResultArgs _ tau@(FunT {}) kont = do
+        ce_h <- gensym "fun_resultarg"
+        ce_d <- gensym "cufun_resultarg"
+        addLocal [cdecl|$ty:ctau*  $id:ce_h = NULL;|]
+        addLocal [cdecl|$ty:ctau** $id:ce_d = NULL;|]
+        addStm [cstm|cudaMalloc(&$id:ce_d, sizeof($ty:ctau*));|]
+        x <- kont (FunCE [cexp|$id:ce_h|]) [[cexp|$id:ce_h|]]
+        addStm [cstm|cudaMemcpy(&$id:ce_h,
+                                $id:ce_d,
+                                sizeof($ty:ctau*),
+                                cudaMemcpyDeviceToHost);|]
+        addStm [cstm|cudaFree($id:ce_d);|]
+        return x
+      where
+        ctau :: C.Type
+        ctau = toCType tau
+
+    toCResultArgs ctx (MT tau) kont =
+        toCResultArgs ctx tau kont
 
 --
 -- Expression binding
@@ -1108,7 +1078,5 @@ bindExp maybe_v e = do
 isAtomic :: CExp -> Bool
 isAtomic (ScalarCE (C.Var {}))   = True
 isAtomic (ScalarCE (C.Const {})) = True
+isAtomic (FunCE (C.Var {}))      = True
 isAtomic _                       = False
-
-zipWith3M_ :: (Monad m) => (a -> b -> c -> m d) -> [a] -> [b] -> [c] -> m ()
-zipWith3M_ f xs ys zs =  sequence_ (zipWith3 f xs ys zs)

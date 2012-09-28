@@ -12,9 +12,15 @@
 -- Portability : non-portable
 
 module Data.Array.Nikola.Language.Check (
+    Context(..),
     MonadCheck(..),
 
+    inContext,
+    ifHostContext,
+    ifKernelContext,
+
     inferExp,
+    checkExp,
 
     isIntT,
     isFloatT,
@@ -25,12 +31,6 @@ module Data.Array.Nikola.Language.Check (
     checkFunT,
     checkMT,
 
-    checkExp,
-    inferProgH,
-    inferProcH,
-    inferProgK,
-    inferProcK,
-
     checkTraverseFam
   ) where
 
@@ -38,8 +38,8 @@ import Prelude hiding (mapM)
 
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Monad ((>=>),
-                      when,
-                      zipWithM_)
+                      void,
+                      when)
 import Control.Monad.Trans (MonadIO(..))
 import Data.Traversable
 import Text.PrettyPrint.Mainland
@@ -47,9 +47,38 @@ import Text.PrettyPrint.Mainland
 import Data.Array.Nikola.Language.Generic
 import Data.Array.Nikola.Language.Syntax
 
+-- | Current context
+data Context = Host
+             | Kernel
+  deriving (Eq, Ord, Show)
+
+instance Pretty Context where
+    ppr = text . show
+
 class (Functor m, Applicative m, Monad m, MonadIO m) => MonadCheck m where
+    getContext :: m Context
+    setContext :: Context -> m ()
+
     lookupVarType  :: Var -> m Type
     extendVarTypes :: [(Var, Type)] -> m a -> m a
+
+inContext :: MonadCheck m => Context -> m a -> m a
+inContext ctx act = do
+    old_ctx <- getContext
+    setContext ctx
+    a <- act
+    setContext old_ctx
+    return a
+
+ifHostContext :: MonadCheck m => m () -> m ()
+ifHostContext act = do
+    ctx <- getContext
+    when (ctx == Host) act
+
+ifKernelContext :: MonadCheck m => m () -> m ()
+ifKernelContext act = do
+    ctx <- getContext
+    when (ctx == Kernel) act
 
 isIntT :: Type -> Bool
 isIntT (ScalarT Int8T)   = True
@@ -254,59 +283,50 @@ inferExp = go
               faildoc $ text "Expected tuple type with" <+> ppr n <+>
                         text "components but got" <+> ppr tau
 
-    go (ProjArrE i n e) = do
-        tau <- inferExp e
-        case tau of
-          ArrayT (TupleT taus) sz | length taus == n ->
-              return $ ArrayT (taus !! i) sz
-          _ ->
-              faildoc $ text "Expected array type with" <+> ppr n <+>
-                        text "components but got" <+> ppr tau
-
-    go (DimE _ n e) = do
-        tau <- inferExp e
-        case tau of
-          ArrayT _ n' | n == n' ->
-              return ixT
-          _ ->
-              faildoc $ text "Expected array type with" <+> ppr n <+>
-                        text "dimentions but got" <+> ppr tau
-
     go (LetE v tau _ e1 e2) = do
-        tau' <- go e1
+        tau' <- inferExp e1
         when (tau' /= tau) $
             faildoc $ text "Type mis-match in let binding of" <+> ppr v
-        extendVarTypes [(v, tau)] $ go e2
+        extendVarTypes [(v, tau)] $ inferExp e2
 
     go (LamE vtaus e) = do
         tau  <- extendVarTypes vtaus $
-                go e
+                inferExp e
         return $ FunT (map snd vtaus) tau
 
     go e@(AppE f es) = do
-        (taus, tau) <- go f >>= checkFunT
-        taus'       <- mapM go es
+        (taus, tau) <- inferExp f >>= checkFunT
+        taus'       <- mapM inferExp es
         when (taus' /= taus) $ do
             faildoc $ text "Type mis-match in function call" <+>
                       ppr e
         return tau
 
+    go e@(CallE f es) = do
+        (taus, mtau) <- inContext Kernel (inferExp f) >>= checkFunT
+        void $ checkMT mtau
+        taus' <- mapM inferExp es
+        when (taus' /= taus) $ do
+            faildoc $ text "Type mis-match in kernel call" <+>
+                      ppr e
+        return mtau
+
     go (UnopE op e) = do
-        tau <- go e
+        tau <- inferExp e
         inferUnop op tau
 
     go (BinopE op e1 e2) = do
-       tau1 <- go e1
-       tau2 <- go e2
+       tau1 <- inferExp e1
+       tau2 <- inferExp e2
        inferBinop op tau1 tau2
 
     go e@(IfThenElseE teste thene elsee) = do
-        tau_test <- go teste
+        tau_test <- inferExp teste
         when (tau_test /= boolT) $ do
             faildoc $ text "Expected boolean type but got" <+> ppr tau_test <+>
                       text "in" <+> ppr e
-        tau_thene <- go thene
-        tau_elsee <- go elsee
+        tau_thene <- inferExp thene
+        tau_elsee <- inferExp elsee
         when (tau_thene /= tau_elsee) $ do
             faildoc $ text "Type mismatch in if-then-else" <+>
                       ppr tau_thene <+> text "/=" <+> ppr tau_elsee
@@ -332,64 +352,28 @@ inferExp = go
        checkBranch _ _ =
            return ()
 
+    go (ReturnE e) =
+        MT <$> inferExp e
 
+    go (SeqE p1 p2) = do
+        void $ inferExp p1 >>= checkMT
+        tau <- inferExp p2
+        void $ checkMT tau
+        return tau
 
-    go (IndexE v idx) = do
-       (tau, _) <- inferExp v >>= checkArrayT
-       inferExp idx >>= checkIntT
-       return $ ScalarT tau
+    go (ParE p1 p2) = do
+        void $ inferExp p1 >>= checkMT
+        tau <- inferExp p2
+        void $ checkMT tau
+        return tau
 
-    go (DelayedE {}) =
-        error "inferExp: encountered DelayedE"
-
-checkExp :: forall m . MonadCheck m => Exp -> Type -> m ()
-checkExp e tau = do
-    tau' <- inferExp e
-    checkEqT tau tau'
-
-inferProgH :: forall m . MonadCheck m => ProgH -> m Type
-inferProgH = go
-  where
-    go :: ProgH -> m Type
-    go (ReturnH e)  = inferExp e
-
-    go (SeqH p1 p2) = go p1 >> go p2
-
-    go (LetH v tau e p) = do
-        tau' <- inferExp e
-        when (tau' /= tau) $
-            faildoc $ text "Type mis-match in let binding of" <+> ppr v
-        extendVarTypes [(v, tau)] $ go p
-
-    go (BindH v tau p1 p2) = do
-        tau' <- inferProgH p1 >>= checkMT
+    go (BindE v tau p1 p2) = do
+        tau' <- inferExp p1 >>= checkMT
         when (tau' /= tau) $
             faildoc $ text "Type mis-match in binding of" <+> ppr v
-        extendVarTypes [(v, tau)] $ go p2
+        extendVarTypes [(v, tau)] $ inferExp p2
 
-    go (LiftH kproc args) = do
-        (taus, mtau) <- inferProcK kproc >>= checkFunT
-        tau          <- checkMT mtau
-        taus'        <- mapM inferExp args
-        when (length taus' /= length taus) $ do
-            faildoc $ text "Kernel proc" <+> ppr kproc <+>
-                      text "expected" <+> ppr (length taus) <+>
-                      text "arguments bu got" <+> ppr (length taus')
-        zipWithM_ checkEqT taus' taus
-        return (MT tau)
-
-    go (IfThenElseH teste thene elsee) = do
-        tau_test <- inferExp teste
-        when (tau_test /= boolT) $ do
-            faildoc $ text "Expected boolean type but got" <+> ppr tau_test
-        tau_thene <- go thene
-        tau_elsee <- go elsee
-        when (tau_thene /= tau_elsee) $ do
-            faildoc $ text "Type mismatch in if-then-else" <+>
-                      ppr tau_thene <+> text "/=" <+> ppr tau_elsee
-        return tau_thene
-
-    go (AllocH atau sh) = do
+    go (AllocE atau sh) = do
         (_, n) <- checkArrayT atau
         mapM_ (inferExp >=> checkIntT) sh
         when (length sh /= n) $
@@ -398,78 +382,52 @@ inferProgH = go
                       text "but array type has" <+> ppr n
         return (MT atau)
 
-    go (DelayedH {}) =
-        error "inferProgH: encountered DelayedH"
+    go (DimE _ n e) = do
+        tau <- inferExp e
+        case tau of
+          ArrayT _ n' | n == n' ->
+              return ixT
+          _ ->
+              faildoc $ text "Expected array type with" <+> ppr n <+>
+                        text "dimentions but got" <+> ppr tau
 
-inferProcH :: MonadCheck m => ProcH -> m Type
-inferProcH (ProcH vtaus prog) = do
-    tau <- extendVarTypes vtaus $ inferProgH prog
-    return $ FunT (map snd vtaus) tau
+    go (ProjArrE i n e) = do
+        tau <- inferExp e
+        case tau of
+          ArrayT (TupleT taus) sz | length taus == n ->
+              return $ ArrayT (taus !! i) sz
+          _ ->
+              faildoc $ text "Expected array type with" <+> ppr n <+>
+                        text "components but got" <+> ppr tau
 
-inferProgK :: forall m . MonadCheck m => ProgK -> m Type
-inferProgK = go
-  where
-    go :: ProgK -> m Type
-    go (ReturnK e)  = MT <$> inferExp e
-    go (SeqK p1 p2) = go p1 >> go p2
-    go (ParK p1 p2) = go p1 >> go p2
+    go (IndexE v idx) = do
+       (tau, _) <- inferExp v >>= checkArrayT
+       inferExp idx >>= checkIntT
+       return $ ScalarT tau
 
-    go (LetK v tau e p) = do
-        tau' <- inferExp e
-        when (tau' /= tau) $
-            faildoc $ text "Type mis-match in let binding of" <+> ppr v
-        extendVarTypes [(v, tau)] $ go p
-
-    go (BindK v tau p1 p2) = do
-        tau' <- inferProgK p1 >>= checkMT
-        when (tau' /= tau) $
-            faildoc $ text "Type mis-match in binding of" <+> ppr v
-        extendVarTypes [(v, tau)] $ go p2
-
-    go (ForK vs es prog) = do
-        taus <- mapM inferExp es
-        extendVarTypes (vs `zip` taus) $
-            checkProgK prog unitT
-        return (MT unitT)
-
-    go (ParforK vs es prog) = do
-        taus <- mapM inferExp es
-        extendVarTypes (vs `zip` taus) $ do
-        inferProgK prog
-
-    go (IfThenElseK teste thene elsee) = do
-        tau_test <- inferExp teste
-        when (tau_test /= boolT) $ do
-            faildoc $ text "Expected boolean type but got" <+> ppr tau_test
-        tau_thene <- go thene
-        tau_elsee <- go elsee
-        when (tau_thene /= tau_elsee) $ do
-            faildoc $ text "Type mismatch in if-then-else" <+>
-                      ppr tau_thene <+> text "/=" <+> ppr tau_elsee
-        return tau_thene
-
-    go (WriteK v idx x) = do
+    go (WriteE v idx x) = do
         (tau, _) <- inferExp v >>= checkArrayT
         inferExp idx >>= checkIntT
         tau' <- inferExp x
         checkEqT tau' (ScalarT tau)
         return (MT unitT)
 
-    go SyncK =
+    go (ForE _ vs es prog) = do
+        taus <- mapM inferExp es
+        extendVarTypes (vs `zip` taus) $
+            checkExp prog (MT unitT)
         return (MT unitT)
 
-    go (DelayedK {}) =
-        error "inferProgK: encountered DelayedK"
+    go SyncE =
+        return (MT unitT)
 
-checkProgK :: forall m . MonadCheck m => ProgK -> Type -> m ()
-checkProgK prog tau = do
-    tau' <- inferProgK prog
+    go (DelayedE {}) =
+        error "inferExp: encountered DelayedE"
+
+checkExp :: forall m . MonadCheck m => Exp -> Type -> m ()
+checkExp e tau = do
+    tau' <- inferExp e
     checkEqT tau tau'
-
-inferProcK :: MonadCheck m => ProcK -> m Type
-inferProcK (ProcK vtaus prog) = do
-    tau <- extendVarTypes vtaus $ inferProgK prog
-    return $ FunT (map snd vtaus) tau
 
 -- Traversal that records the types of binders
 
@@ -484,27 +442,13 @@ checkTraverseFam trav ExpA (LetE v tau occ e1 e2) =
 checkTraverseFam trav ExpA (LamE vtaus e) =
     LamE vtaus <$> extendVarTypes vtaus (trav ExpA e)
 
-checkTraverseFam trav ProgHA (BindH v tau p1 p2) =
-    BindH v tau <$> trav ProgHA p1
-                <*> extendVarTypes [(v, tau)] (trav ProgHA p2)
+checkTraverseFam trav ExpA (BindE v tau p1 p2) =
+    BindE v tau <$> trav ExpA p1
+                <*> extendVarTypes [(v, tau)] (trav ExpA p2)
 
-checkTraverseFam trav ProcHA (ProcH vtaus p) =
-    ProcH vtaus <$> extendVarTypes vtaus (trav ProgHA p)
-
-checkTraverseFam trav ProgKA (BindK v tau p1 p2) =
-    BindK v tau <$>  trav ProgKA p1
-                <*> extendVarTypes [(v, tau)] (trav ProgKA p2)
-
-checkTraverseFam trav ProgKA (ForK vs es p) =
-    ForK vs <$> traverse (trav ExpA) es
-            <*> extendVarTypes (vs `zip` repeat ixT) (trav ProgKA p)
-
-checkTraverseFam trav ProgKA (ParforK vs es p) =
-    ParforK vs <$> traverse (trav ExpA) es
-               <*> extendVarTypes (vs `zip` repeat ixT) (trav ProgKA p)
-
-checkTraverseFam trav ProcKA (ProcK vtaus p) =
-    ProcK vtaus <$> extendVarTypes vtaus (trav ProgKA p)
+checkTraverseFam trav ExpA (ForE isPar vs es p) =
+    ForE isPar vs <$> traverse (trav ExpA) es
+                  <*> extendVarTypes (vs `zip` repeat ixT) (trav ExpA p)
 
 checkTraverseFam trav w a =
     traverseFam trav w a

@@ -172,12 +172,12 @@ instance (arep ~ N.Rep a,
                   (R.Array R.CUF rsh arep -> c) where
     precompile p = \x -> precompile (pushArg x p)
 
-compile :: (Compilable a b, Reifiable a ProcH) => a -> b
+compile :: (Compilable a b, Reifiable a Exp) => a -> b
 compile = precompile . unsafePerformIO . reifyAndCompileToEx
   where
-    reifyAndCompileToEx :: Reifiable a ProcH => a -> IO (PreEx a)
+    reifyAndCompileToEx :: Reifiable a Exp => a -> IO (PreEx a)
     reifyAndCompileToEx a = do
-        (_, p)    <- runR (reify a >>= detectSharing ProcHA >>= optimizeHostProgram) env
+        (_, p)    <- runR (reify a >>= detectSharing ExpA >>= optimizeHostProgram) env
         -- putStrLn $ pretty 200 (ppr p)
         (defs, m) <- evalCEx (compileToEx p)
         return $! N.currentContext
