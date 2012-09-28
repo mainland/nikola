@@ -8,7 +8,6 @@ include Makefile.cu
 GHC_FLAGS += -W -Werror \
 	-isrc -idist/build \
 	-Iinclude -Iinternal -Idist/build \
-	-DHMATRIX \
 	-optP-include -optPdist/build/autogen/cabal_macros.h
 
 GHC_FLAGS+=-O
@@ -37,9 +36,7 @@ GHC_FLAGS += \
 	-package deepseq \
 	-package exception-transformers \
 	-package gloss \
-	-package hmatrix \
 	-package language-c-quote \
-	-package logict \
 	-package mainland-pretty \
 	-package mersenne-random-pure64 \
 	-package mtl \
@@ -56,7 +53,6 @@ GHC_FLAGS += \
 	-package test-framework-quickcheck2 \
 	-package text \
 	-package transformers \
-	-package uniplate \
 	-package vector \
 	-package vector-algorithms
 
