@@ -134,8 +134,13 @@ unit : $(SOURCE) tests/unit/Main.hs
 		-odir obj -hidir obj \
 		$(GHC_FLAGS) -o $@
 
-blackschole.csv : ./dist/build/blackscholes/blackscholes
-	$< -q -s 10 >$@
+CRITERION_TEMPLATE=${HOME}/.cabal/ghc-7.4.2-linux-x86_64/share/criterion-0.6.0.1/templates/report.tpl
+
+blackscholes.csv : ./dist/build/blackscholes/blackscholes
+	$< -q -s 10 -u $@
+
+blackscholes.html : ./dist/build/blackscholes/blackscholes
+	$< -q -s 10 -t $(CRITERION_TEMPLATE) -o $@
 
 blackscholes_openmp.c : blackscholes-compile
 	./blackscholes-compile -O 1 --openmp --func blackscholes_openmp -o $@
@@ -148,3 +153,9 @@ blackscholes-openmp : examples/blackscholes-compile/blackscholes.cc blackscholes
 
 blackscholes-cuda : examples/blackscholes-compile/blackscholes.cc blackscholes_cuda.cu
 	nvcc -DCUDA --gpu-architecture=compute_20 $^ -lm -o $@
+
+american.csv : ./dist/build/american/american
+	$< -q -s 10 -u $@
+
+american.html : ./dist/build/american/american
+	$< -q -s 10 -t $(CRITERION_TEMPLATE) -o $@
