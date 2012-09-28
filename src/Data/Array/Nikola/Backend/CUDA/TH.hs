@@ -245,12 +245,12 @@ instance (arep ~ N.Rep a,
                     [arep]               where
     precompile = addResultCoercion $ coerceResult (undefined :: [arep])
 
-instance (arep ~ N.Rep (N.Exp a),
-          N.IsElem (N.Exp a),
+instance (arep ~ N.Rep a,
+          N.IsElem a,
           IsArrayVal (V.Vector arep),
-          N.Manifest r (N.Exp a))
-      => Compilable (N.Array r N.DIM1 (N.Exp a))
-                    (V.Vector arep             ) where
+          N.Manifest r a)
+      => Compilable (N.Array r N.DIM1 a)
+                    (V.Vector arep     ) where
     precompile = addResultCoercion $ coerceResult (undefined :: V.Vector arep)
 
 instance (arep ~ N.Rep (N.Exp a),
@@ -261,15 +261,15 @@ instance (arep ~ N.Rep (N.Exp a),
                     (VCS.Vector arep          ) where
     precompile = addResultCoercion $ coerceResult (undefined :: VCS.Vector arep)
 
-instance (arep ~ N.Rep (N.Exp a),
+instance (arep ~ N.Rep a,
           rsh ~ Rsh sh,
           ToRsh sh,
           N.Shape sh,
-          N.IsElem (N.Exp a),
+          N.IsElem a,
           IsArrayVal (R.Array R.CUF rsh arep),
-          N.Manifest r (N.Exp a))
-      => Compilable (N.Array r     sh  (N.Exp a))
-                    (R.Array R.CUF rsh arep     ) where
+          N.Manifest r a)
+      => Compilable (N.Array r     sh  a)
+                    (R.Array R.CUF rsh arep) where
     precompile = addResultCoercion $ coerceResult (undefined :: R.Array R.CUF rsh arep)
 
 --
