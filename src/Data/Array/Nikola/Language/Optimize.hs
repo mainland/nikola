@@ -43,6 +43,10 @@ import Data.Array.Nikola.Program
 import Data.Array.Nikola.Language.Check
 import Data.Array.Nikola.Language.Generic
 import Data.Array.Nikola.Language.Monad
+import Data.Array.Nikola.Language.Optimize.Monad
+import Data.Array.Nikola.Language.Optimize.Occ
+import Data.Array.Nikola.Language.Optimize.Simpl
+import Data.Array.Nikola.Language.Optimize.Subst
 import Data.Array.Nikola.Language.Syntax
 
 -- Host program optimization. Some passes rely on normalized monadic structure,
@@ -85,96 +89,6 @@ oPass f = liftIO . evalO . f
 aPass :: (Exp -> A Exp) -> Exp -> R r Exp
 aPass f = liftIO . evalA . f
 
--- Helpers
-
-ifE :: E.Exp t a -> Exp -> Exp
-ifE e p = IfThenElseE (unE e) p (ReturnE UnitE)
-
--- The optimization monad
-data OEnv = OEnv
-    { oVarVarSubst :: Map Var Var
-    , oVarExpSubst :: Map Var Exp
-    , oContext     :: Context
-    , oVarTypes    :: Map Var Type
-    , oOcc         :: Map Var Occ
-    }
-
-defaultOEnv :: OEnv
-defaultOEnv = OEnv { oVarVarSubst = Map.empty
-                   , oVarExpSubst = Map.empty
-                   , oContext     = Host
-                   , oVarTypes    = Map.empty
-                   , oOcc         = Map.empty
-                   }
-
-newtype O a = O { unO :: StateT OEnv IO a }
-  deriving (Monad, Functor, Applicative, MonadState OEnv, MonadIO)
-
-evalO :: O a -> IO a
-evalO m = evalStateT (unO m) defaultOEnv
-
-runO :: O a -> IO (a, OEnv)
-runO m = runStateT (unO m) defaultOEnv
-
-instance MonadSubst Var Var O where
-    getTheta _ _              = gets   $ \s -> Theta (oVarVarSubst s) Set.empty
-    putTheta (Theta theta' _) = modify $ \s -> s { oVarVarSubst = theta' }
-
-instance MonadSubst Var Exp O where
-    getTheta _ _              = gets   $ \s -> Theta (oVarExpSubst s) Set.empty
-    putTheta (Theta theta' _) = modify $ \s -> s { oVarExpSubst = theta' }
-
-instance MonadCheck O where
-    getContext = gets oContext
-
-    setContext ctx = modify $ \s -> s { oContext = ctx }
-
-    lookupVarType v = do
-        maybe_tau <- gets $ \s -> Map.lookup v (oVarTypes s)
-        case maybe_tau of
-          Just tau -> return tau
-          Nothing ->  faildoc $ text "Variable" <+> ppr v <+>
-                                text "not in scope during reification."
-
-    extendVarTypes vtaus act = do
-        old_vars <- gets oVarTypes
-        modify $ \s -> s { oVarTypes = foldl' insert (oVarTypes s) vtaus }
-        x  <- act
-        modify $ \s -> s { oVarTypes = old_vars }
-        return x
-      where
-        insert m (k, v) = Map.insert k v m
-
-occVar :: Var -> O ()
-occVar v =
-    modify $ \s -> s { oOcc = Map.alter alter v (oOcc s) }
-  where
-    alter :: Maybe Occ -> Maybe Occ
-    alter Nothing    = Just Once
-    alter (Just occ) = Just $ occ `occJoin` Once
-
-occsJoin :: Map Var Occ -> Map Var Occ -> Map Var Occ
-occsJoin occs1 occs2 = Map.unionWith occJoin occs1 occs2
-
-occsMeet :: Map Var Occ -> Map Var Occ -> Map Var Occ
-occsMeet occs1 occs2 = Map.unionWith occMeet occs1 occs2
-
-occsDelete :: [Var] -> Map Var Occ -> Map Var Occ
-occsDelete vs occ = foldl' (flip Map.delete) occ vs
-
-withOcc :: O a -> O (a, Map Var Occ)
-withOcc act = do
-    old_occ <- gets oOcc
-    modify $ \s -> s { oOcc = Map.empty }
-    a   <- act
-    occ <- gets oOcc
-    modify $ \s -> s { oOcc = old_occ }
-    return (a, occ)
-
-unionOcc :: Map Var Occ -> O ()
-unionOcc occ =
-    modify $ \s -> s { oOcc = oOcc s `occsJoin` occ }
-
 -- Deciding whether or not things must be equal ("must be equal" implies
 -- "equal", but "equal" does not imply "must be equal")
 
@@ -202,56 +116,6 @@ instance MustEq Exp where
     IndexE v1 idx1          ==! IndexE v2 idx2          = v1 == v2 && idx1 ==! idx2
     _                       ==! _                       = False
 
-occ :: AST a -> a -> O a
-occ ExpA e@(VarE v) = do
-    occVar v
-    return e
-
-occ ExpA (LetE v tau _ e1 e2) = do
-    (e1', occ1) <- withOcc $ occ ExpA e1
-    (e2', occ2) <- withOcc $ occ ExpA e2
-    let occ = Map.findWithDefault Never v occ2
-    unionOcc $ occ1 `occsJoin` occsDelete [v] occ2
-    return $ LetE v tau occ e1' e2'
-
-occ ExpA (LamE vtaus e) = do
-    (e', occ) <- withOcc $ occ ExpA e
-    unionOcc $ occsDelete (map fst vtaus) occ
-    return $ LamE vtaus e'
-
-occ ExpA (BinopE MaxO e1 e2) = do
-    (e1', occ1) <- withOcc $ occ ExpA e1
-    (e2', occ2) <- withOcc $ occ ExpA e2
-    unionOcc $ Map.map (const Many) (occ1 `Map.union` occ2)
-    return $ BinopE MaxO e1' e2'
-
-occ ExpA (BinopE MinO e1 e2) = do
-    (e1', occ1) <- withOcc $ occ ExpA e1
-    (e2', occ2) <- withOcc $ occ ExpA e2
-    unionOcc $ Map.map (const Many) (occ1 `Map.union` occ2)
-    return $ BinopE MinO e1' e2'
-
-occ ExpA (IfThenElseE e1 e2 e3) = do
-    (e1', occ1) <- withOcc $ occ ExpA e1
-    (e2', occ2) <- withOcc $ occ ExpA e2
-    (e3', occ3) <- withOcc $ occ ExpA e3
-    unionOcc $ occ1 `occsJoin` (occ2 `occsMeet` occ3)
-    return $ IfThenElseE e1' e2' e3'
-
-occ ExpA (ForE isPar vs es p) = do
-    (es', occ_es) <- withOcc $ traverse (occ ExpA) es
-    (p',  occ_p)  <- withOcc $ occ ExpA p
-    unionOcc $ occ_es `occsJoin` occsDelete vs occ_p
-    return $ ForE isPar vs es' p'
-
-occ ExpA (BindE v tau p1 p2) = do
-    (p1', occ1) <- withOcc $ occ ExpA p1
-    (p2', occ2) <- withOcc $ occ ExpA p2
-    unionOcc (occ1 `occsJoin` occ2)
-    return $ BindE v tau p1' p2'
-
-occ w a = traverseFam occ w a
-
 -- Kernel splitting
 
 splitKernels :: AST a -> a -> R r a
@@ -271,84 +135,6 @@ splitKernels = split
         SeqE m1' <$> isolateK m2'
 
     splitK w a = checkTraverseFam splitK w a
-
--- Simplification folding
-isAtomic :: Exp -> Bool
-isAtomic (VarE {})        = True
-isAtomic (ConstE {})      = True
-isAtomic (ProjArrE _ _ e) = isAtomic e
-isAtomic (DimE _ _ e)     = isAtomic e
-isAtomic (UnopE NegN _)   = True
-isAtomic _                = False
-
-simpl :: AST a -> a -> O a
-simpl ExpA (VarE v) = lookupSubst VarA v ExpA (return (VarE v))
-
-simpl ExpA (LetE _ _ Never _ e2) =
-    simpl ExpA e2
-
-simpl ExpA (LetE v _ Once e1 e2) = do
-    e1' <- simpl ExpA e1
-    insertSubst VarA v ExpA e1'
-    simpl ExpA e2
-
-simpl ExpA (LetE v tau Many e1 e2) =
-    LetE v tau Many <$> simpl ExpA e1 <*> simpl ExpA e2
-
-simpl ExpA (UnopE op e) = do  e' <- simpl ExpA e
-                              go op e'
-  where
-    go :: Unop -> Exp -> O Exp
-    go SqrtF  (ConstE (FloatC i)) = pure $ ConstE (FloatC (sqrt i))
-    go RecipF (ConstE (FloatC i)) = pure $ ConstE (FloatC (1/i))
-
-    go SqrtF  (ConstE (DoubleC i)) = pure $ ConstE (DoubleC (sqrt i))
-    go RecipF (ConstE (DoubleC i)) = pure $ ConstE (DoubleC (1/i))
-
-    go op e = return $ UnopE op e
-
-simpl ExpA (BinopE op e1 e2) = do  e1' <- simpl ExpA e1
-                                   e2' <- simpl ExpA e2
-                                   go op e1' e2'
-  where
-    go :: Binop -> Exp -> Exp -> O Exp
-    go AddN (ConstE (Int32C 0))  e2                   = pure e2
-    go AddN (ConstE (FloatC 0))  e2                   = pure e2
-    go AddN (ConstE (DoubleC 0)) e2                   = pure e2
-    go AddN (ConstE (Int32C i))  (ConstE (Int32C j))  = pure $ ConstE (Int32C (i+j))
-    go AddN (ConstE (FloatC i))  (ConstE (FloatC j))  = pure $ ConstE (FloatC (i+j))
-    go AddN (ConstE (DoubleC i)) (ConstE (DoubleC j)) = pure $ ConstE (DoubleC (i+j))
-    go AddN e1                   (BinopE AddN e2 e3)  = simpl ExpA (BinopE AddN (BinopE AddN e1 e2) e3)
-    go AddN e1                   e2@(ConstE {})       = simpl ExpA (BinopE AddN e2 e1)
-
-    go SubN e1                  (ConstE (Int32C i))   = simpl ExpA (BinopE AddN (ConstE (Int32C (negate i))) e1)
-    go SubN e1                  (ConstE (FloatC i))   = simpl ExpA (BinopE AddN (ConstE (FloatC (negate i))) e1)
-    go SubN e1                  (ConstE (DoubleC i))  = simpl ExpA (BinopE AddN (ConstE (DoubleC (negate i))) e1)
-
-    go MulN (ConstE (Int32C 0))  _                    = pure $ ConstE (Int32C 0)
-    go MulN (ConstE (FloatC 0))  _                    = pure $ ConstE (FloatC 0)
-    go MulN (ConstE (DoubleC 0)) _                    = pure $ ConstE (DoubleC 0)
-    go MulN (ConstE (Int32C 1))  e2                   = pure e2
-    go MulN (ConstE (FloatC 1))  e2                   = pure e2
-    go MulN (ConstE (DoubleC 1)) e2                   = pure e2
-    go MulN (ConstE (Int32C i))  (ConstE (Int32C j))  = pure $ ConstE (Int32C (i*j))
-    go MulN (ConstE (FloatC i))  (ConstE (FloatC j))  = pure $ ConstE (FloatC (i*j))
-    go MulN (ConstE (DoubleC i)) (ConstE (DoubleC j)) = pure $ ConstE (DoubleC (i*j))
-    go MulN e1                   e2@(ConstE {})       = simpl ExpA (BinopE MulN e2 e1)
-    go MulN e1                   (BinopE MulN e2 e3)  = simpl ExpA (BinopE MulN (BinopE MulN e1 e2) e3)
-
-    go ModI e1                  (ConstE (Int32C 1))   = pure e1
-
-    go DivN (ConstE (FloatC 1)) e2                    = simpl ExpA (UnopE RecipF e2)
-    go DivN (ConstE (DoubleC 1)) e2                   = simpl ExpA (UnopE RecipF e2)
-
-    -- Default
-    go op e1 e2 = return $ BinopE op e1 e2
-
-simpl ExpA (CallE (LamE [] (SeqE m1 (ReturnE e))) []) =
-    simpl ExpA (SeqE (CallE (LamE [] m1) []) (ReturnE e))
-
-simpl w a = traverseFam simpl w a
 
 -- Lift shared bindings out of branches
 
@@ -377,7 +163,6 @@ shareBindings ExpA (IfThenElseE test (LetE v1 tau1 occ1 e1a e1b) (LetE v2 tau2 o
 shareBindings w a = traverseFam shareBindings w a
 
 -- Merge parallel for loops
-
 mergeParfor :: forall a m . (MonadSubst Var Var m, MonadSubst Var Exp m) => AST a -> a -> m a
 mergeParfor VarA v        = lookupSubst VarA v VarA (return v)
 mergeParfor ExpA (VarE v) = lookupSubst VarA v ExpA (VarE <$> mergeParfor VarA v)
@@ -391,8 +176,8 @@ mergeParfor ExpA (LamE vtaus p) = do
 
     go ((seq1, ForE True [v1] [e1] p1) : (seq2, ForE True [v2] [e2] p2) : ms) = do
         insertSubst VarA v2 VarA v1
-        let p1' = ifE ((E . VarE) v1 <* (E e1 :: E.Exp t Int32)) p1
-        let p2' = ifE ((E . VarE) v1 <* (E e2 :: E.Exp t Int32)) p2
+        let p1' = whenE ((E . VarE) v1 <* (E e1 :: E.Exp t Int32)) p1
+        let p2' = whenE ((E . VarE) v1 <* (E e2 :: E.Exp t Int32)) p2
         go ((seq1, ForE True [v1] [BinopE MaxO e1 e2] (sync p1' p2')) : ms)
       where
         sync = case seq2 of
@@ -406,6 +191,9 @@ mergeParfor ExpA (LamE vtaus p) = do
         return $ (s,m') : ms'
 
 mergeParfor w      a    = traverseFam mergeParfor w a
+
+whenE :: E.Exp t a -> Exp -> Exp
+whenE e p = IfThenElseE (unE e) p (ReturnE UnitE)
 
 -- Convert monadic actions to a normal form
 data SeqM = LetM Var Type
@@ -529,53 +317,6 @@ vars = go
              -> (Set Var -> (Set Var, Set Var))
              -> (Set Var -> (Set Var, Set Var))
     bindVars vs m = \bound -> m (bound `Set.union` Set.fromList vs)
-
--- Binders
-class Ord a => Binder a where
-    uniqBinder :: a -> Set a -> a
-
-class Binder a => BinderOcc a b where
-    binderOcc  :: a -> b
-
-instance Binder Var where
-    uniqBinder (Var s) phi =
-        head [v'  | i <- [show i | i <- [1..]]
-                  , let v' = Var (s ++ "_" ++ i)
-                  , v' `Set.notMember` phi]
-
-instance BinderOcc Var Var where
-    binderOcc  = id
-
-instance BinderOcc Var Exp where
-    binderOcc  = VarE
-
--- Substitutions
-data Theta a b = Theta { theta :: Map a b, phi :: Set a }
-
-class (Monad m, Functor m, Applicative m, BinderOcc a b) => MonadSubst a b m where
-    getTheta :: AST a -> AST b -> m (Theta a b)
-    putTheta :: Theta a b -> m ()
-
-    getsTheta :: AST a -> AST b -> (Theta a b -> c) -> m c
-    getsTheta wa wb f = do
-        s <- getTheta wa wb
-        return (f s)
-
-    modifyTheta :: AST a -> AST b -> (Theta a b -> Theta a b) -> m ()
-    modifyTheta wa wb f = do
-        s <- getTheta wa wb
-        putTheta (f s)
-
-lookupSubst :: MonadSubst a b m => AST a -> a -> AST b -> m b -> m b
-lookupSubst wa a wb mb = do
-    maybe_b <- getsTheta wa wb (Map.lookup a . theta)
-    case maybe_b of
-      Nothing -> mb
-      Just b' -> return b'
-
-insertSubst :: MonadSubst a b m => AST a -> a -> AST b -> b -> m ()
-insertSubst wa a wb b =
-    modifyTheta wa wb $ \s -> s { theta = Map.insert a b (theta s) }
 
 bind :: MonadSubst a b m
      => AST a

@@ -47,6 +47,10 @@ library
     Data.Array.Nikola.Language.Generic
     Data.Array.Nikola.Language.Monad
     Data.Array.Nikola.Language.Optimize
+    Data.Array.Nikola.Language.Optimize.Monad
+    Data.Array.Nikola.Language.Optimize.Occ
+    Data.Array.Nikola.Language.Optimize.Simpl
+    Data.Array.Nikola.Language.Optimize.Subst
     Data.Array.Nikola.Language.Reify
     Data.Array.Nikola.Language.Sharing
     Data.Array.Nikola.Language.Syntax
