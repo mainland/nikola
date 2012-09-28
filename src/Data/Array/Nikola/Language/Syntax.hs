@@ -213,26 +213,36 @@ flattenT tau =
     [tau]
 
 -- Occurence information
-data Occ = Never
-         | Once
-         | Many
+data Occ = Never      -- ^ Never occurs
+         | Once       -- ^ Occurs once
+         | ManyBranch -- ^ Occurs once but in many branches
+         | Many       -- ^ Occurs many times
   deriving (Eq, Ord, Show)
 
 instance Pretty Occ where
     ppr = text . show
 
+-- Combine occurences in paths of which both are executed
 occJoin :: Occ -> Occ -> Occ
-occJoin Never occ   = occ
-occJoin Once  Never = Once
-occJoin Once  _     = Many
-occJoin Many  _     = Many
+occJoin Never      occ   = occ
+occJoin occ        Never = occ
+occJoin Many       _     = Many
+occJoin _          Many  = Many
 
+occJoin Once       _     = Many
+occJoin ManyBranch _     = Many
+
+-- Combine occurences in paths of which only one is executed
 occMeet :: Occ -> Occ -> Occ
-occMeet Never occ   = occ
-occMeet Once  Never = Once
-occMeet Once  Once  = Once
-occMeet Once  Many  = Many
-occMeet Many  _     = Many
+occMeet Never      occ         = occ
+occMeet occ        Never       = occ
+occMeet Many       _           = Many
+occMeet _          Many        = Many
+
+occMeet Once       Once        = ManyBranch
+occMeet Once       ManyBranch  = ManyBranch
+occMeet ManyBranch Once        = ManyBranch
+occMeet ManyBranch ManyBranch  = ManyBranch
 
 -- | Expressions. These can be evaluated either on the host or the device.
 data Exp = VarE Var
