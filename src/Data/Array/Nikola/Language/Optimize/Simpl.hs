@@ -1,4 +1,5 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
 
 -- |
 -- Module      : Data.Array.Nikola.Language.Optimize.Simpl
@@ -14,6 +15,7 @@ module Data.Array.Nikola.Language.Optimize.Simpl (simpl) where
 import Prelude hiding (mapM)
 
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
+import Text.PrettyPrint.Mainland
 
 import Data.Array.Nikola.Language.Generic
 import Data.Array.Nikola.Language.Optimize.Monad
@@ -51,35 +53,39 @@ simpl ExpA (BinopE op e1 e2) = do  e1' <- simpl ExpA e1
                                    go op e1' e2'
   where
     go :: Binop -> Exp -> Exp -> O Exp
-    go AddN (ConstE (Int32C 0))  e2                   = pure e2
-    go AddN (ConstE (FloatC 0))  e2                   = pure e2
-    go AddN (ConstE (DoubleC 0)) e2                   = pure e2
-    go AddN (ConstE (Int32C i))  (ConstE (Int32C j))  = pure $ ConstE (Int32C (i+j))
-    go AddN (ConstE (FloatC i))  (ConstE (FloatC j))  = pure $ ConstE (FloatC (i+j))
-    go AddN (ConstE (DoubleC i)) (ConstE (DoubleC j)) = pure $ ConstE (DoubleC (i+j))
-    go AddN e1                   (BinopE AddN e2 e3)  = simpl ExpA (BinopE AddN (BinopE AddN e1 e2) e3)
-    go AddN e1                   e2@(ConstE {})       = simpl ExpA (BinopE AddN e2 e1)
+    go EqO (ConstE c1) (ConstE c2) = pure $ ConstE (liftOrd2 (==) c1 c2)
+    go NeO (ConstE c1) (ConstE c2) = pure $ ConstE (liftOrd2 (/=) c1 c2)
+    go GtO (ConstE c1) (ConstE c2) = pure $ ConstE (liftOrd2 (>)  c1 c2)
+    go GeO (ConstE c1) (ConstE c2) = pure $ ConstE (liftOrd2 (>=) c1 c2)
+    go LtO (ConstE c1) (ConstE c2) = pure $ ConstE (liftOrd2 (<)  c1 c2)
+    go LeO (ConstE c1) (ConstE c2) = pure $ ConstE (liftOrd2 (<=) c1 c2)
 
-    go SubN e1                  (ConstE (Int32C i))   = simpl ExpA (BinopE AddN (ConstE (Int32C (negate i))) e1)
-    go SubN e1                  (ConstE (FloatC i))   = simpl ExpA (BinopE AddN (ConstE (FloatC (negate i))) e1)
-    go SubN e1                  (ConstE (DoubleC i))  = simpl ExpA (BinopE AddN (ConstE (DoubleC (negate i))) e1)
+    go MaxO (ConstE c1) (ConstE c2) = pure $ ConstE (liftMinMax2 max c1 c2)
+    go MinO (ConstE c1) (ConstE c2) = pure $ ConstE (liftMinMax2 min c1 c2)
 
-    go MulN (ConstE (Int32C 0))  _                    = pure $ ConstE (Int32C 0)
-    go MulN (ConstE (FloatC 0))  _                    = pure $ ConstE (FloatC 0)
-    go MulN (ConstE (DoubleC 0)) _                    = pure $ ConstE (DoubleC 0)
-    go MulN (ConstE (Int32C 1))  e2                   = pure e2
-    go MulN (ConstE (FloatC 1))  e2                   = pure e2
-    go MulN (ConstE (DoubleC 1)) e2                   = pure e2
-    go MulN (ConstE (Int32C i))  (ConstE (Int32C j))  = pure $ ConstE (Int32C (i*j))
-    go MulN (ConstE (FloatC i))  (ConstE (FloatC j))  = pure $ ConstE (FloatC (i*j))
-    go MulN (ConstE (DoubleC i)) (ConstE (DoubleC j)) = pure $ ConstE (DoubleC (i*j))
-    go MulN e1                   e2@(ConstE {})       = simpl ExpA (BinopE MulN e2 e1)
-    go MulN e1                   (BinopE MulN e2 e3)  = simpl ExpA (BinopE MulN (BinopE MulN e1 e2) e3)
+    go AddN (ConstE c)  e2
+        | c `equalTo` 0                      = pure e2
+    go AddN (ConstE i)  (ConstE j)           = pure $ ConstE (liftNum2 (+) i j)
+    go AddN e1          (BinopE AddN e2 e3)  = simpl ExpA (BinopE AddN (BinopE AddN e1 e2) e3)
+    go AddN e1          e2@(ConstE {})       = simpl ExpA (BinopE AddN e2 e1)
 
-    go ModI e1                  (ConstE (Int32C 1))   = pure e1
+    go SubN (ConstE i)  (ConstE j)           = pure $ ConstE (liftNum2 (-) i j)
+    go SubN e1          (ConstE c)
+        | c `equalTo` 0                      = pure e2
+        | otherwise                          = simpl ExpA (BinopE AddN (ConstE (liftNum negate c)) e1)
 
-    go DivN (ConstE (FloatC 1)) e2                    = simpl ExpA (UnopE RecipF e2)
-    go DivN (ConstE (DoubleC 1)) e2                   = simpl ExpA (UnopE RecipF e2)
+    go MulN (ConstE c)  e2
+        | c `equalTo` 0                      = pure $ ConstE (liftNum (const 0) c)
+        | c `equalTo` 1                      = pure e2
+    go MulN (ConstE i)  (ConstE j)           = pure $ ConstE (liftNum2 (*) i j)
+    go MulN e1          e2@(ConstE {})       = simpl ExpA (BinopE MulN e2 e1)
+    go MulN e1          (BinopE MulN e2 e3)  = simpl ExpA (BinopE MulN (BinopE MulN e1 e2) e3)
+
+    go ModI e1          (ConstE c)
+        | c `equalTo` 1                      = pure e1
+
+    go DivN (ConstE c) e2
+        | c `equalTo` 1                      = simpl ExpA (UnopE RecipF e2)
 
     -- Default
     go op e1 e2 = return $ BinopE op e1 e2
@@ -88,6 +94,147 @@ simpl ExpA (CallE (LamE [] (SeqE m1 (ReturnE e))) []) =
     simpl ExpA (SeqE (CallE (LamE [] m1) []) (ReturnE e))
 
 simpl w a = traverseFam simpl w a
+
+equalTo :: Const -> Integer -> Bool
+equalTo (Int8C n1)   n2 = n1 == fromIntegral n2
+equalTo (Int16C n1)  n2 = n1 == fromIntegral n2
+equalTo (Int32C n1)  n2 = n1 == fromIntegral n2
+equalTo (Int64C n1)  n2 = n1 == fromIntegral n2
+equalTo (Word8C n1)  n2 = n1 == fromIntegral n2
+equalTo (Word16C n1) n2 = n1 == fromIntegral n2
+equalTo (Word32C n1) n2 = n1 == fromIntegral n2
+equalTo (Word64C n1) n2 = n1 == fromIntegral n2
+equalTo (FloatC n1)  n2 = n1 == fromIntegral n2
+equalTo (DoubleC n1) n2 = n1 == fromIntegral n2
+equalTo c            n  = errordoc $
+                          text "internal error: equalTo:" <+>
+                          ppr c <+> ppr n
+
+liftOrd2 :: (forall a . Ord a => a -> a -> Bool)
+         -> Const -> Const -> Const
+liftOrd2 op c1 c2 =
+    go c1 c2
+  where
+    go :: Const -> Const -> Const
+    go (BoolC c1)   (BoolC c2)   = BoolC (op c1 c2)
+    go (Int8C c1)   (Int8C c2)   = BoolC (op c1 c2)
+    go (Int16C c1)  (Int16C c2)  = BoolC (op c1 c2)
+    go (Int32C c1)  (Int32C c2)  = BoolC (op c1 c2)
+    go (Int64C c1)  (Int64C c2)  = BoolC (op c1 c2)
+    go (Word8C c1)  (Word8C c2)  = BoolC (op c1 c2)
+    go (Word16C c1) (Word16C c2) = BoolC (op c1 c2)
+    go (Word32C c1) (Word32C c2) = BoolC (op c1 c2)
+    go (Word64C c1) (Word64C c2) = BoolC (op c1 c2)
+    go (FloatC c1)  (FloatC c2)  = BoolC (op c1 c2)
+    go (DoubleC c1) (DoubleC c2) = BoolC (op c1 c2)
+    go c1           c2           = errordoc $
+                                   text "internal error: liftOrd2:" <+>
+                                   ppr c1 <+> ppr c2
+
+liftMinMax2 :: (forall a . Ord a => a -> a -> a)
+            -> Const -> Const -> Const
+liftMinMax2 op c1 c2 =
+    go c1 c2
+  where
+    go :: Const -> Const -> Const
+    go (BoolC c1)   (BoolC c2)   = BoolC   (op c1 c2)
+    go (Int8C c1)   (Int8C c2)   = Int8C   (op c1 c2)
+    go (Int16C c1)  (Int16C c2)  = Int16C  (op c1 c2)
+    go (Int32C c1)  (Int32C c2)  = Int32C  (op c1 c2)
+    go (Int64C c1)  (Int64C c2)  = Int64C  (op c1 c2)
+    go (Word8C c1)  (Word8C c2)  = Word8C  (op c1 c2)
+    go (Word16C c1) (Word16C c2) = Word16C (op c1 c2)
+    go (Word32C c1) (Word32C c2) = Word32C (op c1 c2)
+    go (Word64C c1) (Word64C c2) = Word64C (op c1 c2)
+    go (FloatC c1)  (FloatC c2)  = FloatC  (op c1 c2)
+    go (DoubleC c1) (DoubleC c2) = DoubleC (op c1 c2)
+    go c1           c2           = errordoc $
+                                   text "internal error: liftMinMax2:" <+>
+                                   ppr c1 <+> ppr c2
+
+liftNum :: (forall a . Num a => a -> a)
+        -> Const -> Const
+liftNum op c =
+    go c
+  where
+    go :: Const -> Const
+    go (Int8C c)   = Int8C   (op c)
+    go (Int16C c)  = Int16C  (op c)
+    go (Int32C c)  = Int32C  (op c)
+    go (Int64C c)  = Int64C  (op c)
+    go (Word8C c)  = Word8C  (op c)
+    go (Word16C c) = Word16C (op c)
+    go (Word32C c) = Word32C (op c)
+    go (Word64C c) = Word64C (op c)
+    go (FloatC c)  = FloatC  (op c)
+    go (DoubleC c) = DoubleC (op c)
+    go c           = errordoc $
+                     text "internal error: liftNum:" <+>
+                     ppr c
+
+liftNum2 :: (forall a . Num a => a -> a -> a)
+         -> Const -> Const -> Const
+liftNum2 op c1 c2 =
+    go c1 c2
+  where
+    go :: Const -> Const -> Const
+    go (Int8C c1)   (Int8C c2)   = Int8C   (op c1 c2)
+    go (Int16C c1)  (Int16C c2)  = Int16C  (op c1 c2)
+    go (Int32C c1)  (Int32C c2)  = Int32C  (op c1 c2)
+    go (Int64C c1)  (Int64C c2)  = Int64C  (op c1 c2)
+    go (Word8C c1)  (Word8C c2)  = Word8C  (op c1 c2)
+    go (Word16C c1) (Word16C c2) = Word16C (op c1 c2)
+    go (Word32C c1) (Word32C c2) = Word32C (op c1 c2)
+    go (Word64C c1) (Word64C c2) = Word64C (op c1 c2)
+    go (FloatC c1)  (FloatC c2)  = FloatC  (op c1 c2)
+    go (DoubleC c1) (DoubleC c2) = DoubleC (op c1 c2)
+    go c1           c2           = errordoc $
+                                   text "internal error: liftNum2:" <+>
+                                   ppr c1 <+> ppr c2
+
+{-
+liftIntegral2 :: (forall a . Integral a => a -> a -> a)
+              -> Const -> Const -> Const
+liftIntegral2 op c1 c2 =
+    go c1 c2
+  where
+    go :: Const -> Const -> Const
+    go (Int8C c1)   (Int8C c2)   = Int8C   (op c1 c2)
+    go (Int16C c1)  (Int16C c2)  = Int16C  (op c1 c2)
+    go (Int32C c1)  (Int32C c2)  = Int32C  (op c1 c2)
+    go (Int64C c1)  (Int64C c2)  = Int64C  (op c1 c2)
+    go (Word8C c1)  (Word8C c2)  = Word8C  (op c1 c2)
+    go (Word16C c1) (Word16C c2) = Word16C (op c1 c2)
+    go (Word32C c1) (Word32C c2) = Word32C (op c1 c2)
+    go (Word64C c1) (Word64C c2) = Word64C (op c1 c2)
+    go c1           c2           = errordoc $
+                                   text "internal error: liftIntegral2:" <+>
+                                   ppr c1 <+> ppr c2
+
+liftFractional2 :: (forall a . Fractional a => a -> a -> a)
+                -> Const -> Const -> Const
+liftFractional2 op c1 c2 =
+    go c1 c2
+  where
+    go :: Const -> Const -> Const
+    go (FloatC c1)  (FloatC c2)  = FloatC  (op c1 c2)
+    go (DoubleC c1) (DoubleC c2) = DoubleC (op c1 c2)
+    go c1           c2           = errordoc $
+                                   text "internal error: liftFractional2:" <+>
+                                   ppr c1 <+> ppr c2
+
+liftFloating2 :: (forall a . Floating a => a -> a -> a)
+              -> Const -> Const -> Const
+liftFloating2 op c1 c2 =
+    go c1 c2
+  where
+    go :: Const -> Const -> Const
+    go (FloatC c1)  (FloatC c2)  = FloatC  (op c1 c2)
+    go (DoubleC c1) (DoubleC c2) = DoubleC (op c1 c2)
+    go c1           c2           = errordoc $
+                                   text "internal error: liftFloating2:" <+>
+                                   ppr c1 <+> ppr c2
+-}
 
 {-
 isAtomic :: Exp -> Bool
