@@ -746,7 +746,7 @@ instance NewCVar PtrType where
 
     newCVar v tau = do
         ctemp <- gensym v
-        addLocal [cdecl|$ty:(toCType tau)* $id:ctemp;|]
+        addLocal [cdecl|$ty:(toCType tau) $id:ctemp;|]
         return $ PtrCE [cexp|$id:ctemp|]
 
 instance NewCVar Type where
