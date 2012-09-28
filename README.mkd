@@ -1,31 +1,39 @@
 Building
 ========
 
-Nikola currently supports GHC version 7.4 and version 4.2 of the CUDA SDK.
+Nikola currently supports GHC version 7.4 and version 4.2 or above of the CUDA
+SDK.
 
-Linux, Ubuntu 12.04 LTS x86_64, CUDA 4.2 SDK
---------------------------------------------
-
-I have CUDA 4.2 installed at /usr/local/cuda/4.2/cuda (and the 4.2 SDK at
-/usr/local/cuda/4.2/sdk). ```nvcc``` is not happy with GCC 4.6, which is the
-default on Ubuntu 12.04, so you must install the gcc-4.5 and g++-4.5 packages
-(yes, you need g++-4.5). I configure Nikola like this:
+The configure script will pick up nvcc if it is in your path. Make sure it
+matches the `nvcc` used by the `cuda` Haskell package. You can manually specify
+the path to `nvcc` during `cabal configure` using an argument like this:
 
 ```
-cabal configure \
-      --disable-library-profiling \
-      --enable-tests \
-      --flags=examples \
-      --configure-option="--with-nvcc=/usr/local/cuda/4.2/cuda/bin/nvcc" \
-      --configure-option="--with-nvcc-cc=/usr/bin/gcc-4.5"
+--configure-option="--with-nvcc=/usr/local/cuda/4.2/cuda/bin/nvcc"
+```
+
+`nvcc` requires `gcc` 4.6 or lower. If your default system compiler is `gcc` 4.7
+or higher, you must manually specify the path to a compatible version of `gcc`
+for `nvcc` to use. You can do this using the `--with-nvcc-cc` configure option,
+e.g., give the following argument to `cabal configure`
+
+```
+--configure-option="--with-nvcc-cc=/usr/bin/gcc-4.5"
+```
+
+I configure Nikola like this under Ubuntu 12.04 LTS x86_64 with the CUDA 4.2
+SDK:
+
+```
+cabal configure --disable-library-profiling --enable-tests --flags="examples optimize"
 ```
 
 Known Issues
 ============
 
-Versions of the ```cuda``` package prior to version 5, which is not yet on
-hackage, can corrupt device memory pointers in some cases. If you experience
-CUDA errors, please install the ```cuda``` package directly from github.
+Versions of the `cuda` package prior to version 5, which is not yet on hackage,
+can corrupt device memory pointers in some cases. If you experience CUDA errors,
+please install the `cuda` package directly from github.
 
 Examples
 ========
@@ -46,37 +54,30 @@ He also suggests using these additional options:
 -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000
 ```
 
-Note that these flags will improve ```Data.Vector``` performance, allowing for
+Note that these flags will improve `Data.Vector` performance, allowing for
 better comparisons with Nikola. They do not affect the speed of Nikola
 functions. You can build the examples with these optimization flags using cabal
-if you pass the additional flag ```--flags=optimize``` to ```cabal configure```.
+if you pass the additional flag `--flags=optimize` to `cabal configure`.
 
 Black-Scholes
 -------------
 
-The current Black-Scholes benchmark uses the
-[criterion](http://hackage.haskell.org/package/criterion) library and outputs
-data in CSV format where the first column is the number of elements
-processed. The rest of the columns are broken up into to groups of three
-columns, where the three columns are the mean, min, and max time taken to
-process the N inputs by one of the Black-Scholes implementations. The first
-group is the timings for the implementation that uses Nikola's run-time
-compilation mechanism, the next group uses Nikola's compile-time scheme, and the
-final group uses ```Data.Vector.Unboxed```. The original benchmark in [Nikola:
-Embedding Compiled GPU Functions in
-Haskell](http://www.eecs.harvard.edu/~mainland/publications/mainland10nikola.pdf)
-included additional implementations. You can run the benchmark as follows:
+This version of Black-Scholes option evaluation appeared as a benchmark in
+[Nikola: Embedding Compiled GPU Functions in
+Haskell](http://www.eecs.harvard.edu/~mainland/publications/mainland10nikola.pdf). The
+old version of Nikola supported calling quoted CUDA code and included the CUDA
+SDK version of option evaluation. This is no longer supported, so the current
+`blackscholes` program only includes Nikola and `vector` versions.
 
-```
-./dist/build/blackscholes/blackscholes -s 10
-```
+However, Nikola now supports the generation of stand-alone functions that are
+callable from C. Although not built by cabal, the `blackscholes-openmp` and
+`blackscholes-cuda` Makefile targets are stand-alone programs that utilize
+Nikola-generated kernels.
 
 American Option Evaluation
 --------------------------
 
 This is a Nikola implementation of Ken Friis Larsen's Haskell code for pricing
 American options. The original version is available [on
-github](http://github.com/kfl/american-options). Thanks to Ken for the
-```vector``` version and permission to distribute this as a Nikola example.
-
-
+github](http://github.com/kfl/american-options). Thanks to Ken for the `vector`
+version and permission to distribute this as a Nikola example.
