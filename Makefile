@@ -60,7 +60,7 @@ GHC_FLAGS += \
 	-package vector-algorithms
 
 TARGETS	= \
-	mandel unit \
+	mandelbrot unit \
 	american \
 	blackscholes blackscholes-compile \
 	blackscholes-cuda blackscholes-openmp
@@ -122,11 +122,11 @@ test : $(SOURCE) test.hs
 		-odir obj -hidir obj \
 		$(GHC_FLAGS) -o $@
 
-mandel : $(SOURCE) examples/mandel/Mandel.hs examples/mandel/Main.hs
+mandelbrot : $(SOURCE) examples/mandelbrot/Mandel.hs examples/mandelbrot/Main.hs
 	@echo "Compiling and linking" $@
-	$(_QUIET)$(GHC) --make examples/mandel/Main.hs \
-		-iexamples/mandel \
-		-odir obj/mandel -hidir obj/mandel \
+	$(_QUIET)$(GHC) --make examples/mandelbrot/Main.hs \
+		-iexamples/mandelbrot \
+		-odir obj/mandelbrot -hidir obj/mandelbrot \
 		$(GHC_FLAGS) -o $@
 
 unit : $(SOURCE) tests/unit/Main.hs
