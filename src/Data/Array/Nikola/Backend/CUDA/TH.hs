@@ -411,7 +411,7 @@ compile a = compileSig a (undefined :: Compiled a)
 -- 'compile'.
 type family Compiled a :: *
 type instance Compiled (N.Exp a) = N.Rep (N.Exp a)
-type instance Compiled (N.Array r N.DIM1 a) = R.Array R.CUF R.DIM1 (N.Rep a)
+type instance Compiled (N.Array r sh a) = R.Array R.CUF (Rsh sh) (N.Rep a)
 type instance Compiled (N.Exp a -> b) = N.Rep (N.Exp a) -> Compiled b
 type instance Compiled (N.Array N.M sh a -> b) = R.Array R.CUF (Rsh sh) (N.Rep a) -> Compiled b
 
