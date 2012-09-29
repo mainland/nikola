@@ -235,13 +235,14 @@ compileExp (BinopE op e1 e2) = do
     go AddN _ ce1 ce2 = [cexp|$ce1 + $ce2|]
     go SubN _ ce1 ce2 = [cexp|$ce1 - $ce2|]
     go MulN _ ce1 ce2 = [cexp|$ce1 * $ce2|]
-    go DivN _ ce1 ce2 = [cexp|$ce1 / $ce2|]
 
     go AndB _ ce1 ce2 = [cexp|$ce1 & $ce2|]
     go OrB  _ ce1 ce2 = [cexp|$ce1 | $ce2|]
 
-    go ModI _ ce1 ce2 = [cexp|$ce1 % $ce2|]
+    go QuotI _ ce1 ce2 = [cexp|$ce1 / $ce2|]
+    go RemI  _ ce1 ce2 = [cexp|$ce1 % $ce2|]
 
+    go DivF     _       ce1 ce2 = [cexp|$ce1 / $ce2|]
     go PowF     FloatT  ce1 ce2 = [cexp|powf($ce1,$ce2)|]
     go PowF     DoubleT ce1 ce2 = [cexp|pow($ce1,$ce2)|]
     go LogBaseF FloatT  ce1 ce2 = [cexp|logf($ce2)/logf($ce1)|]

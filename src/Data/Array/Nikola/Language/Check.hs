@@ -248,13 +248,14 @@ inferBinop =
     go AddN tau1 tau2     = joinNumT tau1 tau2
     go SubN tau1 tau2     = joinNumT tau1 tau2
     go MulN tau1 tau2     = joinNumT tau1 tau2
-    go DivN tau1 tau2     = joinNumT tau1 tau2
 
     go AndB tau1 tau2     = joinIntT tau1 tau2
     go OrB  tau1 tau2     = joinIntT tau1 tau2
 
-    go ModI tau1 tau2     = joinIntT tau1 tau2
+    go QuotI tau1 tau2    = joinIntT tau1 tau2
+    go RemI  tau1 tau2    = joinIntT tau1 tau2
 
+    go DivF     tau1 tau2 = joinFloatT tau1 tau2
     go PowF     tau1 tau2 = joinFloatT tau1 tau2
     go LogBaseF tau1 tau2 = joinFloatT tau1 tau2
 

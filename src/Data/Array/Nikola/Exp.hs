@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -359,9 +360,12 @@ isReal(Double)
 
 #define isIntegral(ty)                                           \
 instance Integral (Exp t ty) where                               \
-{ quot = binop (BinopE DivN)                                     \
-; rem  = binop (BinopE ModI)                                     \
-; quotRem e1 e2 = (quot e1 e2, rem e1 e2)                        \
+{ quot        = binop (BinopE QuotI)                             \
+; rem         = binop (BinopE RemI)                              \
+; quotRem n d = (quot n d, rem n d)                              \
+; divMod  n d = if signum r ==* negate (signum d)                \
+                then (q-1, r+d)                                  \
+                else qr where { qr@(q,r) = quotRem n d }         \
 ; toInteger _ = error "cannot convert embedded value to Integer" \
 }
 
@@ -376,7 +380,7 @@ isIntegral(Word64)
 
 #define isFractional(ty,valcon) \
 instance Fractional (Exp t ty) where \
-{ (/)                        = binop (BinopE DivN) \
+{ (/)                        = binop (BinopE DivF) \
 ; recip (E (UnopE RecipF e)) = E e \
 ; recip e                    = unop (UnopE RecipF) e \
 ; fromRational               = E . ConstE . valcon . fromRational \

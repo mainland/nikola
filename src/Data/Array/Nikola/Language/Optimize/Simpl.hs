@@ -81,10 +81,12 @@ simpl ExpA (BinopE op e1 e2) = do  e1' <- simpl ExpA e1
     go MulN e1          e2@(ConstE {})       = simpl ExpA (BinopE MulN e2 e1)
     go MulN e1          (BinopE MulN e2 e3)  = simpl ExpA (BinopE MulN (BinopE MulN e1 e2) e3)
 
-    go ModI e1          (ConstE c)
+    go QuotI e1         (ConstE c)
+        | c `equalTo` 1                      = pure e1
+    go RemI e1          (ConstE c)
         | c `equalTo` 1                      = pure e1
 
-    go DivN (ConstE c) e2
+    go DivF (ConstE c) e2
         | c `equalTo` 1                      = simpl ExpA (UnopE RecipF e2)
 
     -- Default

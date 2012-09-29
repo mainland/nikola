@@ -20,6 +20,7 @@ module Data.Array.Nikola.Backend.CUDA.Haskell.Compile
 
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Monad.State
+import Data.Bits
 import Data.Int
 import Data.List (foldl')
 import qualified Data.Map as Map
@@ -252,31 +253,37 @@ compileExp (CallE f es) = do
     boundsOf dim idxs = [val | (CudaThreadIdx dim', val) <- idxs, dim' == dim]
 
 compileExp (BinopE op e1 e2) = do
-    tau <- inferExp e1
-    m1  <- compileExp e1
-    m2  <- compileExp e2
-    return $ go tau op m1 m2
+    m1 <- compileExp e1
+    m2 <- compileExp e2
+    return $ go op m1 m2
   where
-    go :: Type -> Binop -> Ex Val -> Ex Val -> Ex Val
-    go _ EqO m1 m2 = liftOrd (==) m1 m2
-    go _ NeO m1 m2 = liftOrd (/=) m1 m2
-    go _ GtO m1 m2 = liftOrd (>)  m1 m2
-    go _ GeO m1 m2 = liftOrd (>=) m1 m2
-    go _ LtO m1 m2 = liftOrd (<)  m1 m2
-    go _ LeO m1 m2 = liftOrd (<=) m1 m2
+    go :: Binop -> Ex Val -> Ex Val -> Ex Val
+    go EqO m1 m2 = liftOrd (==) m1 m2
+    go NeO m1 m2 = liftOrd (/=) m1 m2
+    go GtO m1 m2 = liftOrd (>)  m1 m2
+    go GeO m1 m2 = liftOrd (>=) m1 m2
+    go LtO m1 m2 = liftOrd (<)  m1 m2
+    go LeO m1 m2 = liftOrd (<=) m1 m2
 
-    go _ MaxO m1 m2 = liftMaxMin max m1 m2
-    go _ MinO m1 m2 = liftMaxMin min m1 m2
+    go MaxO m1 m2 = liftMaxMin max m1 m2
+    go MinO m1 m2 = liftMaxMin min m1 m2
 
-    go _   AddN m1 m2 = liftNum (+) m1 m2
-    go _   SubN m1 m2 = liftNum (-) m1 m2
-    go _   MulN m1 m2 = liftNum (*) m1 m2
-    go tau DivN m1 m2
-        | isIntT tau = liftIntegral div m1 m2
-        | otherwise  = liftFloating (/) m1 m2
+    go AndL m1 m2 = liftBool (&&) m1 m2
+    go OrL  m1 m2 = liftBool (||) m1 m2
 
-    go _ op _ _ =
-        faildoc $ text "Cannot compile:" <+> ppr op
+    go AddN m1 m2 = liftNum (+) m1 m2
+    go SubN m1 m2 = liftNum (-) m1 m2
+    go MulN m1 m2 = liftNum (*) m1 m2
+
+    go AndB m1 m2 = liftBits (.&.) m1 m2
+    go OrB  m1 m2 = liftBits (.|.) m1 m2
+
+    go QuotI m1 m2 = liftIntegral quot m1 m2
+    go RemI  m1 m2 = liftIntegral rem  m1 m2
+
+    go DivF     m1 m2 = liftFloating (/) m1 m2
+    go PowF     m1 m2 = liftFloating (**) m1 m2
+    go LogBaseF m1 m2 = liftFloating logBase m1 m2
 
 compileExp (IfThenElseE e_test e_then e_else) = do
     m_test <- compileExp e_test

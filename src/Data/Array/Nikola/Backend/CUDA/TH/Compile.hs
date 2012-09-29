@@ -19,6 +19,7 @@ module Data.Array.Nikola.Backend.CUDA.TH.Compile
 
 import Control.Applicative (Applicative, (<$>), (<*>), pure)
 import Control.Monad.State
+import Data.Bits
 import Data.Int
 import Data.List (foldl')
 import qualified Data.Map as Map
@@ -220,32 +221,37 @@ compileExp e0@(CallE f es) = do
                                            kont (fparams1 ++ fparams2)|]
 
 compileExp (BinopE op e1 e2) = do
-    tau <- inferExp e1
     qe1 <- compileExp e1
     qe2 <- compileExp e2
-    return $ go tau op qe1 qe2
+    return $ go op qe1 qe2
   where
-    go :: Type -> Binop -> ExpQ -> ExpQ -> ExpQ
-    go _ EqO qe1 qe2 = [|$qe1 == $qe2|]
-    go _ NeO qe1 qe2 = [|$qe1 /= $qe2|]
-    go _ GtO qe1 qe2 = [|$qe1 >  $qe2|]
-    go _ GeO qe1 qe2 = [|$qe1 >= $qe2|]
-    go _ LtO qe1 qe2 = [|$qe1 <  $qe2|]
-    go _ LeO qe1 qe2 = [|$qe1 <= $qe2|]
+    go :: Binop -> ExpQ -> ExpQ -> ExpQ
+    go EqO qe1 qe2 = [|$qe1 == $qe2|]
+    go NeO qe1 qe2 = [|$qe1 /= $qe2|]
+    go GtO qe1 qe2 = [|$qe1 >  $qe2|]
+    go GeO qe1 qe2 = [|$qe1 >= $qe2|]
+    go LtO qe1 qe2 = [|$qe1 <  $qe2|]
+    go LeO qe1 qe2 = [|$qe1 <= $qe2|]
 
-    go _ MaxO qe1 qe2 = [|max $qe1 $qe2|]
-    go _ MinO qe1 qe2 = [|min $qe1 $qe2|]
+    go MaxO qe1 qe2 = [|max $qe1 $qe2|]
+    go MinO qe1 qe2 = [|min $qe1 $qe2|]
 
-    go _ AddN qe1 qe2 = [|$qe1 + $qe2|]
-    go _ SubN qe1 qe2 = [|$qe1 - $qe2|]
-    go _ MulN qe1 qe2 = [|$qe1 * $qe2|]
+    go AndL qe1 qe2 = [|$qe1 && $qe2|]
+    go OrL  qe1 qe2 = [|$qe1 || $qe2|]
 
-    go tau DivN qe1 qe2
-        | isIntT tau = [|$qe1 `div` $qe2|]
-        | otherwise  = [|$qe1 / $qe2|]
+    go AddN qe1 qe2 = [|$qe1 + $qe2|]
+    go SubN qe1 qe2 = [|$qe1 - $qe2|]
+    go MulN qe1 qe2 = [|$qe1 * $qe2|]
 
-    go _ op _ _ =
-        faildoc $ text "Cannot compile:" <+> ppr op
+    go AndB qe1 qe2 = [|$qe1 .&. $qe2|]
+    go OrB  qe1 qe2 = [|$qe1 .|. $qe2|]
+
+    go QuotI qe1 qe2 = [|$qe1 `quot` $qe2|]
+    go RemI  qe1 qe2 = [|$qe1 `rem` $qe2|]
+
+    go DivF     qe1 qe2 = [|$qe1 / $qe2|]
+    go PowF     qe1 qe2 = [|$qe1 ** $qe2|]
+    go LogBaseF qe1 qe2 = [|logBase $qe1 $qe2|]
 
 compileExp (IfThenElseE e_test e_then e_else) = do
     qe_test <- compileExp e_test

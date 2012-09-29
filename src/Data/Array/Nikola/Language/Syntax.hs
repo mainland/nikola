@@ -127,16 +127,17 @@ data Binop = -- Order operators
            | AddN
            | SubN
            | MulN
-           | DivN
 
              -- Bitwise operators
            | AndB
            | OrB
 
             -- Integral operators
-           | ModI
+           | QuotI
+           | RemI
 
             -- Floating point operators
+           | DivF
            | PowF
            | LogBaseF
   deriving (Eq, Ord, Data, Typeable)
@@ -425,13 +426,14 @@ instance Pretty Binop where
     ppr AddN = text "+"
     ppr SubN = text "-"
     ppr MulN = text "*"
-    ppr DivN = text "/"
 
     ppr AndB = text "&"
     ppr OrB  = text "|"
 
-    ppr ModI = text "%"
+    ppr QuotI = text "`quot`"
+    ppr RemI  = text "`rem`"
 
+    ppr DivF     = text "/"
     ppr PowF     = text "**"
     ppr LogBaseF = text "`logBase`"
 
@@ -481,13 +483,14 @@ instance HasFixity Binop where
     fixity AddN = infixl_ addPrec
     fixity SubN = infixl_ addPrec
     fixity MulN = infixl_ mulPrec
-    fixity DivN = infixl_ mulPrec
 
     fixity AndB = infixl_ bandPrec
     fixity OrB  = infixl_ borPrec
 
-    fixity ModI = infixl_ mulPrec
+    fixity QuotI = infixl_ mulPrec
+    fixity RemI  = infixl_ mulPrec
 
+    fixity DivF     = infixl_ mulPrec
     fixity PowF     = infixr_ powPrec
     fixity LogBaseF = infixl_ mulPrec
 
@@ -603,22 +606,27 @@ instance Pretty Exp where
         unopSpace RecipF = empty
         unopSpace _      = space
 
-    pprPrec p (BinopE MaxO e1 e2) =
-        parensIf (p > appPrec) $
-        text "max" <+> pprPrec appPrec1 e1 <+> pprPrec appPrec1 e2
-
-    pprPrec p (BinopE MinO e1 e2) =
-        parensIf (p > appPrec) $
-        text "min" <+> pprPrec appPrec1 e1 <+> pprPrec appPrec1 e2
-
-    pprPrec p (BinopE LogBaseF e1 e2) =
-        parensIf (p > appPrec) $
-        text "logBase" <+>
-        pprPrec appPrec1 e1 <+>
-        pprPrec appPrec1 e2
-
     pprPrec p (BinopE op e1 e2) =
-        infixop p (fixity op) (ppr op) e1 e2
+        go op e1 e2
+      where
+        go MaxO e1 e2 =
+            parensIf (p > appPrec) $
+            text "max" <+> pprPrec appPrec1 e1 <+> pprPrec appPrec1 e2
+
+        go MinO e1 e2 =
+            parensIf (p > appPrec) $
+            text "min" <+> pprPrec appPrec1 e1 <+> pprPrec appPrec1 e2
+
+        go op e1 e2 | op == QuotI || op == RemI =
+            parensIf (p > appPrec) $
+            pprPrec appPrec1 e1 <+> ppr op <+> pprPrec appPrec1 e2
+
+        go LogBaseF e1 e2 =
+            parensIf (p > appPrec) $
+            text "logBase" <+> pprPrec appPrec1 e1 <+> pprPrec appPrec1 e2
+
+        go op e1 e2 =
+            infixop p (fixity op) (ppr op) e1 e2
 
     pprPrec p (IfThenElseE teste thene elsee) =
         parensIf (p > appPrec) $ align $
