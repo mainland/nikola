@@ -84,7 +84,9 @@ data PreEx a = PreEx ExState (Ex Val)
 class Compilable a b where
     precompile :: PreEx a -> b
 
+--
 -- These are the base cases
+--
 instance (arep ~ N.Rep (N.Exp a),
           N.IsElem (N.Exp a),
           IsVal arep)
@@ -127,7 +129,9 @@ instance (arep ~ N.Rep a,
                     (R.Array R.CUF rsh arep) where
     precompile (PreEx s m) = unsafePerformIO $ evalEx (m >>= popResult) s
 
+--
 -- And here are the inductive cases
+--
 instance (arep ~ N.Rep (N.Exp a),
           N.IsElem (N.Exp a),
           IsVal arep,
@@ -280,7 +284,9 @@ instance (IsArrayVal [a], IsArrayVal [b]) => IsArrayVal [(a, b)] where
     fromArrayVal _ _ =
         fail "internal error: fromArrayVal [a,b]"
 
+--
 -- The 'IsArrayVal' instances for lists
+--
 
 #define baseTypeListArrayVal(ty)                             \
 instance IsArrayVal [ty] where {                             \
@@ -381,7 +387,7 @@ baseTypeCUDAStorableVectorArrayVal(Float)
 baseTypeCUDAStorableVectorArrayVal(Double)
 
 --
--- The 'IsArrayVal' instances for 'R.CUF' 'R.Array's
+-- The 'IsArrayVal' instances for CUDA UnboxedForeign Vectors
 --
 
 #define baseTypeUnboxedForeignArrayVal(ty,con)                                \
