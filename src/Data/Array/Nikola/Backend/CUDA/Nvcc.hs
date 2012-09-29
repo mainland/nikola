@@ -78,19 +78,22 @@ compileEx opts cdefs = do
     (exitCode, _, err) <- readProcessWithExitCode NVCC
         (["--compiler-bindir", NVCC_CC] ++
          concatMap opts2args opts ++
-         ["temp.cu"])
+         [cupath, "-o", objpath])
         ""
     when (exitCode /= ExitSuccess) $
         fail $ "nvcc failed: " ++ err
     B.readFile objpath
   where
+    pathRoot :: FilePath
+    pathRoot = "temp"
+
     cupath :: FilePath
-    cupath = "temp.cu"
+    cupath = pathRoot ++ ".cu"
 
     objpath :: FilePath
-    objpath | Fatbin `elem` opts  = "temp.fatbin"
-            | Cubin `elem` opts   = "temp.cubin"
-            | otherwise           = "temp.ptx"
+    objpath | Fatbin `elem` opts  = pathRoot ++ ".fatbin"
+            | Cubin `elem` opts   = pathRoot ++ ".cubin"
+            | otherwise           = pathRoot ++ ".ptx"
 
 -- Starting with version 4.0, nvcc can compile a fat binary.
 compile :: [C.Definition] -> IO B.ByteString
