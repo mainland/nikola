@@ -78,6 +78,7 @@ compileProgram flags p = do
     addIncludes CUDA = do
         addInclude "\"cuda.h\""
         addInclude "\"cuda_runtime_api.h\""
+        addInclude "<inttypes.h>"
 
     addIncludes OpenMP = do
         addInclude "<stdlib.h>"

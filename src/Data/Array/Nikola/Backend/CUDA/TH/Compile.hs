@@ -1,4 +1,5 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -29,6 +30,7 @@ import qualified Foreign.CUDA.ForeignPtr as CU
 import qualified Language.C.Syntax as C
 import qualified Language.Haskell.TH as TH
 import Language.Haskell.TH (ExpQ)
+import Language.C.Quote.C
 import Text.PrettyPrint.Mainland
 
 import qualified Data.Array.Repa as R
@@ -60,7 +62,10 @@ emptyCExEnv :: CExEnv
 emptyCExEnv = CExEnv
     { cexUniq     = 0
     , cexKernels  = []
-    , cexDefs     = []
+    , cexDefs     = [cunit|$esc:("#include \"cuda.h\"")
+                           $esc:("#include \"cuda_runtime_api.h\"")
+                           $esc:("#include <inttypes.h>")
+                          |]
     , cexContext  = Host
     , cexVarTypes = Map.empty
     }
