@@ -23,14 +23,14 @@ module Foreign.CUDA.ForeignPtr
 
 import Prelude hiding (catch)
 
-import Control.Exception (catch)
+import Control.Concurrent (yield)
 import Foreign.CUDA.Driver
 import Foreign.Concurrent (newForeignPtr)
 import Foreign.ForeignPtr hiding (newForeignPtr)
 import Foreign.Storable
 import GHC.ForeignPtr (ForeignPtr(..))
 import GHC.Ptr (Ptr(..))
-import System.Mem
+import System.Mem (performGC)
 
 type ForeignDevicePtr a = ForeignPtr a
 
@@ -43,12 +43,16 @@ newForeignDevPtr dptr = newForeignPtr (useDevicePtr dptr) (free dptr)
 newForeignDevPtr_ :: DevicePtr a -> IO (ForeignDevicePtr a)
 newForeignDevPtr_ dptr = newForeignPtr_ (useDevicePtr dptr)
 
--- | Allocate an array on a CUDA device. If allocation fails, force a GC to
--- attempt to free some GPU memory held by dead foreign device pointers and then
--- try the allocation once more.
+-- | Allocate an array on a CUDA device. We used to call 'performGC' when
+-- allocation failed and then try once more, but that doesn't work! We need the
+-- GC to finalize unreachable 'ForeignDevicePtr's, but I don't know how to get
+-- that to happen reliably. The solution below seems to work well, but it does
+-- mean every GPU allocation requires invoking the GC.
 mallocDeviceArray :: Storable a => Int -> IO (DevicePtr a)
-mallocDeviceArray n =
-   mallocArray n' `catch` \(_ :: CUDAException) -> performGC >> mallocArray n'
+mallocDeviceArray n = do
+    performGC
+    yield
+    mallocArray n'
   where
     n' :: Int
     n' = max 1 n
