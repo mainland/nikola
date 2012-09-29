@@ -191,5 +191,5 @@ ix2 y x = Z :. y :. x
 
 -- 'Rsh' is a type function from Nikola shapes to Repa shapes.
 type family Rsh a :: *
-type instance Rsh Z         = R.Z
-type instance Rsh (Z :. sh) = R.Z R.:. Rsh sh
+type instance Rsh Z                = R.Z
+type instance Rsh (sh :. Exp t Ix) = Rsh sh R.:. Int
