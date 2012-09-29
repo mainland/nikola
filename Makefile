@@ -11,9 +11,10 @@ GHC_FLAGS += -W -Werror \
 	-optP-include -optPdist/build/autogen/cabal_macros.h
 
 GHC_FLAGS+=-O
-
 #GHC_FLAGS+=-O2
-#GHC_FLAGS+=-Odph -rtsopts -threaded
+
+GHC_FLAGS+=-rtsopts -threaded
+
 #GHC_FLAGS+=-fno-liberate-case \
 #	   -funfolding-use-threshold1000 \
 #	   -funfolding-keeness-factor1000
