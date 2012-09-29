@@ -144,10 +144,50 @@ compileExp (AppE f es) = do
 
 compileExp (CallE f es) =
     inContext Kernel $ do
-    dialect           <- fromLJust fDialect <$> getFlags
-    tau               <- inferExp f
-    let (vtaus, body) =  splitLamE f
-    callKernelFun dialect vtaus body tau es
+    dialect   <- fromLJust fDialect <$> getFlags
+    tau       <- inferExp f
+    kern      <- gensym "kern"
+    let cf    =  ScalarCE [cexp|$id:kern|]
+    idxs      <- compileKernelFun dialect kern vtaus body
+    let idxs' =  [(idx, f es) | (idx, f) <- idxs]
+    compileCall dialect Host Kernel tau es (callKernel dialect cf idxs')
+  where
+    (vtaus, body) =  splitLamE f
+    callKernel :: Dialect -> CExp -> [(Idx, Exp)] -> Maybe CExp -> [C.Exp] -> C ()
+    callKernel CUDA cf idxs _ cargs = inBlock $ do
+        let cudaIdxs = [(dim, boundsOf dim idxs) | dim <- [CudaDimX, CudaDimY, CudaDimZ]
+                                                 , let bs = boundsOf dim idxs
+                                                 , not (null bs)]
+        addLocal [cdecl|typename dim3 gridDims;|]
+        addLocal [cdecl|typename dim3 blockDims;|]
+        mapM_ (setGridDim (cudaGridDims cudaIdxs)) [CudaDimX, CudaDimY, CudaDimZ]
+        addStm [cstmCU|$cf<<<blockDims,gridDims>>>($args:cargs);|]
+
+    callKernel _ cf _ Nothing cargs =
+        addStm [cstm|$cf($args:cargs);|]
+
+    callKernel _ cf _ (Just cresult) cargs =
+        addStm [cstm|$cresult = $cf($args:cargs);|]
+
+    setGridDim :: [(CudaDim, ([Exp], Exp, Exp))] -> CudaDim -> C ()
+    setGridDim dims dim =
+        case lookup dim dims of
+          Nothing -> return ()
+          Just (_, blockDim, gridDim) -> do cblockDim <- compileExp blockDim
+                                            cgridDim  <- compileExp gridDim
+                                            addStm [cstm|blockDims.$id:(cudaDimVar dim) = $cblockDim;|]
+                                            addStm [cstm|gridDims.$id:(cudaDimVar dim)  = $cgridDim;|]
+
+    cudaGridDims :: [(CudaDim, [Exp])] -> [(CudaDim, ([Exp], Exp, Exp))]
+    cudaGridDims []            = []
+    cudaGridDims [(dim, bs)]   = [(dim, (bs, 480, 128))]
+    cudaGridDims [(dim1, bs1)
+                 ,(dim2, bs2)] = [(dim1, (bs1, 16, 128))
+                                 ,(dim2, (bs2,  8, 128))]
+    cudaGridDims _             = error "cudaGridDims: failed to compute grid dimensions"
+
+    boundsOf :: CudaDim -> [(Idx, Exp)] -> [Exp]
+    boundsOf dim idxs = [e | (CudaThreadIdx dim', e) <- idxs, dim' == dim]
 
 compileExp (UnopE op e) = do
     tau <- inferExp e >>= checkScalarT
@@ -454,56 +494,6 @@ compileKernelFun dialect fname vtaus m =
               Just i  -> Identity (args !! i)
 
         go w a = traverseFam go w a
-
--- | Call a kernel function (from the host).
-callKernelFun :: Dialect
-              -> [(Var, Type)]
-              -> Exp
-              -> Type
-              -> [Exp]
-              -> C CExp
-callKernelFun dialect vtaus p tau es = do
-    kern      <- gensym "kern"
-    let cf    =  ScalarCE [cexp|$id:kern|]
-    idxs      <- compileKernelFun dialect kern vtaus p
-    let idxs' =  [(idx, f es) | (idx, f) <- idxs]
-    compileCall dialect Host Kernel tau es (callKernel dialect cf idxs')
-  where
-    callKernel :: Dialect -> CExp -> [(Idx, Exp)] -> Maybe CExp -> [C.Exp] -> C ()
-    callKernel CUDA cf idxs _ cargs = inBlock $ do
-        let cudaIdxs = [(dim, boundsOf dim idxs) | dim <- [CudaDimX, CudaDimY, CudaDimZ]
-                                                 , let bs = boundsOf dim idxs
-                                                 , not (null bs)]
-        addLocal [cdecl|typename dim3 gridDims;|]
-        addLocal [cdecl|typename dim3 blockDims;|]
-        mapM_ (setGridDim (cudaGridDims cudaIdxs)) [CudaDimX, CudaDimY, CudaDimZ]
-        addStm [cstmCU|$cf<<<blockDims,gridDims>>>($args:cargs);|]
-
-    callKernel _ cf _ Nothing cargs =
-        addStm [cstm|$cf($args:cargs);|]
-
-    callKernel _ cf _ (Just cresult) cargs =
-        addStm [cstm|$cresult = $cf($args:cargs);|]
-
-    setGridDim :: [(CudaDim, ([Exp], Exp, Exp))] -> CudaDim -> C ()
-    setGridDim dims dim =
-        case lookup dim dims of
-          Nothing -> return ()
-          Just (_, blockDim, gridDim) -> do cblockDim <- compileExp blockDim
-                                            cgridDim  <- compileExp gridDim
-                                            addStm [cstm|blockDims.$id:(cudaDimVar dim) = $cblockDim;|]
-                                            addStm [cstm|gridDims.$id:(cudaDimVar dim)  = $cgridDim;|]
-
-    cudaGridDims :: [(CudaDim, [Exp])] -> [(CudaDim, ([Exp], Exp, Exp))]
-    cudaGridDims []            = []
-    cudaGridDims [(dim, bs)]   = [(dim, (bs, 480, 128))]
-    cudaGridDims [(dim1, bs1)
-                 ,(dim2, bs2)] = [(dim1, (bs1, 16, 128))
-                                 ,(dim2, (bs2,  8, 128))]
-    cudaGridDims _             = error "cudaGridDims: failed to compute grid dimensions"
-
-    boundsOf :: CudaDim -> [(Idx, Exp)] -> [Exp]
-    boundsOf dim idxs = [e | (CudaThreadIdx dim', e) <- idxs, dim' == dim]
 
 returnResultsByReference :: Dialect -> Context -> Context -> Type -> Bool
 returnResultsByReference _ callerCtx calleeCtx tau
