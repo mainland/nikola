@@ -20,7 +20,6 @@ module Data.Array.Repa.Repr.CUDA.UnboxedForeign
     ( CUF
     , Array(..)
 
-    , fromListUnboxedForeign
     , fromUnboxedForeign, toUnboxedForeign
 
     , fromHostArray, toHostArray
@@ -86,15 +85,6 @@ instance U.UnboxForeign e => Target CUF e where
     {-# INLINE touchMVec #-}
     touchMVec _ =
         return ()
-
--- | O(n). Convert a list to an unboxed vector array.
---
---   * This is an alias for `fromList` with a more specific type.
---
-fromListUnboxedForeign :: (Shape sh, U.UnboxForeign a)
-                       => sh -> [a] -> Array CUF sh a
-{-# INLINE fromListUnboxedForeign #-}
-fromListUnboxedForeign = R.fromList
 
 -- | O(1). Wrap an unboxed vector as an array.
 fromUnboxedForeign :: (Shape sh, U.UnboxForeign e)
