@@ -1375,6 +1375,33 @@ copy = G.copy
 -- Conversions - Unboxed host vectors
 -- ----------------------------------
 
+class (UF.UnboxForeign a, UnboxForeign a, HostVector a) => EverywhereUnboxForeign a where
+
+instance EverywhereUnboxForeign Int
+instance EverywhereUnboxForeign Int8
+instance EverywhereUnboxForeign Int16
+instance EverywhereUnboxForeign Int32
+instance EverywhereUnboxForeign Int64
+instance EverywhereUnboxForeign Word
+instance EverywhereUnboxForeign Word8
+instance EverywhereUnboxForeign Word16
+instance EverywhereUnboxForeign Word32
+instance EverywhereUnboxForeign Word64
+instance EverywhereUnboxForeign Float
+instance EverywhereUnboxForeign Double
+instance EverywhereUnboxForeign Char
+
+instance ( EverywhereUnboxForeign a
+         , EverywhereUnboxForeign b
+         )
+         => EverywhereUnboxForeign (a, b) where
+
+instance ( EverywhereUnboxForeign a
+         , EverywhereUnboxForeign b
+         , EverywhereUnboxForeign c
+         )
+         => EverywhereUnboxForeign (a, b, c) where
+
 class HostVector a where
     fromHostVector :: UF.Vector a -> Vector a
     toHostVector   :: Vector a -> UF.Vector a
@@ -1408,10 +1435,10 @@ instance HostVector Bool where
     {-# INLINE toHostVector #-}
     toHostVector (V_Bool v) = UF.V_Bool (S.toHostVector v)
 
-class (UF.UnboxForeign a, UnboxForeign a, HostVector a) => EverywhereUnboxForeign a where
-
 instance ( EverywhereUnboxForeign a
-         , EverywhereUnboxForeign b) => HostVector (a, b) where
+         , EverywhereUnboxForeign b
+         )
+         => HostVector (a, b) where
     {-# INLINE fromHostVector #-}
     fromHostVector v =
         case UF.unzip v of
@@ -1424,7 +1451,9 @@ instance ( EverywhereUnboxForeign a
 
 instance ( EverywhereUnboxForeign a
          , EverywhereUnboxForeign b
-         , EverywhereUnboxForeign c) => HostVector (a, b, c) where
+         , EverywhereUnboxForeign c
+         )
+         => HostVector (a, b, c) where
     {-# INLINE fromHostVector #-}
     fromHostVector v =
         case UF.unzip3 v of
