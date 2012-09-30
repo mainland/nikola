@@ -26,12 +26,14 @@ main = do
         lowy  = -1.0
         highx =  0.0
         highy = -0.75
-    let image = if fromLJust confNikola opts
-                then MN.prettyMandelbrot limit $
-                     MN.mandelbrot lowx lowy highx highy size size limit
-                else unsafePerformIO $
-                     MR.mandelbrot lowx lowy highx highy size size limit >>=
-                     MR.prettyMandelbrot limit
+    let image = case  fromLJust confBackend opts of
+                  Nikola ->
+                      MN.prettyMandelbrot limit $
+                      MN.mandelbrot lowx lowy highx highy size size limit
+                  Repa ->
+                      unsafePerformIO $
+                      MR.mandelbrot lowx lowy highx highy size size limit >>=
+                      MR.prettyMandelbrot limit
     display size image
 
 display :: Int32 -> Bitmap F -> IO ()

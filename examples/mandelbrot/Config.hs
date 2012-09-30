@@ -3,12 +3,16 @@ module Config where
 import Data.Function (on)
 import Data.Monoid (Monoid(..), Last(..))
 
+data Backend = Repa
+             | Nikola
+  deriving (Eq, Show)
+
 data Config = Config
-    { confSize   :: Last Int
-    , confLimit  :: Last Int
-    , confNikola :: Last Bool
-    , confBench  :: Last Bool
-    , confHelp   :: Last Bool
+    { confSize    :: Last Int
+    , confLimit   :: Last Int
+    , confBackend :: Last Backend
+    , confBench   :: Last Bool
+    , confHelp    :: Last Bool
     }
   deriving (Eq, Show)
 
@@ -18,29 +22,29 @@ instance Monoid Config where
 
 defaultConfig :: Config
 defaultConfig = Config
-    { confSize   = ljust 512
-    , confLimit  = ljust 255
-    , confNikola = ljust False
-    , confBench  = ljust False
-    , confHelp   = ljust False
+    { confSize    = ljust 512
+    , confLimit   = ljust 255
+    , confBackend = ljust Repa
+    , confBench   = ljust False
+    , confHelp    = ljust False
     }
 
 emptyConfig :: Config
 emptyConfig = Config
-    { confSize   = mempty
-    , confLimit  = mempty
-    , confNikola = mempty
-    , confBench  = mempty
-    , confHelp   = mempty
+    { confSize    = mempty
+    , confLimit   = mempty
+    , confBackend = mempty
+    , confBench   = mempty
+    , confHelp    = mempty
     }
 
 appendConfig :: Config -> Config -> Config
 appendConfig a b = Config
-    { confSize   = app confSize a b
-    , confLimit  = app confLimit a b
-    , confNikola = app confNikola a b
-    , confBench  = app confBench a b
-    , confHelp   = app confHelp a b
+    { confSize    = app confSize a b
+    , confLimit   = app confLimit a b
+    , confBackend = app confBackend a b
+    , confBench   = app confBench a b
+    , confHelp    = app confHelp a b
     }
   where
     app f = mappend `on` f

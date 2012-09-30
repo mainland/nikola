@@ -2,6 +2,7 @@ module ParseConfig (parseArgs) where
 
 import Control.Applicative
 import Control.Monad (void)
+import Data.Char (toLower)
 import Data.Monoid
 import System.Console.GetOpt
 import System.Environment (getProgName)
@@ -14,15 +15,15 @@ import Config
 -- | The standard options accepted on the command line.
 defaultOptions :: [OptDescr (IO Config)]
 defaultOptions = [
-    Option ['h','?'] ["help"]
+   Option ['h','?'] ["help"]
           (NoArg (return mempty { confHelp = ljust True }))
           "print help and exit"
 
-  , Option [] ["nikola"]
-          (NoArg (return mempty { confNikola = ljust True }))
-          "use the Nikola back-end instead of the Repa back-end"
+ , Option [] ["backend"]
+          (ReqArg (backend $ \b -> mempty { confBackend = b }) "[Repa|Nikola]")
+          "back-end (Repa)"
 
-  , Option [] ["benchmark"]
+ , Option [] ["benchmark"]
           (NoArg (return mempty { confBench = ljust True }))
           "benchmark instead of displaying animation"
 
@@ -61,6 +62,14 @@ printUsage options exitCode = do
   p <- getProgName
   putStr (usageInfo ("Usage: " ++ p ++ " [OPTIONS]") options)
   exitWith exitCode
+
+-- | Parse a backend
+backend :: (Last Backend -> Config) -> String -> IO Config
+backend f s =
+    case map toLower s of
+      "repa"   -> return . f $ ljust Repa
+      "nikola" -> return . f $ ljust Nikola
+      _        -> parseError $ s ++ " is not a valid back-end"
 
 -- | Parse a positive number.
 pos :: (Num a, Ord a, Read a)

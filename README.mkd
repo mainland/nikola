@@ -90,5 +90,4 @@ code](http://community.haskell.org/~simonmar/par-tutorial-cadarache.tar.gz) and
 the [Accelerate mandelbrot
 example](http://github.com/AccelerateHS/accelerate-examples/tree/master/examples/mandelbrot). This
 version has a Repa back-end, which is the default, and a Nikola back-end, which
-is invoked by passing the `--nikola` flag to the `mandel` program.
-
+is invoked by passing the `--backend=nikola` flag to the `mandel` program.
