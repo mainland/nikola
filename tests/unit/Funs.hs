@@ -1,8 +1,5 @@
-module Funs where
-
-import Prelude hiding (map, reverse)
-
-import Data.Array.Nikola.Backend.CUDA
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 -- |
 -- Module      : Data.Array.Nikola.Util.Random
@@ -12,6 +9,17 @@ import Data.Array.Nikola.Backend.CUDA
 -- Maintainer  : Geoffrey Mainland <mainland@apeiron.net>
 -- Stability   : experimental
 -- Portability : non-portable
+
+module Funs where
+
+import Prelude hiding (map, reverse, zipWith)
+
+import Data.Array.Nikola.Backend.CUDA
+import Data.Int
+
+type R = Float
+
+type Complex = (Exp R, Exp R)
 
 revmapinc :: Array M DIM1 (Exp Double) -> Array D DIM1 (Exp Double)
 revmapinc = reverse . map (+1)
@@ -36,3 +44,21 @@ append_delayed v1 =
   where
     v2 :: Array D DIM1 (Exp Float)
     v2 = enumFromN (ix1 10) 0
+
+magnitude :: Complex -> Exp R
+magnitude (x,y) = x*x + y*y
+
+instance Num Complex where
+    (x,y) + (x',y') = (x+x' ,y+y')
+    (x,y) - (x',y') = (x-x', y-y')
+    (x,y) * (x',y') = (x*x'-y*y', x*y'+y*x')
+    negate (x,y)    = (negate x, negate y)
+    abs z           = (magnitude z, 0)
+    signum (0,0)    = 0
+    signum z@(x,y)  = (x/r, y/r) where r = magnitude z
+    fromInteger n   = (fromInteger n, 0)
+
+mandelbrot_init :: Array M DIM1 Complex
+                -> Array M DIM1 Complex
+                -> Array D DIM1 (Complex, Exp Int32)
+mandelbrot_init = zipWith (\x y -> (x*y, 0))

@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -6,10 +7,11 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 -- |
--- Module      : Data.Array.Nikola.Util.Random
+-- Module      : Main
 -- Copyright   : (c) The President and Fellows of Harvard College 2009-2010
 -- Copyright   : (c) Geoffrey Mainland 2012
 -- License     : BSD-style
@@ -32,12 +34,31 @@ import Test.QuickCheck
 import qualified Data.Array.Repa as R
 import qualified Data.Array.Repa.Eval as R
 import qualified Data.Array.Repa.Repr.CUDA.UnboxedForeign as R
+import qualified Data.Array.Repa.Repr.UnboxedForeign as R
 
 import qualified Data.Vector.Storable as V
+import qualified Data.Vector.CUDA.UnboxedForeign as VCUF
 
 import qualified Data.Array.Nikola.Backend.CUDA as N
 import qualified Data.Array.Nikola.Backend.CUDA.Haskell as NH
 import qualified Data.Array.Nikola.Backend.CUDA.TH as NTH
+
+type R = Float
+
+type Complex = (R, R)
+
+magnitude :: Complex -> R
+magnitude (x,y) = x*x + y*y
+
+instance Num Complex where
+    (x,y) + (x',y') = (x+x' ,y+y')
+    (x,y) - (x',y') = (x-x', y-y')
+    (x,y) * (x',y') = (x*x'-y*y', x*y'+y*x')
+    negate (x,y)    = (negate x, negate y)
+    abs z           = (magnitude z, 0)
+    signum (0,0)    = 0
+    signum z@(x,y)  = (x/r, y/r) where r = magnitude z
+    fromInteger n   = (fromInteger n, 0)
 
 main :: IO ()
 main = defaultMain tests
@@ -56,6 +77,8 @@ tests = [ id_test
         , th_revmap_test3
         , th_append_push
         , th_append_delayed
+        , th_mandelbrot_init
+        -- , testProperty "mandelbrot_init" prop_mandelbrot_init
         , testGroup "QuickCheck index space operations"
                         [ testProperty "reverse" prop_reverse
                         , testProperty "init" prop_init
@@ -208,6 +231,34 @@ th_append_delayed = testCase "TH append delayed arrays" $
     f = $(NTH.compileSig Funs.append_delayed
                          (undefined :: V.Vector Float -> V.Vector Float))
 
+th_mandelbrot_init :: Test
+th_mandelbrot_init = testCase "TH mandelbrot init" $
+    f xs xs @=? g xs xs
+  where
+    xs :: [Complex]
+    xs = [1..10] `zip` [2..11]
+
+    f0 :: R.Array R.CUF R.DIM1 Complex
+       -> R.Array R.CUF R.DIM1 Complex
+       -> R.Array R.CUF R.DIM1 (Complex, Int32)
+    f0 = $(NTH.compile Funs.mandelbrot_init)
+
+    f :: [Complex] -> [Complex] -> [(Complex, Int32)]
+    f xs ys =
+        toHostList $ f0 (fromHostList xs) (fromHostList ys)
+
+    fromHostList :: VCUF.EverywhereUnboxForeign a
+                 => [a] -> R.Array R.CUF R.DIM1 a
+    fromHostList xs =
+        R.fromHostArray $ R.fromListUnboxedForeign (R.ix1 (length xs)) xs
+
+    toHostList :: VCUF.EverywhereUnboxForeign a
+               => R.Array R.CUF R.DIM1 a -> [a]
+    toHostList = R.toList . R.toHostArray
+
+    g :: [Complex] -> [Complex] -> [(Complex, Int32)]
+    g = zipWith (\x y -> (x*y, 0))
+
 prop_reverse :: [Float] -> Property
 prop_reverse xs = length xs > 0 ==> reverseN xs == reverse xs
   where
@@ -249,3 +300,27 @@ prop_drop n xs = property $ dropN n xs == drop (fromIntegral n) xs
                                      -> N.Array N.M N.DIM1 (N.Exp Float)
                                      -> N.Array N.D N.DIM1 (N.Exp Float))
                              (undefined :: Int32 -> [Float] -> [Float]))
+
+prop_mandelbrot_init :: [Complex] -> [Complex] -> Property
+prop_mandelbrot_init xs ys =
+    property $ f xs xs == g xs xs
+  where
+    f0 :: R.Array R.CUF R.DIM1 Complex
+       -> R.Array R.CUF R.DIM1 Complex
+       -> R.Array R.CUF R.DIM1 (Complex, Int32)
+    f0 = $(NTH.compile Funs.mandelbrot_init)
+
+    f :: [Complex] -> [Complex] -> [(Complex, Int32)]
+    f xs ys = toHostList $ f0 (fromHostList xs) (fromHostList ys)
+
+    g :: [Complex] -> [Complex] -> [(Complex, Int32)]
+    g = zipWith (\x y -> (x*y, 0))
+
+    fromHostList :: VCUF.EverywhereUnboxForeign a
+                 => [a] -> R.Array R.CUF R.DIM1 a
+    fromHostList xs =
+        R.fromHostArray $ R.fromListUnboxedForeign (R.ix1 (length xs)) xs
+
+    toHostList :: VCUF.EverywhereUnboxForeign a
+               => R.Array R.CUF R.DIM1 a -> [a]
+    toHostList = R.toList . R.toHostArray
