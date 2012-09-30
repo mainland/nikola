@@ -268,22 +268,6 @@ class IsArrayVal a where
     toArrayVal   :: a -> (PtrVal -> Ex b) -> Ex b
     fromArrayVal :: PtrVal -> [Int] -> Ex a
 
-instance (IsArrayVal [a], IsArrayVal [b]) => IsArrayVal [(a, b)] where
-    toArrayVal xs kont =
-        toArrayVal as $ \vas -> do
-        toArrayVal bs $ \vbs -> do
-        kont $ TupPtrV [vas, vbs]
-      where
-        (as, bs) = unzip xs
-
-    fromArrayVal (TupPtrV [vas, vbs]) sh = do
-        as <- fromArrayVal vas sh
-        bs <- fromArrayVal vbs sh
-        return $ as `zip` bs
-
-    fromArrayVal _ _ =
-        fail "internal error: fromArrayVal [a,b]"
-
 --
 -- The 'IsArrayVal' instances for lists
 --
@@ -322,6 +306,22 @@ instance IsArrayVal [Bool] where
 
     fromArrayVal val n =
         map toBool <$> fromArrayVal val n
+
+instance (IsArrayVal [a], IsArrayVal [b]) => IsArrayVal [(a, b)] where
+    toArrayVal xs kont =
+        toArrayVal as $ \vas -> do
+        toArrayVal bs $ \vbs -> do
+        kont $ TupPtrV [vas, vbs]
+      where
+        (as, bs) = unzip xs
+
+    fromArrayVal (TupPtrV [vas, vbs]) sh = do
+        as <- fromArrayVal vas sh
+        bs <- fromArrayVal vbs sh
+        return $ as `zip` bs
+
+    fromArrayVal _ _ =
+        fail "internal error: fromArrayVal [a,b]"
 
 --
 -- The 'IsArrayVal' instances for Storable Vectors

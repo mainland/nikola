@@ -510,22 +510,6 @@ class IsArrayVal a where
     coerceArrayArg    :: a -> ExpQ
     coerceArrayResult :: a -> ExpQ
 
-instance (IsArrayVal [a], IsArrayVal [b]) => IsArrayVal [(a, b)] where
-    coerceArrayArg _ =
-        [|\xs kont ->
-          do let (as, bs) = unzip xs
-             $(coerceArrayArg (undefined :: [a])) as $ \arra -> do
-             $(coerceArrayArg (undefined :: [b])) bs $ \arrb -> do
-             kont (arra, arrb)
-         |]
-
-    coerceArrayResult _ =
-        [|\(arra, arrb) sh -> do
-           as <- $(coerceArrayResult (undefined :: [a])) arra sh
-           bs <- $(coerceArrayResult (undefined :: [b])) arrb sh
-           return (as `zip` bs)
-         |]
-
 --
 -- 'IsArrayVal' instances for lists
 --
@@ -577,6 +561,22 @@ instance IsArrayVal [Bool] where
           do xs <- CU.withForeignDevPtr fdptr $ \dptr ->
                    CU.peekListArray n dptr
              return $ map toBool  xs
+         |]
+
+instance (IsArrayVal [a], IsArrayVal [b]) => IsArrayVal [(a, b)] where
+    coerceArrayArg _ =
+        [|\xs kont ->
+          do let (as, bs) = unzip xs
+             $(coerceArrayArg (undefined :: [a])) as $ \arra -> do
+             $(coerceArrayArg (undefined :: [b])) bs $ \arrb -> do
+             kont (arra, arrb)
+         |]
+
+    coerceArrayResult _ =
+        [|\(arra, arrb) sh -> do
+           as <- $(coerceArrayResult (undefined :: [a])) arra sh
+           bs <- $(coerceArrayResult (undefined :: [b])) arrb sh
+           return (as `zip` bs)
          |]
 
 --
