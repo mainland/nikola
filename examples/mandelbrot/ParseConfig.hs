@@ -69,6 +69,7 @@ backend f s =
     case map toLower s of
       "repa"     -> return . f $ ljust Repa
       "repav1"   -> return . f $ ljust RepaV1
+      "repav2"   -> return . f $ ljust RepaV2
       "nikola"   -> return . f $ ljust Nikola
       "nikolav1" -> return . f $ ljust NikolaV1
       _          -> parseError $ s ++ " is not a valid back-end"

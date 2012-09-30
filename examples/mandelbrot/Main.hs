@@ -12,6 +12,7 @@ import ParseConfig
 
 import qualified Mandelbrot.NikolaV1 as MN1
 import qualified Mandelbrot.RepaV1 as MR1
+import qualified Mandelbrot.RepaV2 as MR2
 import Mandelbrot.Types
 
 --import qualified Graphics.Gloss as G
@@ -27,18 +28,22 @@ main = do
         highx =  0.0
         highy = -0.75
     let image = case  fromLJust confBackend opts of
-                  Repa ->
-                      unsafePerformIO $
-                      MR1.mandelbrot lowx lowy highx highy size size limit >>=
-                      MR1.prettyMandelbrot limit
                   RepaV1 ->
                       unsafePerformIO $
                       MR1.mandelbrot lowx lowy highx highy size size limit >>=
                       MR1.prettyMandelbrot limit
-                  Nikola ->
+                  RepaV2 ->
+                      unsafePerformIO $
+                      MR2.mandelbrot lowx lowy highx highy size size limit >>=
+                      MR2.prettyMandelbrot limit
+                  Repa ->
+                      unsafePerformIO $
+                      MR2.mandelbrot lowx lowy highx highy size size limit >>=
+                      MR2.prettyMandelbrot limit
+                  NikolaV1 ->
                       MN1.prettyMandelbrot limit $
                       MN1.mandelbrot lowx lowy highx highy size size limit
-                  NikolaV1 ->
+                  Nikola ->
                       MN1.prettyMandelbrot limit $
                       MN1.mandelbrot lowx lowy highx highy size size limit
     display size image

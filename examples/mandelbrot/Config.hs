@@ -5,6 +5,7 @@ import Data.Monoid (Monoid(..), Last(..))
 
 data Backend = Repa
              | RepaV1
+             | RepaV2
              | Nikola
              | NikolaV1
   deriving (Eq, Show)
