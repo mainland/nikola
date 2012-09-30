@@ -211,7 +211,10 @@ compileExp e0@(CallE f es) = do
     -- consisting of the thread block dimensions and the grid dimensions,
     cudaGridDims :: [(CudaDim, [ExpQ])] -> CEx (ExpQ, ExpQ)
     cudaGridDims []              = return ([|(1, 1, 1)|],   [|(1, 1, 1)|])
-    cudaGridDims [(CudaDimX, _)] = return ([|(480, 1, 1)|], [|(128, 1, 1)|])
+    cudaGridDims [(CudaDimX, _)] = return ([|(128, 1, 1)|], [|(480, 1, 1)|])
+    cudaGridDims [(CudaDimX, _)
+                 ,(CudaDimY, _)
+                 ]               = return ([|(128, 128, 1)|], [|(16, 8, 1)|])
     cudaGridDims _               = error "cudaGridDims: failed to compute grid dimensions"
 
     -- Given a CUDA dimension (x, y, or z) and a list of indices and their
