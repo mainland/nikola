@@ -18,6 +18,10 @@ defaultOptions = [
           (NoArg (return mempty { confHelp = ljust True }))
           "print help and exit"
 
+  , Option [] ["nikola"]
+          (NoArg (return mempty { confNikola = ljust True }))
+          "use the Nikola back-end instead of the Repa back-end"
+
   , Option [] ["benchmark"]
           (NoArg (return mempty { confBench = ljust True }))
           "benchmark instead of displaying animation"

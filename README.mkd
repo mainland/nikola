@@ -81,3 +81,14 @@ This is a Nikola implementation of Ken Friis Larsen's Haskell code for pricing
 American options. The original version is available [on
 github](http://github.com/kfl/american-options). Thanks to Ken for the `vector`
 version and permission to distribute this as a Nikola example.
+
+Mandelbrot
+----------
+
+The `mandelbrot` example is adapted from Simon Marlow's par tutorial
+code](http://community.haskell.org/~simonmar/par-tutorial-cadarache.tar.gz) and
+the [Accelerate mandelbrot
+example](http://github.com/AccelerateHS/accelerate-examples/tree/master/examples/mandelbrot). This
+version has a Repa back-end, which is the default, and a Nikola back-end, which
+is invoked by passing the `--nikola` flag to the `mandel` program.
+

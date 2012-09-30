@@ -7,17 +7,21 @@ module Mandelbrot.Nikola.Implementation where
 
 import qualified Prelude as P
 import Prelude hiding (map, zipWith)
-import Prelude (Num)
-
-import Data.Int
 
 import Data.Array.Nikola.Backend.CUDA
+import Data.Int
 
-type F = Float
+import Mandelbrot.Types hiding (Bitmap, Complex, ComplexPlane, StepPlane)
 
-type Complex = (Exp F, Exp F)
+type Bitmap r = Array r DIM2 (Exp RGBA)
 
-magnitude :: Complex -> Exp F
+type Complex = (Exp R, Exp R)
+
+type ComplexPlane r = Array r DIM2 Complex
+
+type StepPlane r = Array r DIM2 (Complex, Exp Int32)
+
+magnitude :: Complex -> Exp R
 magnitude (x,y) = x*x + y*y
 
 instance Num Complex where
@@ -30,10 +34,6 @@ instance Num Complex where
     signum z@(x,y)  = (x/r, y/r) where r = magnitude z
     fromInteger n   = (fromInteger n, 0)
 
-type ComplexPlane r = Array r DIM2 Complex
-
-type StepPlane r = Array r DIM2 (Complex, Exp Int32)
-
 step :: ComplexPlane M -> StepPlane M -> StepPlane D
 step cs = zipWith stepPoint cs
   where
@@ -45,13 +45,13 @@ step cs = zipWith stepPoint cs
       where
          z' = next c z
 
-next :: Complex -> Complex -> Complex
-next c z = c + (z * z)
+    next :: Complex -> Complex -> Complex
+    next c z = c + (z * z)
 
-genPlane :: Exp F
-         -> Exp F
-         -> Exp F
-         -> Exp F
+genPlane :: Exp R
+         -> Exp R
+         -> Exp R
+         -> Exp R
          -> Exp Int32
          -> Exp Int32
          -> ComplexPlane D
@@ -59,7 +59,7 @@ genPlane lowx lowy highx highy viewx viewy =
     fromFunction (Z:.viewy:.viewx) $ \(Z:.x:.y) ->
         (lowx + (fromInt x*xsize)/fromInt viewx, lowy + (fromInt y*ysize)/fromInt viewy)
    where
-      xsize, ysize :: Exp F
+      xsize, ysize :: Exp R
       xsize = highx - lowx
       ysize = highy - lowy
 
@@ -68,3 +68,16 @@ mkinit cs = map f cs
   where
     f :: Complex -> (Complex, Exp Int32)
     f z = (z,0)
+
+prettyRGBA :: Exp Int32 -> (Complex, Exp Int32) -> Exp RGBA
+{-# INLINE prettyRGBA #-}
+prettyRGBA limit (_, s) = r + g + b + a
+  where
+    t = fromInt $ ((limit - s) * 255) `quot` limit
+    r = (t     `mod` 128 + 64) * 0x1000000
+    g = (t * 2 `mod` 128 + 64) * 0x10000
+    b = (t * 3 `mod` 256     ) * 0x100
+    a = 0xFF
+
+prettyMandelbrot :: Exp Int32 -> StepPlane M -> Bitmap D
+prettyMandelbrot limit zs = map (prettyRGBA limit) zs

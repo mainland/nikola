@@ -13,13 +13,10 @@ import qualified Prelude as P
 
 import Data.Array.Repa
 import Data.Array.Repa.Repr.ForeignPtr
-import Data.Word
 
-type FloatRep = Float
+import Mandelbrot.Types
 
-type Complex = (FloatRep, FloatRep)
-
-magnitude :: Complex -> FloatRep
+magnitude :: Complex -> R
 magnitude (x,y) = x*x + y*y
 
 instance Num Complex where
@@ -30,7 +27,7 @@ instance Num Complex where
     {-# INLINE abs #-}
     {-# INLINE signum #-}
     {-# INLINE fromInteger #-}
-    (x,y) + (x',y') = (x+x' ,y+y')
+    (x,y) + (x',y') = (x+x', y+y')
     (x,y) - (x',y') = (x-x', y-y')
     (x,y) * (x',y') = (x*x'-y*y', x*y'+y*x')
     negate (x,y)    = (negate x, negate y)
@@ -39,16 +36,11 @@ instance Num Complex where
     signum z@(x,y)  = (x/r, y/r) where r = magnitude z
     fromInteger n   = (fromInteger n, 0)
 
-type ComplexPlane r = Array r DIM2 Complex
-
-type StepPlane r = Array r DIM2 (Complex, Int)
-
-step :: Source r Complex
-     => ComplexPlane r -> StepPlane U -> IO (StepPlane U)
+step :: ComplexPlane U -> StepPlane U -> IO (StepPlane U)
 step cs zs =
     computeP $ zipWith stepPoint cs zs
   where
-    stepPoint :: Complex -> (Complex, Int) -> (Complex, Int)
+    stepPoint :: Complex -> (Complex, I) -> (Complex, I)
     {-# INLINE stepPoint #-}
     stepPoint !c (!z,!i) =
         if magnitude z' > 4.0
@@ -57,43 +49,44 @@ step cs zs =
       where
          z' = next c z
 
-next :: Complex -> Complex -> Complex
-{-# INLINE next #-}
-next !c !z = c + (z * z)
+    next :: Complex -> Complex -> Complex
+    {-# INLINE next #-}
+    next !c !z = c + (z * z)
 
-genPlane :: FloatRep
-         -> FloatRep
-         -> FloatRep
-         -> FloatRep
-         -> Int
-         -> Int
+genPlane :: R
+         -> R
+         -> R
+         -> R
+         -> I
+         -> I
          -> ComplexPlane D
 genPlane lowx lowy highx highy viewx viewy =
-    fromFunction (Z:.viewy:.viewx) $ \(Z:.(!x):.(!y)) ->
+    fromFunction (Z:.fromIntegral viewy:.fromIntegral viewx) $ \(Z:.(!x):.(!y)) ->
         (lowx + (fromIntegral x*xsize)/fromIntegral viewx,
          lowy + (fromIntegral y*ysize)/fromIntegral viewy)
    where
-      xsize, ysize :: FloatRep
+      xsize, ysize :: R
       xsize = highx - lowx
       ysize = highy - lowy
 
-mkinit :: Source r Complex => ComplexPlane r -> StepPlane D
+mkinit :: ComplexPlane D -> StepPlane D
 mkinit cs = map f cs
   where
-    f :: Complex -> (Complex, Int)
+    f :: Complex -> (Complex, I)
     {-# INLINE f #-}
     f z = (z, 0)
 
-mandelbrot :: FloatRep
-           -> FloatRep
-           -> FloatRep
-           -> FloatRep
-           -> Int
-           -> Int
-           -> Int
+mandelbrot :: R
+           -> R
+           -> R
+           -> R
+           -> I
+           -> I
+           -> I
            -> IO (StepPlane U)
-mandelbrot lowx lowy highx highy viewx viewy depth =
-    computeP zs0 >>= iterateM (step cs) depth
+mandelbrot lowx lowy highx highy viewx viewy depth = do
+    cs' <- computeP cs
+    computeP zs0 >>= iterateM (step cs') depth
   where
     cs :: ComplexPlane D
     cs = genPlane lowx lowy highx highy viewx viewy
@@ -101,15 +94,13 @@ mandelbrot lowx lowy highx highy viewx viewy depth =
     zs0 :: StepPlane D
     zs0 = mkinit cs
 
-iterateM :: Monad m => (a -> m a) -> Int -> a -> m a
+iterateM :: Monad m => (a -> m a) -> I -> a -> m a
 iterateM f = go
   where
     go 0 x = return x
     go n x = f x >>= go (n-1)
 
-type RGBA = Word32
-
-prettyRGBA :: Int -> (Complex, Int) -> RGBA
+prettyRGBA :: I -> (Complex, I) -> RGBA
 {-# INLINE prettyRGBA #-}
 prettyRGBA limit (_, s) = r + g + b + a
   where
@@ -119,5 +110,5 @@ prettyRGBA limit (_, s) = r + g + b + a
     b = (t * 3 `mod` 256     ) * 0x100
     a = 0xFF
 
-prettyMandelbrot :: Int -> StepPlane U -> IO (Array F DIM2 RGBA)
+prettyMandelbrot :: I -> StepPlane U -> IO (Bitmap F)
 prettyMandelbrot limit zs = computeP $ map (prettyRGBA limit) zs
