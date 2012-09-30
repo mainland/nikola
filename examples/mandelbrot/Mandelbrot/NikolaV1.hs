@@ -1,7 +1,7 @@
 {-# LANGUAGe BangPatterns #-}
 {-# LANGUAGe TemplateHaskell #-}
 
-module Mandelbrot.Nikola
+module Mandelbrot.NikolaV1
     ( mandelbrot
     , prettyMandelbrot
     ) where
@@ -14,7 +14,7 @@ import Data.Array.Repa.Repr.CUDA.UnboxedForeign
 import qualified Data.Vector.UnboxedForeign as VUF
 import qualified Data.Vector.Storable as V
 
-import qualified Mandelbrot.Nikola.Implementation as I
+import qualified Mandelbrot.NikolaV1.Implementation as I
 import Mandelbrot.Types
 
 step :: ComplexPlane CUF -> StepPlane CUF -> StepPlane CUF

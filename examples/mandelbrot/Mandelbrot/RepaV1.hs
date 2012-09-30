@@ -3,7 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module Mandelbrot.Repa
+module Mandelbrot.RepaV1
     ( mandelbrot
     , prettyMandelbrot
     ) where

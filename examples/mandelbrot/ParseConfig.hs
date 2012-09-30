@@ -20,7 +20,7 @@ defaultOptions = [
           "print help and exit"
 
  , Option [] ["backend"]
-          (ReqArg (backend $ \b -> mempty { confBackend = b }) "[Repa|Nikola]")
+          (ReqArg (backend $ \b -> mempty { confBackend = b }) "[repa|repav1|nikola|nikolav1]")
           "back-end (Repa)"
 
  , Option [] ["benchmark"]
@@ -67,9 +67,11 @@ printUsage options exitCode = do
 backend :: (Last Backend -> Config) -> String -> IO Config
 backend f s =
     case map toLower s of
-      "repa"   -> return . f $ ljust Repa
-      "nikola" -> return . f $ ljust Nikola
-      _        -> parseError $ s ++ " is not a valid back-end"
+      "repa"     -> return . f $ ljust Repa
+      "repav1"   -> return . f $ ljust RepaV1
+      "nikola"   -> return . f $ ljust Nikola
+      "nikolav1" -> return . f $ ljust NikolaV1
+      _          -> parseError $ s ++ " is not a valid back-end"
 
 -- | Parse a positive number.
 pos :: (Num a, Ord a, Read a)

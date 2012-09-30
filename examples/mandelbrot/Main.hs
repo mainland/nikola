@@ -10,8 +10,8 @@ import System.IO.Unsafe (unsafePerformIO)
 import Config
 import ParseConfig
 
-import qualified Mandelbrot.Nikola as MN
-import qualified Mandelbrot.Repa as MR
+import qualified Mandelbrot.NikolaV1 as MN1
+import qualified Mandelbrot.RepaV1 as MR1
 import Mandelbrot.Types
 
 --import qualified Graphics.Gloss as G
@@ -27,13 +27,20 @@ main = do
         highx =  0.0
         highy = -0.75
     let image = case  fromLJust confBackend opts of
-                  Nikola ->
-                      MN.prettyMandelbrot limit $
-                      MN.mandelbrot lowx lowy highx highy size size limit
                   Repa ->
                       unsafePerformIO $
-                      MR.mandelbrot lowx lowy highx highy size size limit >>=
-                      MR.prettyMandelbrot limit
+                      MR1.mandelbrot lowx lowy highx highy size size limit >>=
+                      MR1.prettyMandelbrot limit
+                  RepaV1 ->
+                      unsafePerformIO $
+                      MR1.mandelbrot lowx lowy highx highy size size limit >>=
+                      MR1.prettyMandelbrot limit
+                  Nikola ->
+                      MN1.prettyMandelbrot limit $
+                      MN1.mandelbrot lowx lowy highx highy size size limit
+                  NikolaV1 ->
+                      MN1.prettyMandelbrot limit $
+                      MN1.mandelbrot lowx lowy highx highy size size limit
     display size image
 
 display :: Int32 -> Bitmap F -> IO ()

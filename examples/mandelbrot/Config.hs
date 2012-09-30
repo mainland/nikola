@@ -4,7 +4,9 @@ import Data.Function (on)
 import Data.Monoid (Monoid(..), Last(..))
 
 data Backend = Repa
+             | RepaV1
              | Nikola
+             | NikolaV1
   deriving (Eq, Show)
 
 data Config = Config
