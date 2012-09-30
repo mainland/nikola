@@ -19,13 +19,7 @@ module Data.Array.Nikola.Repr.Manifest (
     M,
     Array(..),
 
-    IsElem(..),
-
-    Manifest(..),
-
-    alloca,
-    write,
-    mkManifest
+    IsElem(..)
   ) where
 
 import Data.Typeable (Typeable)
@@ -34,6 +28,7 @@ import Data.Typeable (Typeable)
 import Data.Array.Nikola.Array
 import Data.Array.Nikola.Exp
 import Data.Array.Nikola.Shape
+import Data.Array.Nikola.Eval.Target
 
 import Data.Array.Nikola.Language.Check
 import Data.Array.Nikola.Language.Monad
@@ -49,52 +44,31 @@ instance IsElem a => IsArray M a where
 
     extent (AManifest sh _) = sh
 
-instance IsElem a => Source M a where
+instance IsElem e => Source M e where
     index (AManifest sh arr) ix =
         indexElem (E arr) (toIndex sh ix)
 
     linearIndex (AManifest _ arr) ix =
         indexElem (E arr) ix
 
-class (IsElem a, IsArray r a) => Manifest r a where
-    manifest :: (Shape sh)
-             => Array r sh a
-             -> Array M sh a
-             -> P ()
+instance IsElem e => Target M e where
+    data MArray M sh e = MManifest sh S.Exp
 
-instance IsElem a => Manifest M a where
-    manifest v1@(AManifest sh _) v2 = do
-        i <- parfor sh
-        write v2 i (index v1 i)
+    newMArray sh = do
+        v         <- gensym "vec_alloca"
+        let atau  =  ArrayT tau (rank sh)
+        shiftH $ \k -> do
+            p         <- reset $ extendVarTypes [(v, atau)] $ k ()
+            let alloc =  AllocE atau (map unE (listOfShape sh))
+            return $ BindE v atau alloc p
+        shift $ \k -> do
+        extendVarTypes [(v, atau)] $ k (MManifest sh (VarE v))
+      where
+        tau :: ScalarType
+        tau = typeOf (undefined :: e)
 
-alloca :: forall sh a . (IsElem a, Shape sh)
-       => sh
-       -> P (Array M sh a)
-alloca sh = do
-    v         <- gensym "vec_alloca"
-    let atau  =  ArrayT tau (rank sh)
-    shiftH $ \k -> do
-        p         <- reset $ extendVarTypes [(v, atau)] $ k ()
-        let alloc =  AllocE atau (map unE (listOfShape sh))
-        return $ BindE v atau alloc p
-    shift $ \k -> do
-    extendVarTypes [(v, atau)] $ k (AManifest sh (VarE v))
-  where
-    tau :: ScalarType
-    tau = typeOf (undefined :: a)
+    unsafeWriteMArray (MManifest sh arr) idx x =
+        writeElem (E arr) (toIndex sh idx) x
 
-write :: forall sh a . (IsElem a, Shape sh)
-      => Array M sh a
-      -> sh
-      -> a
-      -> P ()
-write (AManifest sh arr) idx x =
-    writeElem (E arr) (toIndex sh idx) x
-
-mkManifest :: (Shape sh, IsElem a, Manifest r a)
-           => Array r sh a
-           -> P (Array M sh a)
-mkManifest arr = do
-    arr' <- alloca (extent arr)
-    manifest arr arr'
-    return arr'
+    unsafeFreezeMArray (MManifest sh arr) =
+        return $ AManifest sh arr

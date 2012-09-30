@@ -25,8 +25,7 @@ module Data.Array.Nikola.Repr.Push (
 import Data.Typeable (Typeable)
 
 import Data.Array.Nikola.Array
-import Data.Array.Nikola.Exp
-import Data.Array.Nikola.Repr.Manifest
+import Data.Array.Nikola.Eval
 import Data.Array.Nikola.Shape
 
 import Data.Array.Nikola.Language.Monad
@@ -41,14 +40,14 @@ instance IsArray PSH a where
 
     extent (APush sh _) = sh
 
-instance IsElem a => Manifest PSH a where
-    manifest (APush _ m) v = do
-    p1 <- reset $ do  (i, x) <- m
-                      write v i x
-                      return $ ReturnE UnitE
-    shift $ \k -> do
-    p2 <- reset $ k ()
-    return $ p1 `seqE` p2
+instance Shape sh => Load PSH sh e where
+    loadP (APush _ m) marr = do
+        p1 <- reset $ do  (i, x) <- m
+                          unsafeWriteMArray marr i x
+                          return $ ReturnE UnitE
+        shift $ \k -> do
+        p2 <- reset $ k ()
+        return $ p1 `seqE` p2
 
 -- | Construct a push array from a function mapping indices to values.
 mkPushArray :: forall sh a . (Shape sh)

@@ -30,6 +30,7 @@ import Data.Typeable (Typeable)
 
 import Data.Array.Nikola.Array
 import Data.Array.Nikola.Exp
+import Data.Array.Nikola.Eval
 import Data.Array.Nikola.Repr.Manifest
 import Data.Array.Nikola.Shape
 
@@ -50,14 +51,14 @@ instance Source D a where
 
     linearIndex (ADelayed sh f) ix = f (fromIndex sh ix)
 
-instance IsElem a => Manifest D a where
-    manifest (ADelayed sh f) v = do
-    p1 <- reset $ do  i <- parfor sh
-                      write v i (f i)
-                      return $ ReturnE UnitE
-    shift $ \k -> do
-    p2 <- reset $ k ()
-    return $ p1 `seqE` p2
+instance Shape sh => Load D sh e where
+    loadP (ADelayed sh f) marr = do
+        p1 <- reset $ do  i <- parfor sh
+                          unsafeWriteMArray marr i (f i)
+                          return $ ReturnE UnitE
+        shift $ \k -> do
+        p2 <- reset $ k ()
+        return $ p1 `seqE` p2
 
 -- | Construct a delayed array from a function mapping indices to values.
 fromFunction :: forall sh a . (Shape sh)

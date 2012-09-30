@@ -28,6 +28,7 @@ import Data.Typeable (Typeable)
 
 import Data.Array.Nikola.Array
 import Data.Array.Nikola.Exp
+import Data.Array.Nikola.Eval
 import Data.Array.Nikola.Repr.Delayed
 import Data.Array.Nikola.Repr.Manifest
 import Data.Array.Nikola.Shape
@@ -56,19 +57,19 @@ instance (IsElem (Exp t a)) => Reifiable (P (Exp t a)) S.Exp where
 instance (Typeable r,
           Shape sh,
           IsElem a,
-          Manifest r a)
+          Load r sh a)
       => Reifiable (Array r sh a) S.Exp where
     reify arr = liftK $ do
-        AManifest _ arr <- mkManifest arr
+        AManifest _ arr <- computeP arr
         returnK $ E arr
 
 instance (Typeable r,
           Shape sh,
           IsElem a,
-          Manifest r a)
+          Load r sh a)
       => Reifiable (P (Array r sh a)) S.Exp where
     reify m = liftK $ do
-        AManifest _ arr <- m >>= mkManifest
+        AManifest _ arr <- m >>= computeP
         returnK $ E arr
 
 liftK :: P S.Exp -> R S.Exp S.Exp

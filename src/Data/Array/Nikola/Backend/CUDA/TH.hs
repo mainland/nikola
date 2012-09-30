@@ -48,6 +48,8 @@ import qualified Data.Array.Repa as R
 import qualified Data.Array.Repa.Repr.CUDA.UnboxedForeign as R
 
 import qualified Data.Array.Nikola.Backend.CUDA as N
+import qualified Data.Array.Nikola.Eval as N
+
 import qualified Data.Array.Nikola.Backend.CUDA.Nvcc as Nvcc
 import Data.Array.Nikola.Backend.Flags
 import Data.Array.Nikola.Backend.CUDA.TH.Compile
@@ -239,26 +241,26 @@ instance (arep ~ N.Rep (N.Exp a),
 
 instance (arep ~ N.Rep a,
           N.IsElem a,
-          IsArrayVal [arep],
-          N.Manifest r a)
+          N.Load r N.DIM1 a,
+          IsArrayVal [arep])
       => Compilable (N.Array r N.DIM1 a)
                     [arep]               where
     precompile = addResultCoercion $ coerceResult (undefined :: [arep])
 
 instance (arep ~ N.Rep a,
           N.IsElem a,
-          IsArrayVal (V.Vector arep),
-          N.Manifest r a)
+          N.Load r N.DIM1 a,
+          IsArrayVal (V.Vector arep))
       => Compilable (N.Array r N.DIM1 a)
                     (V.Vector arep     ) where
     precompile = addResultCoercion $ coerceResult (undefined :: V.Vector arep)
 
 instance (arep ~ N.Rep (N.Exp a),
           N.IsElem (N.Exp a),
-          IsArrayVal (VCS.Vector arep),
-          N.Manifest r (N.Exp a))
+          N.Load r N.DIM1 a,
+          IsArrayVal (VCS.Vector arep))
       => Compilable (N.Array r N.DIM1 (N.Exp a))
-                    (VCS.Vector arep          ) where
+                    (VCS.Vector arep           ) where
     precompile = addResultCoercion $ coerceResult (undefined :: VCS.Vector arep)
 
 instance (arep ~ N.Rep a,
@@ -266,8 +268,8 @@ instance (arep ~ N.Rep a,
           ToRsh sh,
           N.Shape sh,
           N.IsElem a,
-          IsArrayVal (R.Array R.CUF rsh arep),
-          N.Manifest r a)
+          N.Load r sh a,
+          IsArrayVal (R.Array R.CUF rsh arep))
       => Compilable (N.Array r     sh  a)
                     (R.Array R.CUF rsh arep) where
     precompile = addResultCoercion $ coerceResult (undefined :: R.Array R.CUF rsh arep)

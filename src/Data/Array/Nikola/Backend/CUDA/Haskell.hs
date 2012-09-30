@@ -41,6 +41,8 @@ import qualified Data.Vector.CUDA.Storable as VCS
 import qualified Data.Vector.CUDA.UnboxedForeign as VCUF
 
 import qualified Data.Array.Nikola.Backend.CUDA as N
+import qualified Data.Array.Nikola.Eval as N
+
 import Data.Array.Nikola.Backend.CUDA.Haskell.Compile
 import Data.Array.Nikola.Backend.CUDA.Haskell.Ex
 import qualified Data.Array.Nikola.Backend.CUDA.Nvcc as Nvcc
@@ -95,14 +97,14 @@ instance (arep ~ N.Rep (N.Exp a),
 
 instance (arep ~ N.Rep a,
           IsArrayVal [arep],
-          N.Manifest r a)
+          N.Load r N.DIM1 a)
       => Compilable (N.Array r N.DIM1 a)
                     [arep]               where
     precompile (PreEx s m) = unsafePerformIO $ evalEx (m >>= popResult) s
 
 instance (arep ~ N.Rep a,
           N.IsElem a,
-          N.Manifest r a,
+          N.Load r N.DIM1 a,
           Storable arep,
           IsArrayVal (V.Vector arep))
       => Compilable (N.Array  r N.DIM1 a)
@@ -111,7 +113,7 @@ instance (arep ~ N.Rep a,
 
 instance (arep ~ N.Rep a,
           N.IsElem a,
-          N.Manifest r a,
+          N.Load r N.DIM1 a,
           Storable arep,
           IsArrayVal (VCS.Vector arep))
       => Compilable (N.Array  r N.DIM1 a)
@@ -121,9 +123,9 @@ instance (arep ~ N.Rep a,
 instance (arep ~ N.Rep a,
           rsh ~ N.Rsh sh,
           N.IsElem a,
+          N.Load r N.DIM1 a,
           R.Shape rsh,
           IsArrayVal (R.Array R.CUF rsh arep),
-          N.Manifest r a,
           VCUF.UnboxForeign arep)
       => Compilable (N.Array r     sh  a   )
                     (R.Array R.CUF rsh arep) where
