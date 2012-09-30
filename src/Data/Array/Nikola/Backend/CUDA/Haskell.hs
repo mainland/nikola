@@ -124,7 +124,7 @@ instance (arep ~ N.Rep a,
           R.Shape rsh,
           IsArrayVal (R.Array R.CUF rsh arep),
           N.Manifest r a,
-          VCUF.EverywhereUnboxForeign arep)
+          VCUF.UnboxForeign arep)
       => Compilable (N.Array r     sh  a   )
                     (R.Array R.CUF rsh arep) where
     precompile (PreEx s m) = unsafePerformIO $ evalEx (m >>= popResult) s
@@ -170,9 +170,9 @@ instance (arep ~ N.Rep a,
           N.IsElem a,
           R.Shape rsh,
           IsArrayVal (R.Array R.CUF rsh arep),
-          VCUF.EverywhereUnboxForeign arep,
+          VCUF.UnboxForeign arep,
           Compilable b c)
-    => Compilable (N.Array N.M  sh  a    -> b)
+    => Compilable (N.Array N.M  sh  a     -> b)
                   (R.Array R.CUF rsh arep -> c) where
     precompile p = \x -> precompile (pushArg x p)
 
@@ -250,7 +250,7 @@ instance (Storable ty, IsArrayVal (VCS.Vector ty)) => IsVal (VCS.Vector ty) wher
     popResult _                = fail "internal error: popResult (V.Vector a)"
 
 instance ( R.Shape sh
-         , VCUF.EverywhereUnboxForeign ty
+         , VCUF.UnboxForeign ty
          , IsArrayVal (R.Array R.CUF sh ty)
          ) => IsVal (R.Array R.CUF sh ty) where
     pushArg arr (PreEx s m) = PreEx s $ do
@@ -390,31 +390,61 @@ baseTypeCUDAStorableVectorArrayVal(Double)
 -- The 'IsArrayVal' instances for CUDA UnboxedForeign Vectors
 --
 
-#define baseTypeUnboxedForeignArrayVal(ty,con)                                \
-instance R.Shape sh => IsArrayVal (R.Array R.CUF sh ty) where {               \
-; toArrayVal arr kont =                                                       \
-    let { con v      = R.toUnboxedForeign arr                                 \
-        ; (fdptr, _) = VCS.unsafeToForeignDevPtr0 v                           \
-        }                                                                     \
-    in kont $ PtrV (CU.castForeignDevPtr fdptr)                               \
-; fromArrayVal (PtrV fdptr) is =                                              \
-    let { sh = R.shapeOfList is                                               \
-        ; v  = VCS.unsafeFromForeignDevPtr0                                   \
-                 (CU.castForeignDevPtr fdptr)                                 \
-                 (R.size sh)                                                  \
-        }                                                                     \
-    in                                                                        \
-      return $ R.fromUnboxedForeign sh (con v)                                \
-; fromArrayVal _ _ = fail "internal error: fromArrayVal (R.Array R.CUF sh a)" \
+#define baseTypeCUDAUnboxedVectorArrayVal(ty,con)                            \
+instance IsArrayVal (VCUF.Vector ty) where {                             \
+; toArrayVal (con v) kont =                                              \
+    let { (fdptr, _) = VCS.unsafeToForeignDevPtr0 v                      \
+        }                                                                \
+    in kont $ PtrV (CU.castForeignDevPtr fdptr)                          \
+; fromArrayVal (PtrV fdptr) [n] =                                        \
+    return $ con $ VCS.unsafeFromForeignDevPtr0                          \
+                 (CU.castForeignDevPtr fdptr)                            \
+                 n                                                       \
+; fromArrayVal _ _ = fail "internal error: fromArrayVal (VCUF.Vector a)" \
 }
 
-baseTypeUnboxedForeignArrayVal(Int8,   VCUF.V_Int8)
-baseTypeUnboxedForeignArrayVal(Int16,  VCUF.V_Int16)
-baseTypeUnboxedForeignArrayVal(Int32,  VCUF.V_Int32)
-baseTypeUnboxedForeignArrayVal(Int64,  VCUF.V_Int64)
-baseTypeUnboxedForeignArrayVal(Word8,  VCUF.V_Word8)
-baseTypeUnboxedForeignArrayVal(Word16, VCUF.V_Word16)
-baseTypeUnboxedForeignArrayVal(Word32, VCUF.V_Word32)
-baseTypeUnboxedForeignArrayVal(Word64, VCUF.V_Word64)
-baseTypeUnboxedForeignArrayVal(Float,  VCUF.V_Float)
-baseTypeUnboxedForeignArrayVal(Double, VCUF.V_Double)
+baseTypeCUDAUnboxedVectorArrayVal(Int8,   VCUF.V_Int8)
+baseTypeCUDAUnboxedVectorArrayVal(Int16,  VCUF.V_Int16)
+baseTypeCUDAUnboxedVectorArrayVal(Int32,  VCUF.V_Int32)
+baseTypeCUDAUnboxedVectorArrayVal(Int64,  VCUF.V_Int64)
+baseTypeCUDAUnboxedVectorArrayVal(Word8,  VCUF.V_Word8)
+baseTypeCUDAUnboxedVectorArrayVal(Word16, VCUF.V_Word16)
+baseTypeCUDAUnboxedVectorArrayVal(Word32, VCUF.V_Word32)
+baseTypeCUDAUnboxedVectorArrayVal(Word64, VCUF.V_Word64)
+baseTypeCUDAUnboxedVectorArrayVal(Float,  VCUF.V_Float)
+baseTypeCUDAUnboxedVectorArrayVal(Double, VCUF.V_Double)
+
+instance ( IsArrayVal (VCUF.Vector a)
+         , IsArrayVal (VCUF.Vector b)
+         ) => IsArrayVal (VCUF.Vector (a, b)) where
+    toArrayVal (VCUF.V_2 _ v_a v_b) kont =
+          toArrayVal v_a $ \ptr_a ->
+          toArrayVal v_b $ \ptr_b ->
+          kont $ TupPtrV [ptr_a, ptr_b]
+
+    fromArrayVal (TupPtrV [ptr_a, ptr_b]) [n] = do
+        v_a <- fromArrayVal ptr_a [n]
+        v_b <- fromArrayVal ptr_b [n]
+        return $ VCUF.V_2 n v_a v_b
+
+    fromArrayVal _ _ =
+        fail "internal error: fromArrayVal (VCUF.Vector (a, b))"
+
+--
+-- The 'IsArrayVal' instances for 'R.CUF' 'R.Array's
+--
+
+instance ( R.Shape sh
+         , VCUF.UnboxForeign a
+         , IsArrayVal (VCUF.Vector a)
+         ) => IsArrayVal (R.Array R.CUF sh a) where
+    toArrayVal arr kont =
+        let v = R.toUnboxedForeign arr
+        in
+          toArrayVal v kont
+
+    fromArrayVal val is =
+        do let sh = R.shapeOfList is
+           let sz = R.size sh
+           v <- fromArrayVal val [sz]
+           return $ R.fromUnboxedForeign sh v

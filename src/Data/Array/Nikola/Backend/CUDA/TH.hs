@@ -324,15 +324,15 @@ instance (arep ~ N.Rep a,
         p' = addArgBinder (bindArgs (undefined :: VCS.Vector arep)) pq
 
 instance (rsh ~ Rsh sh,
-          arep ~ N.Rep (N.Exp a),
+          arep ~ N.Rep a,
           ToRsh sh,
           N.Shape sh,
           R.Shape (Rsh sh),
-          N.IsElem (N.Exp a),
+          N.IsElem a,
           IsVal (R.Array R.CUF rsh arep),
           Compilable b c)
-    => Compilable (N.Array N.M   sh  (N.Exp a) -> b)
-                  (R.Array R.CUF rsh arep      -> c) where
+    => Compilable (N.Array N.M   sh  a    -> b)
+                  (R.Array R.CUF rsh arep -> c) where
     precompile pq =
         castPreExpQ (precompile p' :: PreExpQ c)
       where
@@ -618,22 +618,21 @@ baseTypeStorableVectorArrayVal(Float)
 baseTypeStorableVectorArrayVal(Double)
 
 --
--- 'IsArrayVal' instances for Storable 'Vector's
+-- 'IsArrayVal' instances for CUDA Storable 'Vector's
 --
 
-#define baseTypeCUDAStorableVectorArrayVal(ty)        \
-instance IsArrayVal (VCS.Vector ty) where {         \
-; coerceArrayArg _ =                              \
-  [|\v kont ->                                   \
+#define baseTypeCUDAStorableVectorArrayVal(ty)             \
+instance IsArrayVal (VCS.Vector ty) where {                \
+; coerceArrayArg _ =                                       \
+  [|\v kont ->                                             \
     do { let { (fdptr, _) = VCS.unsafeToForeignDevPtr0 v } \
-       ; kont fdptr                               \
-       }                                          \
-   |]                                             \
-; coerceArrayResult _ =                           \
-  [|\fdptr (R.Z R.:. n) ->                        \
-    do { return $ VCS.unsafeFromForeignDevPtr0 fdptr n \
-       }                                          \
-   |]                                             \
+       ; kont fdptr                                        \
+       }                                                   \
+   |]                                                      \
+; coerceArrayResult _ =                                    \
+  [|\fdptr (R.Z R.:. n) ->                                 \
+        return $ VCS.unsafeFromForeignDevPtr0 fdptr n      \
+   |]                                                      \
 }
 
 baseTypeCUDAStorableVectorArrayVal(Int8)
@@ -648,33 +647,68 @@ baseTypeCUDAStorableVectorArrayVal(Float)
 baseTypeCUDAStorableVectorArrayVal(Double)
 
 --
--- 'IsArrayVal' instances for UnboxedForeign 'Array's
+-- 'IsArrayVal' instances for CUDA UnboxedForeign Vectors
 --
 
-#define baseTypeUnboxedForeignArrayVal(ty, con)                     \
-instance IsArrayVal (R.Array R.CUF sh ty) where {                   \
-; coerceArrayArg _ =                                                \
-  [|\arr kont ->                                                    \
-    do { let { con v      = R.toUnboxedForeign arr }                \
-       ; let { (fdptr, _) = VCS.unsafeToForeignDevPtr0 v }          \
-       ; kont fdptr                                                 \
-       }                                                            \
-   |]                                                               \
-; coerceArrayResult _ =                                             \
-  [|\fdptr sh ->                                                    \
-    do { let { v = VCS.unsafeFromForeignDevPtr0 fdptr (R.size sh) } \
-       ; return $ R.fromUnboxedForeign sh (con v)                   \
-       }                                                            \
-   |]                                                               \
+#define baseTypeCUDAUnboxedVectorArrayVal(ty,con)           \
+instance IsArrayVal (VCUF.Vector ty) where {                \
+; coerceArrayArg _ =                                        \
+  [|\(con v) kont ->                                        \
+    do { let { (fdptr, _) = VCS.unsafeToForeignDevPtr0 v }  \
+       ; kont fdptr                                         \
+       }                                                    \
+   |]                                                       \
+; coerceArrayResult _ =                                     \
+  [|\fdptr (R.Z R.:. n) ->                                  \
+        return $ con $ VCS.unsafeFromForeignDevPtr0 fdptr n \
+   |]                                                       \
 }
 
-baseTypeUnboxedForeignArrayVal(Int8,   VCUF.V_Int8)
-baseTypeUnboxedForeignArrayVal(Int16,  VCUF.V_Int16)
-baseTypeUnboxedForeignArrayVal(Int32,  VCUF.V_Int32)
-baseTypeUnboxedForeignArrayVal(Int64,  VCUF.V_Int64)
-baseTypeUnboxedForeignArrayVal(Word8,  VCUF.V_Word8)
-baseTypeUnboxedForeignArrayVal(Word16, VCUF.V_Word16)
-baseTypeUnboxedForeignArrayVal(Word32, VCUF.V_Word32)
-baseTypeUnboxedForeignArrayVal(Word64, VCUF.V_Word64)
-baseTypeUnboxedForeignArrayVal(Float,  VCUF.V_Float)
-baseTypeUnboxedForeignArrayVal(Double, VCUF.V_Double)
+baseTypeCUDAUnboxedVectorArrayVal(Int8,   VCUF.V_Int8)
+baseTypeCUDAUnboxedVectorArrayVal(Int16,  VCUF.V_Int16)
+baseTypeCUDAUnboxedVectorArrayVal(Int32,  VCUF.V_Int32)
+baseTypeCUDAUnboxedVectorArrayVal(Int64,  VCUF.V_Int64)
+baseTypeCUDAUnboxedVectorArrayVal(Word8,  VCUF.V_Word8)
+baseTypeCUDAUnboxedVectorArrayVal(Word16, VCUF.V_Word16)
+baseTypeCUDAUnboxedVectorArrayVal(Word32, VCUF.V_Word32)
+baseTypeCUDAUnboxedVectorArrayVal(Word64, VCUF.V_Word64)
+baseTypeCUDAUnboxedVectorArrayVal(Float,  VCUF.V_Float)
+baseTypeCUDAUnboxedVectorArrayVal(Double, VCUF.V_Double)
+
+instance ( IsArrayVal (VCUF.Vector a)
+         , IsArrayVal (VCUF.Vector b)
+         ) => IsArrayVal (VCUF.Vector (a, b)) where
+    coerceArrayArg _ =
+        [|\(VCUF.V_2 _ v_a v_b) kont ->
+          $(coerceArrayArg (undefined :: VCUF.Vector a)) v_a $ \ptr_a ->
+          $(coerceArrayArg (undefined :: VCUF.Vector b)) v_b $ \ptr_b ->
+          kont (ptr_a, ptr_b)
+         |]
+
+    coerceArrayResult _ =
+        [|\(ptr_a, ptr_b) sh@(R.Z R.:. n) ->
+          do { v_a <- $(coerceArrayResult (undefined :: VCUF.Vector a)) ptr_a sh
+             ; v_b <- $(coerceArrayResult (undefined :: VCUF.Vector b)) ptr_b sh
+             ; return $ VCUF.V_2 n v_a v_b
+             }
+         |]
+
+--
+-- 'IsArrayVal' instances for CUDA UnboxedForeign 'Array's
+--
+
+instance IsArrayVal (VCUF.Vector a) => IsArrayVal (R.Array R.CUF sh a) where
+    coerceArrayArg _ =
+        [|\arr kont ->
+          do { let { v = R.toUnboxedForeign arr }
+             ; $(coerceArrayArg (undefined :: VCUF.Vector a)) v kont
+             }
+         |]
+
+    coerceArrayResult _ =
+        [|\fdptr sh ->
+          do { let sz = R.size sh
+             ; v <- $(coerceArrayResult (undefined :: VCUF.Vector a)) fdptr (R.Z R.:. sz)
+             ; return $ R.fromUnboxedForeign sh v
+             }
+         |]
