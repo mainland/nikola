@@ -2,8 +2,8 @@ module Main where
 
 import Data.Array.Repa
 import Data.Array.Repa.Repr.ForeignPtr
+import Data.Int
 import Foreign (castForeignPtr)
-import qualified Graphics.Gloss as G
 import System.Environment (getArgs)
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -14,12 +14,8 @@ import qualified Mandelbrot.Nikola as MN
 import qualified Mandelbrot.Repa as MR
 import Mandelbrot.Types
 
-makePicture :: Bitmap F -> G.Picture
-makePicture arr =
-    G.bitmapOfForeignPtr h w (castForeignPtr (toForeignPtr arr)) False
-  where
-    h, w :: Int
-    Z:.h:.w = extent arr
+--import qualified Graphics.Gloss as G
+import qualified GUI as G
 
 main :: IO ()
 main = do
@@ -36,5 +32,29 @@ main = do
                 else unsafePerformIO $
                      MR.mandelbrot lowx lowy highx highy size size limit >>=
                      MR.prettyMandelbrot limit
-    G.display (G.InWindow "Mandelbrot" (fromIntegral size, fromIntegral size) (10, 10)) G.black
-         (makePicture image)
+    display size image
+
+display :: Int32 -> Bitmap F -> IO ()
+display size arr = do
+    G.display (G.InWindow "Mandelbrot" (fromIntegral size, fromIntegral size) (10, 10))
+              pic
+  where
+    pic :: G.Picture
+    pic = G.bitmapOfForeignPtr h w (castForeignPtr (toForeignPtr arr))
+
+    h, w :: Int
+    Z:.h:.w = extent arr
+
+{-
+display :: Int32 -> Bitmap F -> IO ()
+display size arr = do
+    G.display (G.InWindow "Mandelbrot" (fromIntegral size, fromIntegral size) (10, 10))
+              G.black
+              pic
+  where
+    pic :: G.Picture
+    pic = G.bitmapOfForeignPtr h w (castForeignPtr (toForeignPtr arr)) False
+
+    h, w :: Int
+    Z:.h:.w = extent arr
+-}

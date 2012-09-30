@@ -27,7 +27,9 @@ GHC_FLAGS+=-rtsopts -threaded
 
 GHC_FLAGS += \
 	-hide-all-packages \
+	-package GLUT-2.3.0.0 \
 	-package HUnit \
+	-package OpenGL-2.5.0.0 \
 	-package QuickCheck \
 	-package base \
 	-package bytestring \
