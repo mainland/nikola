@@ -58,10 +58,10 @@ data State = State
     , stateTextures    :: IORef [Texture]
     }
 
-data View = View { left  :: Float
-                 , bot   :: Float
-                 , right :: Float
-                 , top   :: Float
+data View = View { left  :: Double
+                 , bot   :: Double
+                 , right :: Double
+                 , top   :: Double
                  }
   deriving (Eq, Show)
 
@@ -442,8 +442,8 @@ translateBy realTime viewRef viewPortRef _ (dX, dY) = do
     modifyIORef viewRef $ \view ->
         let width  = right view - left view
             height = top view - bot view
-            dX'    = realToFrac (width  * oX    * scale / fromIntegral sizeX)
-            dY'    = realToFrac (height * (-oY) * scale / fromIntegral sizeY)
+            dX'    = realToFrac (width  * realToFrac (oX    * scale) / fromIntegral sizeX)
+            dY'    = realToFrac (height * realToFrac ((-oY) * scale) / fromIntegral sizeY)
         in
           View { left  = left view  + dX'
                , bot   = bot view   + dY'
