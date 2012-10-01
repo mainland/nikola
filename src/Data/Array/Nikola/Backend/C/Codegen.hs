@@ -498,9 +498,9 @@ compileKernelFun dialect fname vtaus m =
 
 returnResultsByReference :: Dialect -> Context -> Context -> Type -> Bool
 returnResultsByReference _ callerCtx calleeCtx tau
-    | isUnitT tau                             = False
-    | calleeCtx == callerCtx && isScalarT tau = False
-    | otherwise                               = True
+    | isUnitT tau                           = False
+    | calleeCtx == callerCtx && isBaseT tau = False
+    | otherwise                             = True
 
 compileFun :: Dialect
            -> Context
@@ -555,7 +555,7 @@ compileCall dialect callerCtx calleeCtx tau args mcf = do
     case tau_ret of
       ScalarT UnitT -> do  mcf Nothing cargs
                            return VoidCE
-      _ | calleeCtx == callerCtx && isScalarT tau_ret -> do
+      _ | calleeCtx == callerCtx && isBaseT tau_ret -> do
           cresult <- newCVar "call_result" tau_ret
           mcf (Just cresult) cargs
           return cresult

@@ -37,6 +37,7 @@ module Data.Array.Nikola.Language.Syntax (
     boolT,
     ixScalarT,
     ixT,
+    isBaseT,
     isScalarT,
     isUnitT,
     isArrayT,
@@ -185,6 +186,15 @@ ixScalarT = Int32T
 
 ixT :: Type
 ixT = ScalarT Int32T
+
+isBaseT :: Type -> Bool
+isBaseT (ScalarT tau) = go tau
+  where
+    go :: ScalarType -> Bool
+    go (TupleT {}) = False
+    go _           = True
+
+isBaseT _ = False
 
 isScalarT :: Type -> Bool
 isScalarT (ScalarT {}) = True
