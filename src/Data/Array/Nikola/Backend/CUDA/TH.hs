@@ -48,7 +48,6 @@ import qualified Data.Array.Repa as R
 import qualified Data.Array.Repa.Repr.CUDA.UnboxedForeign as R
 
 import qualified Data.Array.Nikola.Backend.CUDA as N
-import qualified Data.Array.Nikola.Eval as N
 
 import qualified Data.Array.Nikola.Backend.CUDA.Nvcc as Nvcc
 import Data.Array.Nikola.Backend.Flags
@@ -82,33 +81,39 @@ execNQ kernels cdefs vtaus qbody m =
     fst <$> runNQ m (defaultNQEnv kernels cdefs vtaus qbody)
 
 data NQEnv = NQEnv
-    { nqKernels :: [String]       -- ^ The list of CUDA kernel functions the
-                                  -- Nikola program calls.
-    , nqCDefs   :: [C.Definition] -- ^ The C definitions that comprise the CUDA
-                                  -- program containing the CUDA kernels needed
-                                  -- by the Nikola program.
-    , nqLamVars :: [(Var, Type)]  -- ^ The variables bound by the top-level
-                                  -- Nikola lambda.
-    , nqLamPats :: [TH.Pat]       -- ^ The patterns that the compiled program
-                                  -- uses to bind the variables in the top-level
-                                  -- Nikola lambda.
-    , nqDecs    :: [TH.Dec]       -- ^ Declarations needed by the compiled
-                                  -- Nikola program. This consists of a binding
-                                  -- for the compiled CUDA module, of type
-                                  -- 'CU.Module', as well as bindings for all
-                                  -- the CUDA kernels, of type 'CU.Fun', used by
-                                  -- the Nikola program.
-    , nqBody    :: TH.ExpQ        -- ^ The body of the compiled Nikola program.
+    { nqKernels     :: [String]       -- ^ The list of CUDA kernel functions the
+                                      -- Nikola program calls.
+    , nqCDefs       :: [C.Definition] -- ^ The C definitions that comprise the
+                                      -- CUDA program containing the CUDA
+                                      -- kernels needed by the Nikola program.
+    , nqLamVars     :: [(Var, Type)]  -- ^ The variables bound by the top-level
+                                      -- Nikola lambda.
+    , nqLamPats     :: [TH.Pat]       -- ^ The patterns that the compiled
+                                      -- program uses to bind the variables in
+                                      -- the top-level Nikola lambda.
+    , nqDecs        :: [TH.Dec]       -- ^ Declarations needed by the compiled
+                                      -- Nikola program. This consists of a
+                                      -- binding for the compiled CUDA module,
+                                      -- of type 'CU.Module', as well as
+                                      -- bindings for all the CUDA kernels, of
+                                      -- type 'CU.Fun', used by the Nikola
+                                      -- program.
+    , nqBody        :: TH.ExpQ        -- ^ The body of the compiled Nikola
+                                      -- program.
+    , nqMorallyPure :: Bool           -- ^ The function is morally pure, so add
+                                      -- an 'unsafePerformIO' if the computation
+                                      -- is monadic.
     }
 
 defaultNQEnv :: [String] -> [C.Definition] -> [(Var, Type)] -> ExpQ -> NQEnv
 defaultNQEnv kernels cdefs vtaus qbody = NQEnv
-    { nqKernels = kernels
-    , nqCDefs   = cdefs
-    , nqLamVars = vtaus
-    , nqLamPats = []
-    , nqDecs    = []
-    , nqBody    = qbody
+    { nqKernels     = kernels
+    , nqCDefs       = cdefs
+    , nqLamVars     = vtaus
+    , nqLamPats     = []
+    , nqDecs        = []
+    , nqBody        = qbody
+    , nqMorallyPure = False
     }
 
 instance Monad NQ where
@@ -191,6 +196,11 @@ addResultCoercion f (PreExpQ m) = PreExpQ $ do
 addArgBinder :: NQ () -> PreExpQ (a -> b) -> PreExpQ b
 addArgBinder m' (PreExpQ m) = PreExpQ (m >> m')
 
+setMorallyPure :: Bool -> PreExpQ a -> PreExpQ a
+setMorallyPure isPure (PreExpQ m) = PreExpQ $ do
+    m
+    modify $ \s -> s { nqMorallyPure = isPure }
+
 newtype PreExpQ a = PreExpQ { unPreExpQ :: NQ () }
 
 castPreExpQ :: PreExpQ a -> PreExpQ b
@@ -237,42 +247,60 @@ instance (arep ~ N.Rep (N.Exp a),
           N.IsElem (N.Exp a),
           IsVal arep)
       => Compilable (N.Exp a) arep where
-    precompile = addResultCoercion $ coerceResult (undefined :: arep)
+    precompile =
+        setMorallyPure True .
+        addResultCoercion (coerceResult (undefined :: arep))
 
 instance (arep ~ N.Rep a,
           N.IsElem a,
-          N.Load r N.DIM1 a,
           IsArrayVal [arep])
       => Compilable (N.Array r N.DIM1 a)
                     [arep]               where
-    precompile = addResultCoercion $ coerceResult (undefined :: [arep])
+    precompile =
+        setMorallyPure True .
+        addResultCoercion (coerceResult (undefined :: [arep]))
 
 instance (arep ~ N.Rep a,
           N.IsElem a,
-          N.Load r N.DIM1 a,
           IsArrayVal (V.Vector arep))
       => Compilable (N.Array r N.DIM1 a)
                     (V.Vector arep     ) where
-    precompile = addResultCoercion $ coerceResult (undefined :: V.Vector arep)
+    precompile =
+        setMorallyPure True .
+        addResultCoercion (coerceResult (undefined :: V.Vector arep))
 
 instance (arep ~ N.Rep (N.Exp a),
           N.IsElem (N.Exp a),
-          N.Load r N.DIM1 a,
           IsArrayVal (VCS.Vector arep))
       => Compilable (N.Array r N.DIM1 (N.Exp a))
                     (VCS.Vector arep           ) where
-    precompile = addResultCoercion $ coerceResult (undefined :: VCS.Vector arep)
+    precompile =
+        setMorallyPure True .
+        addResultCoercion (coerceResult (undefined :: VCS.Vector arep))
 
 instance (arep ~ N.Rep a,
           rsh ~ Rsh sh,
           ToRsh sh,
           N.Shape sh,
           N.IsElem a,
-          N.Load r sh a,
           IsArrayVal (R.Array R.CUF rsh arep))
       => Compilable (N.Array r     sh  a)
                     (R.Array R.CUF rsh arep) where
-    precompile = addResultCoercion $ coerceResult (undefined :: R.Array R.CUF rsh arep)
+    precompile =
+        setMorallyPure True .
+        addResultCoercion (coerceResult (undefined :: R.Array R.CUF rsh arep))
+
+instance (arep ~ N.Rep a,
+          rsh ~ Rsh sh,
+          ToRsh sh,
+          N.Shape sh,
+          N.IsElem a,
+          -- N.Load r sh a,
+          IsArrayVal (R.Array R.CUF rsh arep))
+      => Compilable (N.P (N.Array r     sh  a))
+                    (IO  (R.Array R.CUF rsh arep)) where
+    precompile =
+        addResultCoercion $ coerceResult (undefined :: R.Array R.CUF rsh arep)
 
 --
 -- And here are the inductive cases
@@ -373,7 +401,7 @@ finalizeExpQ isMonadic env = do
     kernelDecQs <- kernelDecQs (nqKernels env) (nqCDefs env)
     TH.lamE (map return (nqLamPats env)) $
       TH.letE (kernelDecQs ++ map return (nqDecs env)) $
-      if isMonadic
+      if isMonadic && nqMorallyPure env
       then [|N.currentContext `seq` unsafePerformIO $(nqBody env)|]
       else [|N.currentContext `seq` $(nqBody env)|]
   where
@@ -412,10 +440,12 @@ compile a = compileSig a (undefined :: Compiled a)
 -- The 'Compiled' type function specifies the default compilation scheme for
 -- 'compile'.
 type family Compiled a :: *
-type instance Compiled (N.Exp a) = N.Rep (N.Exp a)
-type instance Compiled (N.Array r sh a) = R.Array R.CUF (Rsh sh) (N.Rep a)
-type instance Compiled (N.Exp a -> b) = N.Rep (N.Exp a) -> Compiled b
-type instance Compiled (N.Array N.M sh a -> b) = R.Array R.CUF (Rsh sh) (N.Rep a) -> Compiled b
+type instance Compiled (N.Exp a)                = N.Rep (N.Exp a)
+type instance Compiled (N.Array r sh a)         = R.Array R.CUF (Rsh sh) (N.Rep a)
+type instance Compiled (N.P (N.Array N.M sh a)) = IO (R.Array R.CUF (Rsh sh) (N.Rep a))
+
+type instance Compiled (N.Exp a          -> b)  = N.Rep (N.Exp a) -> Compiled b
+type instance Compiled (N.Array N.M sh a -> b)  = R.Array R.CUF (Rsh sh) (N.Rep a) -> Compiled b
 
 -- The 'IsVal' type class tells us how to bind arguments in the form expected by
 -- the TH expression representation of a Nikola program and how to coerce the

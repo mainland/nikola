@@ -131,6 +131,17 @@ instance (arep ~ N.Rep a,
                     (R.Array R.CUF rsh arep) where
     precompile (PreEx s m) = unsafePerformIO $ evalEx (m >>= popResult) s
 
+instance (arep ~ N.Rep a,
+          rsh ~ N.Rsh sh,
+          N.IsElem a,
+          N.Load r N.DIM1 a,
+          R.Shape rsh,
+          IsArrayVal (R.Array R.CUF rsh arep),
+          VCUF.UnboxForeign arep)
+      => Compilable (N.P (N.Array r     sh  a   ))
+                    (IO  (R.Array R.CUF rsh arep)) where
+    precompile (PreEx s m) = evalEx (m >>= popResult) s
+
 --
 -- And here are the inductive cases
 --

@@ -63,13 +63,11 @@ instance (Typeable r,
         AManifest _ arr <- computeP arr
         returnK $ E arr
 
-instance (Typeable r,
-          Shape sh,
-          IsElem a,
-          Load r sh a)
-      => Reifiable (P (Array r sh a)) S.Exp where
+instance (Shape sh,
+          IsElem a)
+      => Reifiable (P (Array M sh a)) S.Exp where
     reify m = liftK $ do
-        AManifest _ arr <- m >>= computeP
+        AManifest _ arr <- m
         returnK $ E arr
 
 liftK :: P S.Exp -> R S.Exp S.Exp
