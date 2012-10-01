@@ -16,6 +16,8 @@
 module Data.Array.Nikola.Language.Reify (
     Reifiable(..),
 
+    delayE,
+
     vapply
   ) where
 
@@ -105,6 +107,9 @@ instance (Shape sh,
         tau :: ScalarType
         tau = typeOf (undefined :: a)
 
+delayE :: Reifiable a S.Exp => a -> S.Exp
+delayE e = DelayedE (cacheExp e (reset (reify e >>= detectSharing ExpA)))
+
 -- | @vapply@ is a bit tricky... We first build a @DelayedE@ AST node containing
 -- an action that reifies the lambda. Then we wrap the result in enough
 -- (Haskell) lambdas and (Nikola) @AppE@ constructors to turn in back into a
@@ -112,7 +117,7 @@ instance (Shape sh,
 -- term.
 class (Reifiable a S.Exp) => VApply a where
     vapply :: a -> a
-    vapply f = vapplyk (DelayedE (cacheExp f (reset (reify f >>= detectSharing ExpA)))) []
+    vapply f = vapplyk (delayE f) []
 
     vapplyk :: S.Exp -> [S.Exp] -> a
 
