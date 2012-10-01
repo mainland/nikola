@@ -42,6 +42,7 @@ library
     Data.Array.Nikola.Backend.CUDA.TH.Util
     Data.Array.Nikola.Backend.Flags
     Data.Array.Nikola.Backend.Main
+    Data.Array.Nikola.Combinators
     Data.Array.Nikola.Eval
     Data.Array.Nikola.Eval.Load
     Data.Array.Nikola.Eval.Target

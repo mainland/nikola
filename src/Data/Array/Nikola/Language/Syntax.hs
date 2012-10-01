@@ -287,6 +287,7 @@ data Exp = VarE Var
          | IndexE Exp Exp
          | WriteE Exp Exp Exp
 
+         | IterateE Exp Exp Exp
          | ForE Bool [Var] [Exp] Exp
 
          | SyncE
@@ -688,6 +689,12 @@ instance Pretty Exp where
 
     pprPrec p e@(WriteE {}) =
         pprMonadic p e
+
+    pprPrec p (IterateE n f x) =
+        parensIf (p > appPrec) $
+        text "iterate" <+> pprPrec appPrec1 n
+                       <+> pprPrec appPrec1 f
+                       <+> pprPrec appPrec1 x
 
     pprPrec p e@(ForE {}) =
         pprMonadic p e

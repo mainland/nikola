@@ -42,6 +42,7 @@ import qualified Data.Vector.CUDA.UnboxedForeign as VCUF
 import qualified Data.Array.Nikola.Backend.CUDA as N
 import qualified Data.Array.Nikola.Backend.CUDA.Haskell as NH
 import qualified Data.Array.Nikola.Backend.CUDA.TH as NTH
+import qualified Data.Array.Nikola.Combinators as N
 
 type R = Float
 
@@ -70,6 +71,7 @@ tests = [ id_test
         , zip_test
         , scalar_test
         , swap_test
+        , iterate_test
         , th_swap_test
         , th_scalar_test
         , th_revmap_test1
@@ -156,6 +158,16 @@ swap_test = testCase "swap" $
 
     xs :: [(Float, Float)]
     xs = [1..10] `zip` [2..11]
+
+iterate_test :: Test
+iterate_test = testCase "iterate" $
+    g (V.fromList [1..10]) @=? V.map (+5) (V.fromList [1..10])
+  where
+    f :: N.Array N.M N.DIM1 (N.Exp Float) -> N.Array N.D N.DIM1 (N.Exp Float)
+    f v = N.map (N.iterate (5 :: N.Exp Int32) (+1)) v
+
+    g :: V.Vector Float -> V.Vector Float
+    g = NH.compile f
 
 th_swap_test :: Test
 th_swap_test = testCase "TH swap" $

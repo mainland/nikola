@@ -416,6 +416,29 @@ compileExp (WriteE arr idx e) = do
     addStm [cstm|$carr[$cidx] = $ce;|]
     return VoidCE
 
+-- A bit disgusting, but we relay on the fact that f is a lambda. Our
+-- combinators guarantee that this will be the case
+compileExp (IterateE n (LamE [(x, tau)] e) x0) = do
+    i   <- gensym "i"
+    cn  <- compileExp n
+    cx0 <- compileExp x0
+    cx  <- newCVar (unVar x) tau
+    assignC cx cx0
+    citems <- inNewBlock_ $ do
+              ce <- extendVarTypes [(x, tau)] $
+                    extendVarTrans [(x, cx)] $
+                    compileExp e
+              assignC cx ce
+    addStm [cstm|if ($cn > 0) {
+                    for (int $id:i = 0; $id:i < $cn; ++$id:i)
+                        { $items:citems }
+                 }
+                |]
+    return cx
+
+compileExp e@(IterateE {}) =
+    faildoc $ nest 2 $ text "Cannot compile:" </> ppr e
+
 compileExp (ForE isPar vs es m) = do
     dialect  <- fromLJust fDialect <$> getFlags
     tau      <- extendVarTypes (vs `zip` repeat ixT) $
