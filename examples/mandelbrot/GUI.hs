@@ -30,6 +30,10 @@ data Display = InWindow String       -- ^ Window name
                         (Int, Int)   -- ^ Position
              | FullScreen (Int, Int) -- ^ Size
 
+displaySize :: Display -> (Int, Int)
+displaySize (InWindow _ size _) = size
+displaySize (FullScreen size)   = size
+
 data Picture = Bitmap Int        -- ^ Width
                       Int        -- ^ Height
                       BitmapData -- ^ Bitmap data
@@ -37,19 +41,33 @@ data Picture = Bitmap Int        -- ^ Width
 data BitmapData = BitmapData !Int                -- ^ Length (in bytes)
                              !(ForeignPtr Word8) -- ^ Pointer to data
 
+type FrameGen = Float -> View -> (Int, Int) -> IO Picture
+
 data State = State
     { stateColor       :: Bool
     , stateWireframe   :: Bool
     , stateBlendAlpha  :: Bool
     , stateLineSmooth  :: Bool
+    , stateRealTime    :: IORef Bool
+    , stateDefaultView :: View
+    , stateView        :: IORef View
     , stateViewPort    :: IORef ViewPort
     , stateViewControl :: IORef ViewControl
+    , stateFrameGen    :: FrameGen
     , statePicture     :: IORef Picture
     , stateTextures    :: IORef [Texture]
     }
 
+data View = View { left  :: Float
+                 , bot   :: Float
+                 , right :: Float
+                 , top   :: Float
+                 }
+  deriving (Eq, Show)
+
 data ViewPort = ViewPort
-    { viewPortTranslate :: (Float, Float)
+    { viewPortSize      :: (Int, Int)
+    , viewPortTranslate :: (Float, Float)
     , viewPortRotate    :: Float
     , viewPortScale     :: Float
     }
@@ -72,9 +90,10 @@ data Texture = Texture
     , texCacheMe :: Bool
     }
 
-defaultViewPort :: ViewPort
-defaultViewPort = ViewPort
-    { viewPortTranslate = (0, 0)
+defaultViewPort :: (Int, Int) -> ViewPort
+defaultViewPort size = ViewPort
+    { viewPortSize      = size
+    , viewPortTranslate = (0, 0)
     , viewPortRotate    = 0
     , viewPortScale     = 1
     }
@@ -87,9 +106,12 @@ defaultViewControl = ViewControl
     , viewControlRotateMark    = Nothing
     }
 
-defaultState :: Picture -> IO State
-defaultState pic = do
-    viewPortRef    <- newIORef defaultViewPort
+defaultState :: Display -> View -> FrameGen -> IO State
+defaultState disp view framegen = do
+    pic            <- framegen 0 view (displaySize disp)
+    realTimeRef    <- newIORef False
+    viewRef        <- newIORef view
+    viewPortRef    <- newIORef (defaultViewPort (displaySize disp))
     viewControlRef <- newIORef defaultViewControl
     picRef         <- newIORef pic
     texturesRef    <- newIORef []
@@ -97,8 +119,12 @@ defaultState pic = do
                  , stateWireframe   = False
                  , stateBlendAlpha  = True
                  , stateLineSmooth  = False
+                 , stateRealTime    = realTimeRef
+                 , stateDefaultView = view
+                 , stateView        = viewRef
                  , stateViewPort    = viewPortRef
                  , stateViewControl = viewControlRef
+                 , stateFrameGen    = framegen
                  , statePicture     = picRef
                  , stateTextures    = texturesRef
                  }
@@ -110,13 +136,14 @@ bitmapOfForeignPtr width height fptr =
     len   = width * height * 4
     bdata = BitmapData len fptr
 
-display :: Display  -- ^ Display mode.
-        -> Picture  -- ^ The picture to draw.
+display :: Display   -- ^ Display mode.
+        -> View      -- ^ Default view
+        -> FrameGen  -- ^ Frame generation function
         -> IO ()
-display disp pic = do
+display disp view f = do
     initializeGLUT False
     openWindowGLUT disp
-    state    <- defaultState pic
+    state    <- defaultState disp view f
     stateRef <- newIORef state
     GLUT.displayCallback       $= callbackDisplay stateRef
     GLUT.reshapeCallback       $= Just (callbackReshape stateRef)
@@ -181,12 +208,14 @@ callbackDisplay state = do
     return ()
 
 callbackReshape :: IORef State -> GLUT.Size -> IO ()
-callbackReshape _ (GLUT.Size width height) = do
-    GL.viewport $= (GL.Position 0 0, GL.Size width height)
-    postRedisplay
-
-postRedisplay :: IO ()
-postRedisplay = GLUT.postRedisplay Nothing
+callbackReshape stateRef (GLUT.Size width height) = do
+    state              <- readIORef stateRef
+    realTime           <- readIORef (stateRealTime state)
+    let viewRef        =  stateView state
+    let viewPortRef    =  stateViewPort state
+    let viewControlRef =  stateViewControl state
+    resizeTo realTime viewRef viewPortRef viewControlRef (fromIntegral width, fromIntegral height)
+    updatePicture stateRef
 
 callbackKeyMouse :: IORef State
                  -> GLUT.Key
@@ -196,11 +225,13 @@ callbackKeyMouse :: IORef State
                  -> IO ()
 callbackKeyMouse stateRef glutKey glutKeyState glutKeyMods (GLUT.Position posX posY) = do
     state                <- readIORef stateRef
+    realTime             <- readIORef (stateRealTime state)
+    let viewRef          =  stateView state
     let viewPortRef      =  stateViewPort state
     let viewControlRef   =  stateViewControl state
     currentlyTranslating <- (isJust . viewControlTranslateMark) <$> readIORef viewControlRef
     currentlyRotating    <- (isJust . viewControlRotateMark)    <$> readIORef viewControlRef
-    go viewPortRef viewControlRef currentlyTranslating currentlyRotating
+    go realTime viewRef viewPortRef viewControlRef currentlyTranslating currentlyRotating
   where
     key :: Key
     key  = glutKeyToKey glutKey
@@ -213,163 +244,194 @@ callbackKeyMouse stateRef glutKey glutKeyState glutKeyMods (GLUT.Position posX p
 
     pos = (posX, posY)
 
-    go :: IORef ViewPort
+    go :: Bool
+       -> IORef View
+       -> IORef ViewPort
        -> IORef ViewControl
        -> Bool
        -> Bool
        -> IO ()
-    go viewPortRef viewControlRef currentlyTranslating currentlyRotating
+    go realTime viewRef viewPortRef viewControlRef currentlyTranslating currentlyRotating
         -- restore viewport
         | isCommand commands CRestore key keyMods
         , keyState == Down
         = do restoreView
-             postRedisplay
+             updatePicture stateRef
+
+        -- toggle realtime viewport
+        | isCommand commands CToggleRealtime key keyMods
+        , keyState == Down
+        = do state <- readIORef stateRef
+             writeIORef (stateRealTime state) (not realTime)
+             when (not realTime) $ do
+                 viewPort <- readIORef viewPortRef
+                 writeIORef viewPortRef (defaultViewPort (viewPortSize viewPort))
+                 updatePicture stateRef
 
         -- zoom in
         | isCommand commands CBumpZoomIn key keyMods
         , keyState == Down
         = do zoomIn
-             postRedisplay
+             updatePicture stateRef
 
         -- zoom out
         | isCommand commands CBumpZoomOut key keyMods
         , keyState == Down
         = do zoomOut
-             postRedisplay
+             updatePicture stateRef
 
         -- bump left
         | isCommand commands CBumpLeft key keyMods
         , keyState == Down
-        = do translateBy viewPortRef viewControlRef (20, 0)
-             postRedisplay
+        = do translateBy realTime viewRef viewPortRef viewControlRef (20, 0)
+             updatePicture stateRef
 
         -- bump right
         | isCommand commands CBumpRight key keyMods
         , keyState == Down
-        = do translateBy viewPortRef viewControlRef (-20, 0)
-             postRedisplay
+        = do translateBy realTime viewRef viewPortRef viewControlRef (-20, 0)
+             updatePicture stateRef
 
         -- bump up
         | isCommand commands CBumpUp key keyMods
         , keyState == Down
-        = do translateBy viewPortRef viewControlRef (0, 20)
-             postRedisplay
+        = do translateBy realTime viewRef viewPortRef viewControlRef (0, 20)
+             updatePicture stateRef
 
         -- bump down
         | isCommand commands CBumpDown key keyMods
         , keyState == Down
-        = do translateBy viewPortRef viewControlRef (0, -20)
-             postRedisplay
+        = do translateBy realTime viewRef viewPortRef viewControlRef (0, -20)
+             updatePicture stateRef
 
         -- bump clockwise
         | isCommand commands CBumpClockwise key keyMods
         , keyState == Down
-        = do rotateBy viewPortRef viewControlRef (+ 5)
-             postRedisplay
+        = do rotateBy realTime viewRef viewPortRef viewControlRef (+ 5)
+             updatePicture stateRef
 
         -- bump counter-clockwise
         | isCommand commands CBumpCClockwise key keyMods
         , keyState == Down
-        = do rotateBy viewPortRef viewControlRef (subtract 5)
-             postRedisplay
+        = do rotateBy realTime viewRef viewPortRef viewControlRef (subtract 5)
+             updatePicture stateRef
 
         -- start translation
         | isCommand commands CTranslate key keyMods
         , keyState == Down
         , not currentlyRotating
         = do modifyIORef viewControlRef $ \s -> s { viewControlTranslateMark = Just pos }
-             postRedisplay
+             updatePicture stateRef
 
         -- end translation
         | currentlyTranslating
         , keyState == Up
         = do modifyIORef viewControlRef $ \s -> s { viewControlTranslateMark = Nothing }
-             postRedisplay
+             updatePicture stateRef
 
         -- start rotation
         | isCommand commands CRotate key keyMods
         , keyState == Down
         , not currentlyTranslating
         = do modifyIORef viewControlRef $ \s -> s { viewControlRotateMark = Just pos }
-             postRedisplay
+             updatePicture stateRef
 
         -- end rotation
         | currentlyRotating
         , keyState == Up
         = do modifyIORef viewControlRef $ \s -> s { viewControlRotateMark = Nothing }
-             postRedisplay
+             updatePicture stateRef
 
         -- default
         | otherwise = return ()
       where
         restoreView :: IO ()
-        restoreView =
-            modifyIORef viewPortRef $ \_ -> defaultViewPort
+        restoreView = do
+            defaultView <- stateDefaultView <$> readIORef stateRef
+            writeIORef viewRef defaultView
+            modifyIORef viewPortRef $ \s ->
+                defaultViewPort (viewPortSize s)
 
         zoomIn :: IO ()
         zoomIn = do
             scaleStep <- viewControlScaleStep <$> readIORef viewControlRef
-            modifyIORef viewPortRef $ \s -> s { viewPortScale = viewPortScale s * scaleStep }
+            scaleBy realTime viewRef viewPortRef viewControlRef scaleStep
 
         zoomOut :: IO ()
         zoomOut = do
             scaleStep <- viewControlScaleStep <$> readIORef viewControlRef
-            modifyIORef viewPortRef $ \s -> s { viewPortScale = viewPortScale s / scaleStep }
+            scaleBy realTime viewRef viewPortRef viewControlRef (1/scaleStep)
 
 callbackMotion :: IORef State
                -> GLUT.Position
                -> IO ()
 callbackMotion stateRef (GLUT.Position posX posY) = do
     state              <- readIORef stateRef
+    realTime           <- readIORef (stateRealTime state)
+    let viewRef        =  stateView state
     let viewPortRef    =  stateViewPort state
     let viewControlRef =  stateViewControl state
     translateMark      <- viewControlTranslateMark <$> readIORef viewControlRef
     rotateMark         <- viewControlRotateMark    <$> readIORef viewControlRef
     case translateMark of
       Nothing   -> return ()
-      Just mark -> motionTranslate viewPortRef viewControlRef mark (posX, posY)
+      Just mark -> do motionTranslate realTime viewRef viewPortRef viewControlRef mark (posX, posY)
+                      updatePicture stateRef
     case rotateMark of
       Nothing   -> return ()
-      Just mark -> motionRotate viewPortRef viewControlRef mark (posX, posY)
+      Just mark -> do motionRotate realTime viewRef viewPortRef viewControlRef mark (posX, posY)
+                      updatePicture stateRef
 
-motionTranslate :: IORef ViewPort
+motionTranslate :: Bool
+                -> IORef View
+                -> IORef ViewPort
                 -> IORef ViewControl
                 -> (GL.GLint, GL.GLint)
                 -> (GL.GLint, GL.GLint)
                 -> IO ()
-motionTranslate viewPortRef viewControlRef (markX, markY) pos@(posX, posY) = do
+motionTranslate realTime viewRef viewPortRef viewControlRef (markX, markY) pos@(posX, posY) = do
     let dX = fromIntegral $ markX - posX
     let dY = fromIntegral $ markY - posY
-    translateBy viewPortRef viewControlRef (dX, dY)
+    translateBy realTime viewRef viewPortRef viewControlRef (dX, dY)
 
     modifyIORef viewControlRef $ \s ->
         s { viewControlTranslateMark = Just pos }
 
-    postRedisplay
-
-motionRotate :: IORef ViewPort
+motionRotate :: Bool
+             -> IORef View
+             -> IORef ViewPort
              -> IORef ViewControl
              -> (GL.GLint, GL.GLint)
              -> (GL.GLint, GL.GLint)
              -> IO ()
-motionRotate viewPortRef viewControlRef (markX, _) pos@(posX, _) = do
-    rotate       <- viewPortRotate          <$> readIORef viewPortRef
+motionRotate realTime viewRef viewPortRef viewControlRef (markX, _) pos@(posX, _) = do
     rotateFactor <- viewControlRotateFactor <$> readIORef viewControlRef
 
-    rotateBy viewPortRef viewControlRef (const (rotate + rotateFactor * fromIntegral (fromIntegral posX - markX)))
+    rotateBy realTime viewRef viewPortRef viewControlRef (+ rotateFactor * fromIntegral (posX - markX))
 
     modifyIORef viewControlRef $ \s ->
         s { viewControlRotateMark = Just pos }
 
-    postRedisplay
+resizeTo :: Bool
+         -> IORef View
+         -> IORef ViewPort
+         -> IORef ViewControl
+         -> (Int, Int)
+         -> IO ()
+resizeTo _ _ viewPortRef _ size = do
+    modifyIORef viewPortRef $ \s ->
+        s { viewPortSize = size }
 
-translateBy :: IORef ViewPort
+translateBy :: Bool
+            -> IORef View
+            -> IORef ViewPort
             -> IORef ViewControl
             -> (Float, Float)
             -> IO ()
-translateBy viewPortRef _ (dX, dY) = do
+translateBy realTime viewRef viewPortRef _ (dX, dY) = do
     viewPort             <- readIORef viewPortRef
-    let (transX, transY) =  viewPortTranslate viewPort
+    let (sizeX, sizeY)   =  viewPortSize      viewPort
+        (transX, transY) =  viewPortTranslate viewPort
         scale            =  viewPortScale     viewPort
         r                =  viewPortRotate    viewPort
 
@@ -377,16 +439,69 @@ translateBy viewPortRef _ (dX, dY) = do
 
     let (oX, oY)         =  rotateV (degToRad r) offset
 
-    modifyIORef viewPortRef $ \s ->
-        s { viewPortTranslate = (transX - oX, transY + oY) }
+    modifyIORef viewRef $ \view ->
+        let width  = right view - left view
+            height = top view - bot view
+            dX'    = realToFrac (width  * oX    * scale / fromIntegral sizeX)
+            dY'    = realToFrac (height * (-oY) * scale / fromIntegral sizeY)
+        in
+          View { left  = left view  + dX'
+               , bot   = bot view   + dY'
+               , right = right view + dX'
+               , top   = top view   + dY'
+               }
 
-rotateBy :: IORef ViewPort
+    when (not realTime) $
+        modifyIORef viewPortRef $ \s ->
+            s { viewPortTranslate = (transX - oX, transY + oY) }
+
+rotateBy :: Bool
+         -> IORef View
+         -> IORef ViewPort
          -> IORef ViewControl
          -> (Float -> Float)
          -> IO ()
-rotateBy viewPortRef _ delta =
+rotateBy _ _ viewPortRef _ delta = do
     modifyIORef viewPortRef $ \s ->
         s { viewPortRotate = delta (viewPortRotate s) }
+
+scaleBy :: Bool
+        -> IORef View
+        -> IORef ViewPort
+        -> IORef ViewControl
+        -> Float
+        -> IO ()
+scaleBy realTime viewRef viewPortRef _ x = do
+    modifyIORef viewRef $ \view ->
+        let width   = right view - left view
+            height  = top view - bot view
+            width'  = width / realToFrac x
+            height' = height / realToFrac x
+            centerX = (left view + right view) / 2
+            centerY = (top view  + bot view)   / 2
+        in
+          View { left  = centerX - width'/2
+               , bot   = centerY - height'/2
+               , right = centerX + width'/2
+               , top   = centerY + height'/2
+               }
+
+    when (not realTime) $
+        modifyIORef viewPortRef $ \s ->
+            s { viewPortScale = viewPortScale s * x }
+
+updatePicture :: IORef State -> IO ()
+updatePicture stateRef = do
+    state    <- readIORef stateRef
+    realTime <- readIORef (stateRealTime state)
+    viewPort <- readIORef (stateViewPort state)
+    when realTime $ do
+        let (width, height) = (viewPortSize viewPort)
+            dim             = min width height
+        view <- readIORef (stateView state)
+        pic' <- stateFrameGen state 0 view (dim, dim)
+        writeIORef (statePicture state)  pic'
+    GLUT.postRedisplay Nothing
 
 draw :: IORef State
      -> IO ()
@@ -438,6 +553,8 @@ withViewPort :: ViewPort             -- ^ The viewport to use.
              -> IO ()                -- ^ The rendering action to perform.
              -> IO ()
 withViewPort port action = do
+    let (sizeX, sizeY) = viewPortSize port
+    GL.viewport $= (GL.Position 0 0, GL.Size (fromIntegral sizeX) (fromIntegral sizeY))
     GL.matrixMode $= GL.Projection
     GL.preservingMatrix $ do
         -- setup the co-ordinate system

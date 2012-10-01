@@ -95,6 +95,8 @@ data Modifiers = Modifiers
 
 data Command = CRestore
 
+             | CToggleRealtime
+
              | CTranslate
              | CRotate
 
@@ -122,6 +124,8 @@ commands =
     defaultCommands :: [(Command, [(Key, Maybe Modifiers)])]
     defaultCommands =
         [ (CRestore, [(CharKey 'r', Nothing)])
+
+        , (CToggleRealtime, [(CharKey 't', Nothing)])
 
         , (CTranslate, [ (MouseButton LeftButton, Just (Modifiers { shift = Up
                                                                   , ctrl  = Up

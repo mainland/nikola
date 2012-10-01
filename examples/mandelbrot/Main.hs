@@ -1,8 +1,8 @@
 module Main where
 
+import Control.Applicative
 import Data.Array.Repa
 import Data.Array.Repa.Repr.ForeignPtr
-import Data.Int
 import Foreign (castForeignPtr)
 import System.Environment (getArgs)
 
@@ -17,54 +17,48 @@ import Mandelbrot.Types
 --import qualified Graphics.Gloss as G
 import qualified GUI as G
 
+defaultView :: G.View
+defaultView = G.View { G.left  = -0.25
+                     , G.bot   = -1.0
+                     , G.right =  0.0
+                     , G.top   = -0.75
+                     }
+
 main :: IO ()
 main = do
     (opts, _) <- getArgs >>= parseArgs defaultConfig
     let size  = fromIntegral $ fromLJust confSize opts
         limit = fromIntegral $ fromLJust confLimit opts
-        lowx  = -0.25
-        lowy  = -1.0
-        highx =  0.0
-        highy = -0.75
-    image <- case fromLJust confBackend opts of
-               RepaV1 ->
-                   MR1.mandelbrot lowx lowy highx highy size size limit >>=
-                   MR1.prettyMandelbrot limit
-               RepaV2 ->
-                   MR2.mandelbrot lowx lowy highx highy size size limit >>=
-                   MR2.prettyMandelbrot limit
-               Repa ->
-                   MR2.mandelbrot lowx lowy highx highy size size limit >>=
-                   MR2.prettyMandelbrot limit
-               NikolaV1 ->
-                   MN1.mandelbrot lowx lowy highx highy size size limit >>=
-                   MN1.prettyMandelbrot limit
-               Nikola ->
-                   MN1.mandelbrot lowx lowy highx highy size size limit >>=
-                   MN1.prettyMandelbrot limit
-    display size image
-
-display :: Int32 -> Bitmap F -> IO ()
-display size arr = do
+        f     = frameGen (fromLJust confBackend opts) limit
     G.display (G.InWindow "Mandelbrot" (fromIntegral size, fromIntegral size) (10, 10))
-              pic
+              defaultView f
+
+frameGen :: Backend -> I -> Float -> G.View -> (Int, Int) -> IO G.Picture
+frameGen backend limit _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
+    bitmapToPicture <$> go backend (fromIntegral sizeX, fromIntegral sizeY)
   where
-    pic :: G.Picture
-    pic = G.bitmapOfForeignPtr h w (castForeignPtr (toForeignPtr arr))
+    lowx', lowy', highx', highy' :: R
+    lowx'  = realToFrac lowx
+    lowy'  = realToFrac lowy
+    highx' = realToFrac highx
+    highy' = realToFrac highy
 
-    h, w :: Int
-    Z:.h:.w = extent arr
+    go :: Backend -> (I, I) -> IO (Bitmap F)
+    go be (sizeX, sizeY)
+      | be == NikolaV1 || be == Nikola
+      = MN1.mandelbrot lowx' lowy' highx' highy' sizeX sizeY limit >>=
+        MN1.prettyMandelbrot limit
 
-{-
-display :: Int32 -> Bitmap F -> IO ()
-display size arr = do
-    G.display (G.InWindow "Mandelbrot" (fromIntegral size, fromIntegral size) (10, 10))
-              G.black
-              pic
-  where
-    pic :: G.Picture
-    pic = G.bitmapOfForeignPtr h w (castForeignPtr (toForeignPtr arr)) False
+      | be == RepaV1
+      = MR1.mandelbrot lowx' lowy' highx' highy' sizeX sizeY limit >>=
+        MR1.prettyMandelbrot limit
 
-    h, w :: Int
-    Z:.h:.w = extent arr
--}
+      | otherwise
+      = MR2.mandelbrot lowx' lowy' highx' highy' sizeX sizeY limit >>=
+        MR2.prettyMandelbrot limit
+
+    bitmapToPicture :: Bitmap F -> G.Picture
+    bitmapToPicture arr = G.bitmapOfForeignPtr h w (castForeignPtr (toForeignPtr arr))
+      where
+        h, w :: Int
+        Z:.h:.w = extent arr
