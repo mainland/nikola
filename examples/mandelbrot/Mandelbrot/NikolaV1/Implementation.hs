@@ -9,6 +9,7 @@ import qualified Prelude as P
 import Prelude hiding (map, zipWith)
 
 import Data.Array.Nikola.Backend.CUDA
+import Data.Array.Nikola.Eval
 import Data.Int
 
 import Mandelbrot.Types hiding (Bitmap, Complex, ComplexPlane, StepPlane)
@@ -34,8 +35,9 @@ instance Num Complex where
     signum z@(x,y)  = (x/r, y/r) where r = magnitude z
     fromInteger n   = (fromInteger n, 0)
 
-step :: ComplexPlane M -> StepPlane M -> StepPlane D
-step cs = zipWith stepPoint cs
+step :: ComplexPlane M -> StepPlane M -> P (StepPlane M)
+step cs zs =
+    computeP $ zipWith stepPoint cs zs
   where
     stepPoint :: Complex -> (Complex, Exp Int32) -> (Complex, Exp Int32)
     stepPoint c (z,i) =
@@ -54,8 +56,9 @@ genPlane :: Exp R
          -> Exp R
          -> Exp Int32
          -> Exp Int32
-         -> ComplexPlane D
+         -> P (ComplexPlane M)
 genPlane lowx lowy highx highy viewx viewy =
+    computeP $
     fromFunction (Z:.viewy:.viewx) $ \(Z:.x:.y) ->
         (lowx + (fromInt x*xsize)/fromInt viewx, lowy + (fromInt y*ysize)/fromInt viewy)
    where
@@ -63,8 +66,8 @@ genPlane lowx lowy highx highy viewx viewy =
       xsize = highx - lowx
       ysize = highy - lowy
 
-mkinit :: ComplexPlane M -> StepPlane D
-mkinit cs = map f cs
+mkinit :: ComplexPlane M -> P (StepPlane M)
+mkinit cs = computeP $ map f cs
   where
     f :: Complex -> (Complex, Exp Int32)
     f z = (z,0)
@@ -79,5 +82,5 @@ prettyRGBA limit (_, s) = r + g + b + a
     b = (t * 3 `mod` 256     ) * 0x100
     a = 0xFF
 
-prettyMandelbrot :: Exp Int32 -> StepPlane M -> Bitmap D
-prettyMandelbrot limit zs = map (prettyRGBA limit) zs
+prettyMandelbrot :: Exp Int32 -> StepPlane M -> P (Bitmap M)
+prettyMandelbrot limit zs = computeP $ map (prettyRGBA limit) zs

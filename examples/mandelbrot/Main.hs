@@ -5,7 +5,6 @@ import Data.Array.Repa.Repr.ForeignPtr
 import Data.Int
 import Foreign (castForeignPtr)
 import System.Environment (getArgs)
-import System.IO.Unsafe (unsafePerformIO)
 
 import Config
 import ParseConfig
@@ -27,25 +26,22 @@ main = do
         lowy  = -1.0
         highx =  0.0
         highy = -0.75
-    let image = case  fromLJust confBackend opts of
-                  RepaV1 ->
-                      unsafePerformIO $
-                      MR1.mandelbrot lowx lowy highx highy size size limit >>=
-                      MR1.prettyMandelbrot limit
-                  RepaV2 ->
-                      unsafePerformIO $
-                      MR2.mandelbrot lowx lowy highx highy size size limit >>=
-                      MR2.prettyMandelbrot limit
-                  Repa ->
-                      unsafePerformIO $
-                      MR2.mandelbrot lowx lowy highx highy size size limit >>=
-                      MR2.prettyMandelbrot limit
-                  NikolaV1 ->
-                      MN1.prettyMandelbrot limit $
-                      MN1.mandelbrot lowx lowy highx highy size size limit
-                  Nikola ->
-                      MN1.prettyMandelbrot limit $
-                      MN1.mandelbrot lowx lowy highx highy size size limit
+    image <- case fromLJust confBackend opts of
+               RepaV1 ->
+                   MR1.mandelbrot lowx lowy highx highy size size limit >>=
+                   MR1.prettyMandelbrot limit
+               RepaV2 ->
+                   MR2.mandelbrot lowx lowy highx highy size size limit >>=
+                   MR2.prettyMandelbrot limit
+               Repa ->
+                   MR2.mandelbrot lowx lowy highx highy size size limit >>=
+                   MR2.prettyMandelbrot limit
+               NikolaV1 ->
+                   MN1.mandelbrot lowx lowy highx highy size size limit >>=
+                   MN1.prettyMandelbrot limit
+               Nikola ->
+                   MN1.mandelbrot lowx lowy highx highy size size limit >>=
+                   MN1.prettyMandelbrot limit
     display size image
 
 display :: Int32 -> Bitmap F -> IO ()
