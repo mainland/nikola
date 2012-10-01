@@ -511,29 +511,36 @@ mergeBounds ExpA (ForE True vs es p) = do
     go [] =
         return []
 
-    go ((seq1, IfThenElseE e1 p1a p1b):(seq2, IfThenElseE e2 p2a p2b):ms) | e1 ==! e2 =
+    go ((seq1, IfThenElseE e1 p1a p1b):(seq2, IfThenElseE e2 p2a p2b):ms)
+      | e1 ==! e2 && not (isLetM seq1) && not (isLetM seq2) =
         go ((seq2, IfThenElseE e1 (p1a `seq'` p2a) (p1b `seq'` p2b)):ms)
       where
         seq' = case seq1 of
                  ParM -> parE
                  _    -> seqE
 
-    go ((_, IfThenElseE e1 p1a p1b):(_, SyncE):(seq3, IfThenElseE e2 p2a p2b):ms) | e1 ==! e2 =
+    go ((seq1, IfThenElseE e1 p1a p1b):(_, SyncE):(seq3, IfThenElseE e2 p2a p2b):ms)
+      | e1 ==! e2 && not (isLetM seq1) && not (isLetM seq3) =
         go ((seq3, IfThenElseE e1 (p1a `syncE` p2a) (p1b `syncE` p2b)):ms)
 
-    go ((s, m@(IfThenElseE (BinopE LtO (VarE v) e) p1 _)):ms) = do
+    go ((seq1, m@(IfThenElseE (BinopE LtO (VarE v) e) p1 _)):ms)
+      | not (isLetM seq1) = do
         d1 <- lookupVar v
         d2 <- Just <$> rangeE e
         if d1 == d2
-          then go ((s,p1):ms)
+          then go ((seq1,p1):ms)
           else do  m'  <- mergeBounds ExpA m
                    ms' <- go ms
-                   return $ (s,m') : ms'
+                   return $ (seq1,m') : ms'
 
-    go ((s,m) : ms) = do
+    go ((seq1,m) : ms) = do
         m'  <- mergeBounds ExpA m
         ms' <- go ms
-        return $ (s,m') : ms'
+        return $ (seq1,m') : ms'
+
+    isLetM :: SeqM -> Bool
+    isLetM (LetM {}) = True
+    isLetM _         = False
 
 mergeBounds w a = traverseFam mergeBounds w a
 
