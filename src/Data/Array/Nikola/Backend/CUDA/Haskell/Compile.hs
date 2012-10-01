@@ -99,7 +99,7 @@ instance MonadCheck CEx where
         case maybe_tau of
           Just tau -> return tau
           Nothing ->  faildoc $ text "Variable" <+> ppr v <+>
-                                text "not in scope during reification."
+                                text "not in scope."
 
     extendVarTypes vtaus act = do
         old_vars <- gets cexVarTypes
