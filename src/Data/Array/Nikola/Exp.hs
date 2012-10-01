@@ -46,6 +46,7 @@ module Data.Array.Nikola.Exp (
     varE, voidE,
 
     Lift(..),
+    Unlift(..),
 
     Ptr,
     IsElem(..),
@@ -237,21 +238,86 @@ proj i n tup = E (ProjE i n (unE tup))
 projArr :: Int -> Int -> Exp t a -> Exp t b
 projArr i n tup = E (ProjArrE i n (unE tup))
 
--- Lifting Haskell values to Nikola (embedded) values
-class Lift a where
-    lift :: a -> Exp t a
+--
+-- Lifting to embedded values
+--
 
-instance Lift Bool where
-    lift = E . ConstE . BoolC
+class Lift t a where
+    type Lifted t a :: *
 
-instance Lift Int32 where
-    lift = E . ConstE . Int32C
+    lift :: a -> Exp t (Lifted t a)
 
-instance Lift Float where
-    lift = E . ConstE . FloatC
+#define baseTypeLift(ty,con)       \
+instance Lift t ty where {         \
+; type Lifted t ty = Exp t ty      \
+; lift = E . ConstE . con          \
+} ;                                \
+instance Lift t (Exp t ty) where { \
+; type Lifted t (Exp t ty) = ty    \
+; lift = id                        \
+}
 
-instance Lift Double where
-    lift = E . ConstE . DoubleC
+baseTypeLift(Bool,   BoolC)
+baseTypeLift(Int8,   Int8C)
+baseTypeLift(Int16,  Int16C)
+baseTypeLift(Int32,  Int32C)
+baseTypeLift(Int64,  Int64C)
+baseTypeLift(Word8,  Word8C)
+baseTypeLift(Word16, Word16C)
+baseTypeLift(Word32, Word32C)
+baseTypeLift(Word64, Word64C)
+baseTypeLift(Float,  FloatC)
+baseTypeLift(Double, DoubleC)
+
+instance (Lift t a, Lift t b) => Lift t (a, b) where
+    type Lifted t (a, b) = (Lifted t a, Lifted t b)
+
+    lift (a, b) = E $ TupleE [unE ea, unE eb]
+      where
+        ea :: Exp t (Lifted t a)
+        ea = lift a
+
+        eb :: Exp t (Lifted t b)
+        eb = lift b
+
+--
+-- Unlifting from embedded values
+--
+
+class Unlift t a where
+    type Unlifted t a :: *
+
+    unlift :: Exp t a -> Unlifted t a
+
+#define baseTypeUnlift(ty)      \
+instance Unlift t ty where {    \
+; type Unlifted t ty = Exp t ty \
+; unlift = id                   \
+}
+
+baseTypeUnlift(Bool)
+baseTypeUnlift(Int8)
+baseTypeUnlift(Int16)
+baseTypeUnlift(Int32)
+baseTypeUnlift(Int64)
+baseTypeUnlift(Word8)
+baseTypeUnlift(Word16)
+baseTypeUnlift(Word32)
+baseTypeUnlift(Word64)
+baseTypeUnlift(Float)
+baseTypeUnlift(Double)
+
+instance (Unlift t a, Unlift t b) => Unlift t (a, b) where
+    type Unlifted t (a, b) = (Unlifted t a, Unlifted t b)
+
+    unlift (E e) =
+        (unlift ea, unlift eb)
+      where
+        ea :: Exp t a
+        ea = E (ProjE 0 2 e)
+
+        eb :: Exp t b
+        eb = E (ProjE 1 2 e)
 
 data Ptr a
 
@@ -284,6 +350,36 @@ instance ( IsElem a
     writeElem arr ix (a, b) = do
         writeElem (projArr 0 2 arr) ix a
         writeElem (projArr 1 2 arr) ix b
+
+instance ( Typeable t
+         , Typeable a
+         , Typeable b
+         , IsElem (Exp t a)
+         , IsElem (Exp t b)
+         ) => IsElem (Exp t (a, b)) where
+    type Rep (Exp t (a, b)) = (Rep a, Rep b)
+
+    typeOf _ = TupleT [ typeOf (undefined :: Exp t a)
+                      , typeOf (undefined :: Exp t b)
+                      ]
+
+    indexElem arr ix = E $ TupleE [unE ea , unE eb]
+      where
+        ea :: Exp t a
+        ea = indexElem (projArr 0 2 arr) ix
+
+        eb :: Exp t b
+        eb = indexElem (projArr 1 2 arr) ix
+
+    writeElem arr ix e = do
+        writeElem (projArr 0 2 arr) ix ea
+        writeElem (projArr 1 2 arr) ix eb
+      where
+        ea :: Exp t a
+        ea = E $ ProjE 0 2 (unE e)
+
+        eb :: Exp t b
+        eb = E $ ProjE 1 2 (unE e)
 
 instance ( Typeable t
          , Typeable a
