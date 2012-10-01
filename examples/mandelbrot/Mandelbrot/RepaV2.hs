@@ -64,7 +64,7 @@ genPlane :: R
          -> I
          -> ComplexPlane D
 genPlane lowx lowy highx highy viewx viewy =
-    fromFunction (Z:.fromIntegral viewy:.fromIntegral viewx) $ \(Z:.(!x):.(!y)) ->
+    fromFunction (Z:.fromIntegral viewy:.fromIntegral viewx) $ \(Z:.(!y):.(!x)) ->
         (lowx + (fromIntegral x*xsize)/fromIntegral viewx,
          lowy + (fromIntegral y*ysize)/fromIntegral viewy)
    where

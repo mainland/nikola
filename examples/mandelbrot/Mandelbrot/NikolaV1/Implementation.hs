@@ -59,7 +59,7 @@ genPlane :: Exp R
          -> P (ComplexPlane M)
 genPlane lowx lowy highx highy viewx viewy =
     computeP $
-    fromFunction (Z:.viewy:.viewx) $ \(Z:.x:.y) ->
+    fromFunction (Z:.viewy:.viewx) $ \(Z:.y:.x) ->
         (lowx + (fromInt x*xsize)/fromInt viewx, lowy + (fromInt y*ysize)/fromInt viewy)
    where
       xsize, ysize :: Exp R
