@@ -14,6 +14,21 @@ synopsis:       Embedded language for GPU computation
 
 build-type:     Custom
 
+extra-tmp-files:
+  config.status
+  config.log
+  nikola.buildinfo
+  include/Nikola.h
+
+extra-source-files:
+  configure
+  configure.ac
+  config.guess
+  config.sub
+  install-sh
+  nikola.buildinfo.in
+  include/Nikola.h.in
+
 extra-source-files:
   internal/GenUnboxTuple.hs
   internal/unbox-tuple-instances
@@ -84,10 +99,16 @@ library
     Data.Vector.UnboxedForeign
     Data.Vector.UnboxedForeign.Base
     Data.Vector.UnboxedForeign.Mutable
+    Foreign.CUDA.Driver.Graphics
+    Foreign.CUDA.Driver.Graphics.OpenGL
     Foreign.CUDA.ForeignPtr
     Foreign.CUDA.Storable
 
+  other-modules:
+    Foreign.CUDA.Internal.C2HS
+
   build-depends:
+    OpenGL == 2.5.*,
     base >=4 && <5,
     bytestring >=0.9 && <0.10,
     containers >=0.4 && <0.5,
@@ -108,6 +129,10 @@ library
     text >=0.11 && <0.12,
     transformers >=0.2 && <0.4,
     vector >=0.9 && <0.10
+
+  build-tools: 
+    c2hs >= 0.16,
+    hsc2hs
 
   default-language: Haskell98
 
