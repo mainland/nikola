@@ -29,9 +29,7 @@ import Data.Array.Nikola.Language.Syntax hiding (Exp, Var)
 -- necessary to disambiguate.
 iterate :: forall t a .
            ( IsElem (Exp t (Lifted t a))
-           , Lift t a
-           , Unlift t (Lifted t a)
-           , a ~ Unlifted t (Lifted t a))
+           , Unlift t a)
         => Exp t Int32 -> (a -> a) -> a -> a
 iterate n f x =
     unlift e

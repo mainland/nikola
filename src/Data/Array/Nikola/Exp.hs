@@ -284,15 +284,12 @@ instance (Lift t a, Lift t b) => Lift t (a, b) where
 -- Unlifting from embedded values
 --
 
-class Unlift t a where
-    type Unlifted t a :: *
+class Lift t a => Unlift t a where
+    unlift ::  Exp t (Lifted t a) -> a
 
-    unlift :: Exp t a -> Unlifted t a
-
-#define baseTypeUnlift(ty)      \
-instance Unlift t ty where {    \
-; type Unlifted t ty = Exp t ty \
-; unlift = id                   \
+#define baseTypeUnlift(ty)           \
+instance Unlift t (Exp t ty) where { \
+; unlift = id                        \
 }
 
 baseTypeUnlift(Bool)
@@ -308,15 +305,12 @@ baseTypeUnlift(Float)
 baseTypeUnlift(Double)
 
 instance (Unlift t a, Unlift t b) => Unlift t (a, b) where
-    type Unlifted t (a, b) = (Unlifted t a, Unlifted t b)
-
-    unlift (E e) =
-        (unlift ea, unlift eb)
+    unlift (E e) = (unlift ea, unlift eb)
       where
-        ea :: Exp t a
+        ea :: Exp t (Lifted t a)
         ea = E (ProjE 0 2 e)
 
-        eb :: Exp t b
+        eb :: Exp t (Lifted t b)
         eb = E (ProjE 1 2 e)
 
 data Ptr a
