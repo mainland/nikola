@@ -8,7 +8,6 @@
 module GUI where
 
 import Data.IORef
-import Data.List (find)
 import Data.Word
 import Control.Applicative
 import Control.Monad
@@ -20,7 +19,6 @@ import qualified Graphics.Rendering.OpenGL as GL
 import Graphics.UI.GLUT (get,($=))
 import qualified Graphics.UI.GLUT as GLUT
 --import qualified System.Exit as System
-import System.Mem.StableName
 import Unsafe.Coerce
 
 import GUI.Commands
@@ -55,7 +53,6 @@ data State = State
     , stateViewControl :: IORef ViewControl
     , stateFrameGen    :: FrameGen
     , statePicture     :: IORef Picture
-    , stateTextures    :: IORef [Texture]
     }
 
 data View = View { left  :: Double
@@ -81,14 +78,7 @@ data ViewControl = ViewControl
     }
   deriving (Eq, Show)
 
-data Texture = Texture
-    { texName    :: StableName BitmapData
-    , texWidth   :: Int
-    , texHeight  :: Int
-    , texData    :: ForeignPtr Word8
-    , texObject  :: GL.TextureObject
-    , texCacheMe :: Bool
-    }
+data Texture = Texture { texObject :: GL.TextureObject }
 
 defaultViewPort :: (Int, Int) -> ViewPort
 defaultViewPort size = ViewPort
@@ -114,7 +104,6 @@ defaultState disp view framegen = do
     viewPortRef    <- newIORef (defaultViewPort (displaySize disp))
     viewControlRef <- newIORef defaultViewControl
     picRef         <- newIORef pic
-    texturesRef    <- newIORef []
     return State { stateColor       = True
                  , stateWireframe   = False
                  , stateBlendAlpha  = True
@@ -126,7 +115,6 @@ defaultState disp view framegen = do
                  , stateViewControl = viewControlRef
                  , stateFrameGen    = framegen
                  , statePicture     = picRef
-                 , stateTextures    = texturesRef
                  }
 
 bitmapOfForeignPtr :: Int -> Int -> ForeignPtr Word8 -> Picture
@@ -512,11 +500,11 @@ draw stateRef = do
   withViewPort viewPort $ do
       setLineSmooth (stateLineSmooth state)
       setBlendAlpha (stateBlendAlpha state)
-      drawPicture state pic
+      drawPicture pic
   where
-    drawPicture :: State -> Picture -> IO ()
-    drawPicture state (Bitmap width height bdata) = do
-        tex <- loadTexture (stateTextures state) width height bdata False
+    drawPicture :: Picture -> IO ()
+    drawPicture (Bitmap width height bdata) = do
+        tex <- loadTexture width height bdata
 
         -- Set up wrap and filtering mode
         GL.textureWrapMode GL.Texture2D GL.S $= (GL.Repeated, GL.Repeat)
@@ -605,62 +593,34 @@ bitmapPath width height =
    width'  = width  / 2
    height' = height / 2
 
-loadTexture  :: IORef [Texture]
-             -> Int -> Int -> BitmapData
-             -> Bool
+loadTexture  :: Int
+             -> Int
+             -> BitmapData
              -> IO Texture
-loadTexture refTextures width height bitmapData@(BitmapData _ fptr) cacheMe = do
-    textures        <- readIORef refTextures
-    name            <- makeStableName bitmapData
-    let mTexCached  =  find (\tex -> texName   tex == name
-                                  && texWidth  tex == width
-                                  && texHeight tex == height)
-                       textures
-    case mTexCached of
-      Just tex -> return tex
-      Nothing  -> do tex <- installTexture
-                     when cacheMe $
-                         writeIORef refTextures (tex : textures)
-                     return tex
-  where
-    installTexture :: IO Texture
-    installTexture = do
-        -- Allocate texture handle for texture
-        [tex] <- GL.genObjectNames 1
-        GL.textureBinding GL.Texture2D $= Just tex
+loadTexture width height (BitmapData _ fptr) = do
+    -- Allocate texture handle for texture
+    [tex] <- GL.genObjectNames 1
+    GL.textureBinding GL.Texture2D $= Just tex
 
-        -- Sets the texture in bitmapData as the current texture This copies the
-        -- data from the pointer into OpenGL texture memory, so it's ok if the
-        -- foreignptr gets garbage collected after this.
-        withForeignPtr fptr $ \ptr ->
-           GL.texImage2D
-                Nothing
-                GL.NoProxy
-                0
-                GL.RGBA8
-                (GL.TextureSize2D
-                        (gsizei width)
-                        (gsizei height))
-                0
-                (GL.PixelData GL.RGBA GL.UnsignedInt8888 ptr)
+    -- Sets the texture in bitmapData as the current texture This copies the
+    -- data from the pointer into OpenGL texture memory, so it's ok if the
+    -- foreignptr gets garbage collected after this.
+    withForeignPtr fptr $ \ptr ->
+       GL.texImage2D
+            Nothing
+            GL.NoProxy
+            0
+            GL.RGBA8
+            (GL.TextureSize2D
+                    (gsizei width)
+                    (gsizei height))
+            0
+            (GL.PixelData GL.RGBA GL.UnsignedInt8888 ptr)
 
-        -- Make a stable name that we can use to identify this data again.
-        -- If the user gives us the same texture data at the same size then we
-        -- can avoid loading it into texture memory again.
-        name <- makeStableName bitmapData
-
-        return Texture { texName    = name
-                       , texWidth   = width
-                       , texHeight  = height
-                       , texData    = fptr
-                       , texObject  = tex
-                       , texCacheMe = cacheMe
-                       }
+    return Texture { texObject = tex }
 
 freeTexture :: Texture -> IO ()
-freeTexture tex
- | texCacheMe tex = return ()
- | otherwise      = GL.deleteObjectNames [texObject tex]
+freeTexture tex = GL.deleteObjectNames [texObject tex]
 
 gf :: Float -> GL.GLfloat
 {-# INLINE gf #-}
