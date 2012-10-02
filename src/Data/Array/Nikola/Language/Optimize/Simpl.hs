@@ -92,8 +92,20 @@ simpl ExpA (BinopE op e1 e2) = do  e1' <- simpl ExpA e1
     -- Default
     go op e1 e2 = return $ BinopE op e1 e2
 
-simpl ExpA (CallE (LamE [] (SeqE m1 (ReturnE e))) []) =
-    simpl ExpA (SeqE (CallE (LamE [] m1) []) (ReturnE e))
+simpl ExpA (CallE (LamE [] e) []) =
+    case finalReturn e of
+      (Nothing, Nothing) -> fail "internal error: empty kernel"
+      (Nothing, Just e)  -> simpl ExpA (ReturnE e)
+      (Just m,  Nothing) -> traverseFam simpl ExpA (CallE (LamE [] m) [])
+      (Just m,  Just e)  -> traverseFam simpl ExpA (SeqE (CallE (LamE [] m) []) (ReturnE e))
+  where
+    finalReturn :: Exp -> (Maybe Exp, Maybe Exp)
+    finalReturn (ReturnE e)           = (Nothing, Just e)
+    finalReturn (SeqE m1 (ReturnE e)) = (Just m1, Just e)
+    finalReturn (SeqE m1 m2)          = case finalReturn m2 of
+                                          (Nothing, maybe_e) -> (Just m1, maybe_e)
+                                          (Just m2, maybe_e) -> (Just (SeqE m1 m2), maybe_e)
+    finalReturn m                    = (Just m, Nothing)
 
 simpl w a = traverseFam simpl w a
 
