@@ -14,12 +14,18 @@ import Control.Monad
 import Data.Maybe (isJust)
 --import Control.Concurrent
 import Foreign (ForeignPtr,
+                nullPtr,
                 withForeignPtr)
 import qualified Graphics.Rendering.OpenGL as GL
 import Graphics.UI.GLUT (get,($=))
 import qualified Graphics.UI.GLUT as GLUT
 --import qualified System.Exit as System
 import Unsafe.Coerce
+
+import qualified Foreign.CUDA.Driver.Context as CU
+import Foreign.CUDA.Driver.Graphics.OpenGL as CUGL
+
+import qualified Data.Array.Nikola.Backend.CUDA as N
 
 import GUI.Commands
 
@@ -32,9 +38,12 @@ displaySize :: Display -> (Int, Int)
 displaySize (InWindow _ size _) = size
 displaySize (FullScreen size)   = size
 
-data Picture = Bitmap Int        -- ^ Width
-                      Int        -- ^ Height
-                      BitmapData -- ^ Bitmap data
+data Picture = Bitmap Int             -- ^ Width
+                      Int             -- ^ Height
+                      BitmapData      -- ^ Bitmap data
+             | PBO    Int             -- ^ Width
+                      Int             -- ^ Height
+                      GL.BufferObject -- ^ Bitmap data
 
 data BitmapData = BitmapData !Int                -- ^ Length (in bytes)
                              !(ForeignPtr Word8) -- ^ Pointer to data
@@ -124,6 +133,18 @@ bitmapOfForeignPtr width height fptr =
     len   = width * height * 4
     bdata = BitmapData len fptr
 
+pboOfForeignPtr :: Int -> Int -> ForeignPtr Word8 -> IO Picture
+pboOfForeignPtr width height fptr = do
+    [pbo] <- GL.genObjectNames 1
+    GL.bindBuffer GL.PixelUnpackBuffer $= Just pbo
+    withForeignPtr fptr $ \ptr ->
+        GL.bufferData GL.PixelUnpackBuffer $= (fromIntegral len, ptr, GL.DynamicCopy)
+    GL.bindBuffer GL.PixelUnpackBuffer $= Nothing
+    GLUT.reportErrors
+    return $ PBO width height pbo
+  where
+    len = width * height * 4
+
 display :: Display   -- ^ Display mode.
         -> View      -- ^ Default view
         -> FrameGen  -- ^ Frame generation function
@@ -131,6 +152,7 @@ display :: Display   -- ^ Display mode.
 display disp view f = do
     initializeGLUT False
     openWindowGLUT disp
+    --initializeCUDACtx
     state    <- defaultState disp view f
     stateRef <- newIORef state
     GLUT.displayCallback       $= callbackDisplay stateRef
@@ -139,6 +161,19 @@ display disp view f = do
     GLUT.motionCallback        $= Just (callbackMotion stateRef)
     GLUT.passiveMotionCallback $= Just (callbackMotion stateRef)
     GLUT.mainLoop
+
+--
+-- Initialize a CUDA context that is set up for OpenGL interoperability.
+--
+-- This doesn't work with optimization on...it fails with the error "invalid
+-- context handle."
+--
+initializeCUDACtx :: IO ()
+initializeCUDACtx = do
+    CU.destroy N.currentContext
+    dev <- head <$> CUGL.getGLDevices 100 DeviceListAll
+    void $ CUGL.createGLContext dev []
+    -- CU.allocaArray 10 $ \(_ :: CU.DevicePtr Int) -> print "initializeCUDACtx allocation succeeded"
 
 initializeGLUT :: Bool -> IO ()
 initializeGLUT debug = do
@@ -503,8 +538,15 @@ draw stateRef = do
       drawPicture pic
   where
     drawPicture :: Picture -> IO ()
-    drawPicture (Bitmap width height bdata) = do
-        tex <- loadTexture width height bdata
+    drawPicture (Bitmap width height (BitmapData _ fptr)) =
+        go width height (HostTexSource fptr)
+
+    drawPicture (PBO width height pbo) =
+        go width height (PBOTexSource pbo)
+
+    go :: Int-> Int -> TextureSource -> IO ()
+    go width height texSource = do
+        tex <- loadTexture width height texSource
 
         -- Set up wrap and filtering mode
         GL.textureWrapMode GL.Texture2D GL.S $= (GL.Repeated, GL.Repeat)
@@ -593,31 +635,54 @@ bitmapPath width height =
    width'  = width  / 2
    height' = height / 2
 
+data TextureSource = HostTexSource (ForeignPtr Word8)
+                   | PBOTexSource GL.BufferObject
+
 loadTexture  :: Int
              -> Int
-             -> BitmapData
+             -> TextureSource
              -> IO Texture
-loadTexture width height (BitmapData _ fptr) = do
+loadTexture width height texSource = do
     -- Allocate texture handle for texture
     [tex] <- GL.genObjectNames 1
     GL.textureBinding GL.Texture2D $= Just tex
 
+    loadTexSource texSource
+
+    return Texture { texObject = tex }
+  where
+    loadTexSource :: TextureSource -> IO ()
     -- Sets the texture in bitmapData as the current texture This copies the
     -- data from the pointer into OpenGL texture memory, so it's ok if the
     -- foreignptr gets garbage collected after this.
-    withForeignPtr fptr $ \ptr ->
-       GL.texImage2D
-            Nothing
-            GL.NoProxy
-            0
-            GL.RGBA8
-            (GL.TextureSize2D
-                    (gsizei width)
-                    (gsizei height))
-            0
-            (GL.PixelData GL.RGBA GL.UnsignedInt8888 ptr)
+    loadTexSource (HostTexSource fptr) =
+        withForeignPtr fptr $ \ptr ->
+           GL.texImage2D
+                Nothing
+                GL.NoProxy
+                0
+                GL.RGBA8
+                (GL.TextureSize2D
+                        (gsizei width)
+                        (gsizei height))
+                0
+                (GL.PixelData GL.RGBA GL.UnsignedInt8888 ptr)
 
-    return Texture { texObject = tex }
+    loadTexSource (PBOTexSource pbo) = do
+        GL.bindBuffer GL.PixelUnpackBuffer $= Just pbo
+
+        GL.texImage2D
+                Nothing
+                GL.NoProxy
+                0
+                GL.RGBA8
+                (GL.TextureSize2D
+                        (gsizei width)
+                        (gsizei height))
+                0
+                (GL.PixelData GL.RGBA GL.UnsignedInt8888 nullPtr)
+
+        GL.bindBuffer GL.PixelUnpackBuffer $= Nothing
 
 freeTexture :: Texture -> IO ()
 freeTexture tex = GL.deleteObjectNames [texObject tex]

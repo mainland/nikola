@@ -15,7 +15,6 @@ import qualified Mandelbrot.RepaV1 as MR1
 import qualified Mandelbrot.RepaV2 as MR2
 import Mandelbrot.Types
 
---import qualified Graphics.Gloss as G
 import qualified GUI as G
 
 defaultView :: G.View
@@ -31,8 +30,8 @@ main = do
     let size  = fromIntegral $ fromLJust confSize opts
         limit = fromIntegral $ fromLJust confLimit opts
         f     = frameGen (fromLJust confBackend opts) limit
-    G.display (G.InWindow "Mandelbrot" (fromIntegral size, fromIntegral size) (10, 10))
-              defaultView f
+    let disp = G.InWindow "Mandelbrot" (fromIntegral size, fromIntegral size) (10, 10)
+    G.display disp defaultView f
 
 frameGen :: Backend -> I -> Float -> G.View -> (Int, Int) -> IO G.Picture
 frameGen backend limit _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
