@@ -60,9 +60,8 @@ genPlane :: Exp R
          -> Exp R
          -> Exp Int32
          -> Exp Int32
-         -> P (ComplexPlane M)
+         -> ComplexPlane D
 genPlane lowx lowy highx highy viewx viewy =
-    computeP $
     fromFunction (Z:.viewy:.viewx) $ \(Z:.y:.x) ->
         (lowx + (fromInt x*xsize)/fromInt viewx, lowy + (fromInt y*ysize)/fromInt viewy)
    where
@@ -70,11 +69,24 @@ genPlane lowx lowy highx highy viewx viewy =
       xsize = highx - lowx
       ysize = highy - lowy
 
-mkinit :: ComplexPlane M -> P (StepPlane M)
-mkinit cs = computeP $ map f cs
+mkinit :: ComplexPlane M -> StepPlane D
+mkinit cs = map f cs
   where
     f :: Complex -> (Complex, Exp Int32)
     f z = (z,0)
+
+mandelbrot :: Exp R
+           -> Exp R
+           -> Exp R
+           -> Exp R
+           -> Exp I
+           -> Exp I
+           -> Exp I
+           -> P (StepPlane M)
+mandelbrot lowx lowy highx highy viewx viewy depth = do
+    cs  <- computeP $ genPlane lowx lowy highx highy viewx viewy
+    zs0 <- computeP $ mkinit cs
+    stepN depth cs zs0
 
 prettyRGBA :: Exp Int32 -> (Complex, Exp Int32) -> Exp RGBA
 {-# INLINE prettyRGBA #-}

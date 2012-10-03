@@ -66,3 +66,17 @@ frameGen backend limit _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
       where
         h, w :: Int
         Z:.h:.w = extent arr
+
+{-
+    bitmapToPicture :: Bitmap F -> IO G.Picture
+    bitmapToPicture arr = do
+        pic@(G.PBO _ _ pbo) <- G.pboOfForeignPtr h w (castForeignPtr (toForeignPtr arr))
+        ref <- CUGL.registerBuffer pbo CUG.RegisterNone
+        CUG.mapResources [ref] Nothing
+        CUG.getMappedPointer ref >>= print
+        CUG.unmapResources [ref] Nothing
+        return pic
+      where
+        h, w :: Int
+        Z:.h:.w = extent arr
+-}

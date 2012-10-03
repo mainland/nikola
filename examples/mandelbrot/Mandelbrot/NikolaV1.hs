@@ -39,9 +39,9 @@ prettyMandelbrot limit arr = do
     let AFUnboxed sh (VUF.V_Word32 v) =  toHostArray bmap
     let (fp, n)                       =  V.unsafeToForeignPtr0 v
     return $ AForeignPtr sh n fp
-
-prettyMandelbrotDev :: I -> StepPlane CUF -> IO (Bitmap CUF)
-prettyMandelbrotDev = $(compile I.prettyMandelbrot)
+  where
+    prettyMandelbrotDev :: I -> StepPlane CUF -> IO (Bitmap CUF)
+    prettyMandelbrotDev = $(compile I.prettyMandelbrot)
 
 mandelbrot :: R
            -> R
@@ -52,8 +52,8 @@ mandelbrot :: R
            -> I
            -> IO (StepPlane CUF)
 mandelbrot lowx lowy highx highy viewx viewy depth = do
-    cs :: ComplexPlane CUF <- genPlane lowx lowy highx highy viewx viewy
-    zs0 :: StepPlane CUF   <- mkinit cs
+    cs  <- genPlane lowx lowy highx highy viewx viewy
+    zs0 <- mkinit cs
     iterateM (step cs) depth zs0
 
 iterateM :: Monad m => (a -> m a) -> I -> a -> m a

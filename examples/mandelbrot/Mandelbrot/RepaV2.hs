@@ -72,7 +72,7 @@ genPlane lowx lowy highx highy viewx viewy =
       xsize = highx - lowx
       ysize = highy - lowy
 
-mkinit :: ComplexPlane D -> StepPlane D
+mkinit :: ComplexPlane U -> StepPlane D
 mkinit cs = map f cs
   where
     f :: Complex -> (Complex, I)
@@ -88,14 +88,9 @@ mandelbrot :: R
            -> I
            -> IO (StepPlane U)
 mandelbrot lowx lowy highx highy viewx viewy depth = do
-    cs' <- computeP cs
-    computeP zs0 >>= stepN depth cs'
-  where
-    cs :: ComplexPlane D
-    cs = genPlane lowx lowy highx highy viewx viewy
-
-    zs0 :: StepPlane D
-    zs0 = mkinit cs
+    cs  <- computeP $ genPlane lowx lowy highx highy viewx viewy
+    zs0 <- computeP $ mkinit cs
+    stepN depth cs zs0
 
 prettyRGBA :: I -> (Complex, I) -> RGBA
 {-# INLINE prettyRGBA #-}
