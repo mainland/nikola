@@ -3,18 +3,26 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module Mandelbrot.RepaV1
-    ( mandelbrot
-    , prettyMandelbrot
-    ) where
+module Mandelbrot.RepaV1 (mandelbrotImage) where
 
 import Prelude hiding (map, zipWith)
 import qualified Prelude as P
 
 import Data.Array.Repa
 import Data.Array.Repa.Repr.ForeignPtr
+import Data.Word
 
-import Mandelbrot.Types
+type R = Double
+
+type RGBA = Word32
+
+type Bitmap r = Array r DIM2 RGBA
+
+type Complex = (R, R)
+
+type ComplexPlane r = Array r DIM2 Complex
+
+type StepPlane r = Array r DIM2 (Complex, Int)
 
 magnitude :: Complex -> R
 magnitude (x,y) = x*x + y*y
@@ -40,7 +48,7 @@ step :: ComplexPlane U -> StepPlane U -> IO (StepPlane U)
 step cs zs =
     computeP $ zipWith stepPoint cs zs
   where
-    stepPoint :: Complex -> (Complex, I) -> (Complex, I)
+    stepPoint :: Complex -> (Complex, Int) -> (Complex, Int)
     {-# INLINE stepPoint #-}
     stepPoint !c (!z,!i) =
         if magnitude z' > 4.0
@@ -57,11 +65,11 @@ genPlane :: R
          -> R
          -> R
          -> R
-         -> I
-         -> I
+         -> Int
+         -> Int
          -> ComplexPlane D
 genPlane lowx lowy highx highy viewx viewy =
-    fromFunction (Z:.fromIntegral viewy:.fromIntegral viewx) $ \(Z:.(!y):.(!x)) ->
+    fromFunction (Z:.viewy:.viewx) $ \(Z:.(!y):.(!x)) ->
         (lowx + (fromIntegral x*xsize)/fromIntegral viewx,
          lowy + (fromIntegral y*ysize)/fromIntegral viewy)
    where
@@ -72,7 +80,7 @@ genPlane lowx lowy highx highy viewx viewy =
 mkinit :: ComplexPlane U -> StepPlane D
 mkinit cs = map f cs
   where
-    f :: Complex -> (Complex, I)
+    f :: Complex -> (Complex, Int)
     {-# INLINE f #-}
     f z = (z, 0)
 
@@ -80,22 +88,23 @@ mandelbrot :: R
            -> R
            -> R
            -> R
-           -> I
-           -> I
-           -> I
+           -> Int
+           -> Int
+           -> Int
            -> IO (StepPlane U)
 mandelbrot lowx lowy highx highy viewx viewy depth = do
     cs  <- computeP $ genPlane lowx lowy highx highy viewx viewy
     zs0 <- computeP $ mkinit cs
     iterateM (step cs) depth zs0
 
-iterateM :: Monad m => (a -> m a) -> I -> a -> m a
+iterateM :: Monad m => (a -> m a) -> Int -> a -> m a
+{-# INLINE iterateM #-}
 iterateM f = go
   where
     go 0 x = return x
     go n x = f x >>= go (n-1)
 
-prettyRGBA :: I -> (Complex, I) -> RGBA
+prettyRGBA :: Int -> (Complex, Int) -> RGBA
 {-# INLINE prettyRGBA #-}
 prettyRGBA limit (_, s) = r + g + b + a
   where
@@ -105,5 +114,17 @@ prettyRGBA limit (_, s) = r + g + b + a
     b = (t * 3 `mod` 256     ) * 0x100
     a = 0xFF
 
-prettyMandelbrot :: I -> StepPlane U -> IO (Bitmap F)
+prettyMandelbrot :: Int -> StepPlane U -> IO (Bitmap F)
 prettyMandelbrot limit zs = computeP $ map (prettyRGBA limit) zs
+
+mandelbrotImage :: R
+                -> R
+                -> R
+                -> R
+                -> Int
+                -> Int
+                -> Int
+                -> IO (Bitmap F)
+mandelbrotImage lowx lowy highx highy viewx viewy depth =
+    mandelbrot lowx lowy highx highy viewx viewy depth >>=
+    prettyMandelbrot depth

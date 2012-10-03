@@ -12,8 +12,11 @@ import Data.Array.Nikola.Backend.CUDA
 import Data.Array.Nikola.Combinators
 import Data.Array.Nikola.Eval
 import Data.Int
+import Data.Word
 
-import Mandelbrot.Types hiding (Bitmap, Complex, ComplexPlane, StepPlane)
+type R = Double
+
+type RGBA = Word32
 
 type Bitmap r = Array r DIM2 (Exp RGBA)
 
@@ -36,7 +39,7 @@ instance Num Complex where
     signum z@(x,y)  = (x/r, y/r) where r = magnitude z
     fromInteger n   = (fromInteger n, 0)
 
-stepN :: Exp I -> ComplexPlane G -> StepPlane G -> P (StepPlane G)
+stepN :: Exp Int32 -> ComplexPlane G -> StepPlane G -> P (StepPlane G)
 stepN n cs zs =
     computeP $ zipWith stepPoint cs zs
   where
@@ -79,9 +82,9 @@ mandelbrot :: Exp R
            -> Exp R
            -> Exp R
            -> Exp R
-           -> Exp I
-           -> Exp I
-           -> Exp I
+           -> Exp Int32
+           -> Exp Int32
+           -> Exp Int32
            -> P (StepPlane G)
 mandelbrot lowx lowy highx highy viewx viewy depth = do
     cs  <- computeP $ genPlane lowx lowy highx highy viewx viewy

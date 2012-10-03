@@ -1,8 +1,8 @@
 module Main where
 
-import Control.Applicative
 import Data.Array.Repa
 import Data.Array.Repa.Repr.ForeignPtr
+import Data.Word
 import Foreign (castForeignPtr)
 import System.Environment (getArgs)
 
@@ -14,9 +14,14 @@ import qualified Mandelbrot.NikolaV2 as MN2
 import qualified Mandelbrot.NikolaV3 as MN3
 import qualified Mandelbrot.RepaV1 as MR1
 import qualified Mandelbrot.RepaV2 as MR2
-import Mandelbrot.Types
 
 import qualified GUI as G
+
+type R = Double
+
+type RGBA = Word32
+
+type Bitmap r = Array r DIM2 RGBA
 
 defaultView :: G.View
 defaultView = G.View { G.left  = -0.25
@@ -30,47 +35,56 @@ main = do
     (opts, _) <- getArgs >>= parseArgs defaultConfig
     let size  = fromIntegral $ fromLJust confSize opts
         limit = fromIntegral $ fromLJust confLimit opts
-        f     = frameGen (fromLJust confBackend opts) limit
-    let disp = G.InWindow "Mandelbrot" (fromIntegral size, fromIntegral size) (10, 10)
+        disp = G.InWindow "Mandelbrot" (fromIntegral size, fromIntegral size) (10, 10)
+    f <- frameGenerator (fromLJust confBackend opts) limit
     G.display disp defaultView f
 
-frameGen :: Backend -> I -> Float -> G.View -> (Int, Int) -> IO G.Picture
-frameGen backend limit _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
-    bitmapToPicture <$> go backend (fromIntegral sizeX, fromIntegral sizeY)
+frameGenerator :: Backend -> Int -> IO G.FrameGen
+frameGenerator RepaV1 limit = return f
   where
-    lowx', lowy', highx', highy' :: R
-    lowx'  = realToFrac lowx
-    lowy'  = realToFrac lowy
-    highx' = realToFrac highx
-    highy' = realToFrac highy
+    f :: G.FrameGen
+    f _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
+        bmap <- MR1.mandelbrotImage lowx lowy highx highy sizeX sizeY limit
+        return $ bitmapToPicture bmap
 
-    go :: Backend -> (I, I) -> IO (Bitmap F)
-    go be (sizeX, sizeY)
-      | be == NikolaV1
-      = MN1.mandelbrot lowx' lowy' highx' highy' sizeX sizeY limit >>=
-        MN1.prettyMandelbrot limit
+frameGenerator RepaV2 limit = return f
+  where
+    f :: G.FrameGen
+    f _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
+        bmap <- MR2.mandelbrotImage lowx lowy highx highy sizeX sizeY limit
+        return $ bitmapToPicture bmap
 
-      | be == NikolaV2
-      = MN2.mandelbrot lowx' lowy' highx' highy' sizeX sizeY limit >>=
-        MN2.prettyMandelbrot limit
+frameGenerator Repa limit = frameGenerator RepaV2 limit
 
-      | be == NikolaV3 || be == Nikola
-      = MN3.mandelbrot lowx' lowy' highx' highy' sizeX sizeY limit >>=
-        MN3.prettyMandelbrot limit
+frameGenerator NikolaV1 limit = return f
+  where
+    f :: G.FrameGen
+    f _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
+        bmap <- MN1.mandelbrotImage lowx lowy highx highy sizeX sizeY limit
+        return $ bitmapToPicture bmap
 
-      | be == RepaV1
-      = MR1.mandelbrot lowx' lowy' highx' highy' sizeX sizeY limit >>=
-        MR1.prettyMandelbrot limit
+frameGenerator NikolaV2 limit = return f
+  where
+    f :: G.FrameGen
+    f _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
+        bmap <- MN2.mandelbrotImage lowx lowy highx highy sizeX sizeY limit
+        return $ bitmapToPicture bmap
 
-      | otherwise
-      = MR2.mandelbrot lowx' lowy' highx' highy' sizeX sizeY limit >>=
-        MR2.prettyMandelbrot limit
+frameGenerator NikolaV3 limit = return f
+  where
+    f :: G.FrameGen
+    f _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
+        bmap <- MN3.mandelbrotImage lowx lowy highx highy sizeX sizeY limit
+        return $ bitmapToPicture bmap
 
-    bitmapToPicture :: Bitmap F -> G.Picture
-    bitmapToPicture arr = G.bitmapOfForeignPtr h w (castForeignPtr (toForeignPtr arr))
-      where
-        h, w :: Int
-        Z:.h:.w = extent arr
+frameGenerator Nikola limit = frameGenerator NikolaV3 limit
+
+bitmapToPicture :: Bitmap F -> G.Picture
+bitmapToPicture arr =
+    G.bitmapOfForeignPtr h w (castForeignPtr (toForeignPtr arr))
+  where
+    h, w :: Int
+    Z:.h:.w = extent arr
 
 {-
     bitmapToPicture :: Bitmap F -> IO G.Picture

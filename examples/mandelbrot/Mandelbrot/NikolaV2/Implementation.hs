@@ -11,8 +11,11 @@ import Prelude hiding (map, zipWith)
 import Data.Array.Nikola.Backend.CUDA
 import Data.Array.Nikola.Eval
 import Data.Int
+import Data.Word
 
-import Mandelbrot.Types hiding (Bitmap, Complex, ComplexPlane, StepPlane)
+type R = Double
+
+type RGBA = Word32
 
 type Bitmap r = Array r DIM2 (Exp RGBA)
 
