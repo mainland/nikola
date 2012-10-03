@@ -73,12 +73,11 @@ import Foreign.CUDA.Driver.Marshal
 import Foreign.CUDA.ForeignPtr
 import Foreign.CUDA.Ptr
 import Foreign.CUDA.Storable
-import Foreign.ForeignPtr
 import Foreign.Storable
 
 -- | Mutable 'Storable'-based CUDA vectors
 data MVector s a = MVector {-# UNPACK #-} !Int
-                           {-# UNPACK #-} !(ForeignPtr a)
+                           {-# UNPACK #-} !(ForeignDevicePtr a)
         deriving ( Typeable )
 
 type IOVector = MVector RealWorld
