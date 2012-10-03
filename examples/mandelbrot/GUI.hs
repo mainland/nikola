@@ -153,6 +153,7 @@ display disp view f = do
     initializeGLUT False
     openWindowGLUT disp
     --initializeCUDACtx
+    return $! N.currentContext
     state    <- defaultState disp view f
     stateRef <- newIORef state
     GLUT.displayCallback       $= callbackDisplay stateRef

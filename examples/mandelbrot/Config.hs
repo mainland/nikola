@@ -9,6 +9,7 @@ data Backend = Repa
              | Nikola
              | NikolaV1
              | NikolaV2
+             | NikolaV3
   deriving (Eq, Show)
 
 data Config = Config

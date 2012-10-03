@@ -11,6 +11,7 @@ import ParseConfig
 
 import qualified Mandelbrot.NikolaV1 as MN1
 import qualified Mandelbrot.NikolaV2 as MN2
+import qualified Mandelbrot.NikolaV3 as MN3
 import qualified Mandelbrot.RepaV1 as MR1
 import qualified Mandelbrot.RepaV2 as MR2
 import Mandelbrot.Types
@@ -49,9 +50,13 @@ frameGen backend limit _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
       = MN1.mandelbrot lowx' lowy' highx' highy' sizeX sizeY limit >>=
         MN1.prettyMandelbrot limit
 
-      | be == NikolaV2 || be == Nikola
+      | be == NikolaV2
       = MN2.mandelbrot lowx' lowy' highx' highy' sizeX sizeY limit >>=
         MN2.prettyMandelbrot limit
+
+      | be == NikolaV3 || be == Nikola
+      = MN3.mandelbrot lowx' lowy' highx' highy' sizeX sizeY limit >>=
+        MN3.prettyMandelbrot limit
 
       | be == RepaV1
       = MR1.mandelbrot lowx' lowy' highx' highy' sizeX sizeY limit >>=
