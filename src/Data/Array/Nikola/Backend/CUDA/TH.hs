@@ -283,7 +283,7 @@ instance (arep ~ N.Rep a,
           ToRsh sh,
           N.Shape sh,
           N.IsElem a,
-          IsArrayVal (R.Array R.CUF rsh arep))
+          IsVal (R.Array R.CUF rsh arep))
       => Compilable (N.Array r     sh  a)
                     (R.Array R.CUF rsh arep) where
     precompile =
@@ -295,8 +295,7 @@ instance (arep ~ N.Rep a,
           ToRsh sh,
           N.Shape sh,
           N.IsElem a,
-          -- N.Load r sh a,
-          IsArrayVal (R.Array R.CUF rsh arep))
+          IsVal (R.Array R.CUF rsh arep))
       => Compilable (N.P (N.Array r     sh  a))
                     (IO  (R.Array R.CUF rsh arep)) where
     precompile =
@@ -476,6 +475,42 @@ baseTypeVal(Word64)
 baseTypeVal(Float)
 baseTypeVal(Double)
 
+--
+-- Val instance for CUDA UnboxedForeign arrays
+--
+
+instance IsArrayVal (VCUF.Vector a) => IsVal (R.Array R.CUF rsh a) where
+    bindArgs _ = do
+        arr  <- fst <$> takeLamVar
+        rarr <- qNewName "rarr"
+        p    <- liftQ $ TH.varP rarr
+        appendLamPats [p]
+
+        modifyBody $ \qm ->
+            [|do { let { v = R.toUnboxedForeign $(TH.varE rarr) }
+                 ; $(coerceArrayArg (undefined :: VCUF.Vector a)) v $ \ptrs ->
+                   $(lamsE [arr] qm) (NArray ptrs (R.extent $(TH.varE rarr)))
+                 }
+             |]
+
+    coerceResult _ qm =
+        [|$qm >>= \(NArray fdptrs sh) ->
+           do { let sz = R.size sh
+              ; v <- $(coerceArrayResult (undefined :: VCUF.Vector a)) fdptrs (R.Z R.:. sz)
+              ; return $ R.fromUnboxedForeign sh v
+              }
+         |]
+
+--
+-- Val instances for array-like things
+--
+
+-- The 'IsArrayVal' type class tells us how to bind an 'a' and how to convert an
+-- 'a' to and from a Repa CF array.
+class IsArrayVal a where
+    coerceArrayArg    :: a -> ExpQ
+    coerceArrayResult :: a -> ExpQ
+
 instance IsArrayVal [a] => IsVal [a] where
     bindArgs _ = do
         arr <- fst <$> takeLamVar
@@ -520,27 +555,6 @@ instance IsArrayVal (VCS.Vector a) => IsVal (VCS.Vector a) where
 
     coerceResult _ qm =
         [|$qm >>= \(NArray fdptrs sh) -> $(coerceArrayResult (undefined :: VCS.Vector a)) fdptrs sh|]
-
-instance IsArrayVal (R.Array R.CUF rsh a) => IsVal (R.Array R.CUF rsh a) where
-    bindArgs _ = do
-        arr  <- fst <$> takeLamVar
-        rarr <- qNewName "rarr"
-        p    <- liftQ $ TH.varP rarr
-        appendLamPats [p]
-
-        modifyBody $ \qm ->
-            [|$(coerceArrayArg (undefined :: R.Array R.CUF rsh a)) $(TH.varE rarr) $ \ptrs ->
-              $(lamsE [arr] qm) (NArray ptrs (R.extent $(TH.varE rarr)))
-             |]
-
-    coerceResult _ qm =
-        [|$qm >>= \(NArray fdptrs sh) -> $(coerceArrayResult (undefined :: R.Array R.CUF rsh a)) fdptrs sh|]
-
--- The 'IsArrayVal' type class tells us how to bind an 'a' and how to convert an
--- 'a' to and from a Repa CF array.
-class IsArrayVal a where
-    coerceArrayArg    :: a -> ExpQ
-    coerceArrayResult :: a -> ExpQ
 
 --
 -- 'IsArrayVal' instances for lists
@@ -722,25 +736,5 @@ instance ( IsArrayVal (VCUF.Vector a)
           do { v_a <- $(coerceArrayResult (undefined :: VCUF.Vector a)) ptr_a sh
              ; v_b <- $(coerceArrayResult (undefined :: VCUF.Vector b)) ptr_b sh
              ; return $ VCUF.V_2 n v_a v_b
-             }
-         |]
-
---
--- 'IsArrayVal' instances for CUDA UnboxedForeign 'Array's
---
-
-instance IsArrayVal (VCUF.Vector a) => IsArrayVal (R.Array R.CUF sh a) where
-    coerceArrayArg _ =
-        [|\arr kont ->
-          do { let { v = R.toUnboxedForeign arr }
-             ; $(coerceArrayArg (undefined :: VCUF.Vector a)) v kont
-             }
-         |]
-
-    coerceArrayResult _ =
-        [|\fdptr sh ->
-          do { let sz = R.size sh
-             ; v <- $(coerceArrayResult (undefined :: VCUF.Vector a)) fdptr (R.Z R.:. sz)
-             ; return $ R.fromUnboxedForeign sh v
              }
          |]
