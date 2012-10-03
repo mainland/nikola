@@ -101,12 +101,12 @@ currentContext = unsafePerformIO $ do
 data CUDA
   deriving (Typeable)
 
-#define cudaIsElem(ty,tycon)                                  \
-instance IsElem (E.Exp CUDA ty) where                         \
-{ type Rep (E.Exp CUDA ty) = ty                               \
-; typeOf _ = tycon                                            \
-; indexElem arr ix = E $ indexScalar (unE arr) (unE ix)       \
-; writeElem arr ix x = writeScalar (unE arr) (unE ix) (unE x) \
+#define cudaIsElem(ty,tycon)                                       \
+instance IsElem (E.Exp CUDA ty) where                              \
+{ type Rep (E.Exp CUDA ty) = ty                                    \
+; typeOf _ = tycon                                                 \
+; indexElem arr ix = E $ IndexE (unE arr) (unE ix)                 \
+; writeElem arr ix x = seqK (WriteE (unE arr) (unE ix) (unE x)) () \
 }
 
 cudaIsElem(Int8,   Int8T)

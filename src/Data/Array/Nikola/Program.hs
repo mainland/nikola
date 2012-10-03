@@ -14,7 +14,8 @@ module Data.Array.Nikola.Program (
     P,
 
     splitExp,
-    isolateK
+    isolateK,
+    seqK
   ) where
 
 -- import Text.PrettyPrint.Mainland
@@ -53,3 +54,10 @@ isolateK p = do
     shiftH $ \_ -> do
         return $ m1 `seqE` CallE (LamE [] p) []
     return $ ReturnE UnitE
+
+-- | Prepend a monadic action to the program being generated.
+seqK :: S.Exp -> a -> P a
+seqK p1 x = do
+    shift $ \k -> do
+    p2 <- reset $ k x
+    return $ p1 `seqE` p2

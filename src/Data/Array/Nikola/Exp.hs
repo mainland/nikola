@@ -49,9 +49,7 @@ module Data.Array.Nikola.Exp (
     Unlift(..),
 
     Ptr,
-    IsElem(..),
-    indexScalar,
-    writeScalar
+    IsElem(..)
   ) where
 
 import Prelude hiding ((^), fromIntegral, max, min)
@@ -221,23 +219,6 @@ varE = E . VarE . unV
 voidE :: Exp t ()
 voidE = E UnitE
 
-indexScalar :: S.Exp -> S.Exp -> S.Exp
-indexScalar arr ix =
-    IndexE arr ix
-
-writeScalar :: S.Exp -> S.Exp -> S.Exp -> P ()
-writeScalar arr ix x =
-        shift $ \k -> do
-        let p1 =  WriteE arr ix x
-        p2     <- reset $ k ()
-        return $ p1 `seqE` p2
-
-proj :: Int -> Int -> Exp t a -> Exp t b
-proj i n tup = E (ProjE i n (unE tup))
-
-projArr :: Int -> Int -> Exp t a -> Exp t b
-projArr i n tup = E (ProjArrE i n (unE tup))
-
 --
 -- Lifting to embedded values
 --
@@ -326,6 +307,16 @@ class (Typeable a) => IsElem a where
 
     indexElem :: Exp t (Ptr a) -> Exp t Ix -> a
     writeElem :: Exp t (Ptr a) -> Exp t Ix -> a -> P ()
+
+--
+-- IsElem instances for tuple
+--
+
+proj :: Int -> Int -> Exp t a -> Exp t b
+proj i n tup = E (ProjE i n (unE tup))
+
+projArr :: Int -> Int -> Exp t a -> Exp t b
+projArr i n tup = E (ProjArrE i n (unE tup))
 
 instance ( IsElem a
          , IsElem b

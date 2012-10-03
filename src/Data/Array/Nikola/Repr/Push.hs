@@ -26,6 +26,7 @@ import Data.Typeable (Typeable)
 
 import Data.Array.Nikola.Array
 import Data.Array.Nikola.Eval
+import Data.Array.Nikola.Program
 import Data.Array.Nikola.Shape
 
 import Data.Array.Nikola.Language.Monad
@@ -45,9 +46,7 @@ instance Shape sh => Load PSH sh e where
         p1 <- reset $ do  (i, x) <- m
                           unsafeWriteMArray marr i x
                           return $ ReturnE UnitE
-        shift $ \k -> do
-        p2 <- reset $ k ()
-        return $ p1 `seqE` p2
+        seqK p1 ()
 
 -- | Construct a push array from a function mapping indices to values.
 mkPushArray :: forall sh a . (Shape sh)
