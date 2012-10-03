@@ -29,7 +29,7 @@ import qualified Foreign.CUDA.Driver as CU
 import qualified Foreign.CUDA.ForeignPtr as CU
 import qualified Language.C.Syntax as C
 import qualified Language.Haskell.TH as TH
-import Language.Haskell.TH (ExpQ)
+import Language.Haskell.TH (ExpQ, PatQ, TypeQ)
 import Language.C.Quote.C
 import Text.PrettyPrint.Mainland
 
@@ -285,7 +285,10 @@ compileExp (BindE v tau m1 m2) = do
     qm1 <- compileExp m1
     qm2 <- extendVarTypes [(v,tau)] $
            compileExp m2
-    return [|$qm1 >>= $(TH.lamE [TH.varP (TH.mkName (unVar v))] qm2)|]
+    return [|do { x <- $qm1
+                ; return $(sigE [|x|] tau)
+                }
+             >>= $(TH.lamE [TH.varP (TH.mkName (unVar v))] qm2)|]
 
 compileExp (AllocE atau e_sh) = do
     (tau, _) <- checkArrayT atau
@@ -300,8 +303,11 @@ compileExp (AllocE atau e_sh) = do
     go (TupleT taus) =
         [|\sz -> $(tupM [ [|$(go tau) sz|] | tau <- taus])|]
 
-    go _ =
-        [|\sz -> liftIO $ CU.mallocForeignDevPtrArray sz|]
+    go tau =
+        [|\sz -> liftIO $ do { arr <- CU.mallocForeignDevPtrArray sz
+                             ; return $(sigE [|arr|] (PtrT tau))
+                             }
+         |]
 
 compileExp (DimE i _ e) = do
     (tau, _) <- inferExp e >>= checkArrayT
@@ -309,3 +315,47 @@ compileExp (DimE i _ e) = do
     return [|case $qe of { NArray _ sh -> fromIntegral (R.listOfShape sh !! i) }|]
 
 compileExp e = faildoc $ text "Cannot compile" <+> ppr e
+
+-- | Conversion to Haskell type
+class IsHType a where
+    toHType :: a -> TypeQ
+
+instance IsHType ScalarType where
+    toHType UnitT         = [t|()|]
+    toHType BoolT         = [t|Bool|]
+    toHType Int8T         = [t|Int8|]
+    toHType Int16T        = [t|Int16|]
+    toHType Int32T        = [t|Int32|]
+    toHType Int64T        = [t|Int64|]
+    toHType Word8T        = [t|Word8|]
+    toHType Word16T       = [t|Word16|]
+    toHType Word32T       = [t|Word32|]
+    toHType Word64T       = [t|Word64|]
+    toHType FloatT        = [t|Float|]
+    toHType DoubleT       = [t|Double|]
+    toHType (TupleT taus) = tupsT (map toHType taus)
+
+instance IsHType PtrType where
+    toHType (PtrT (TupleT taus)) = tupsT [toHType (PtrT tau) | tau <- taus]
+    toHType (PtrT tau)           = TH.appT (TH.conT ''CU.ForeignDevicePtr) (toHType tau)
+
+instance IsHType Type where
+    toHType (ScalarT tau)  = toHType tau
+    toHType (ArrayT tau n) = appsT [[t|NikolaArray|], toHType (PtrT tau), dimType n]
+      where
+        dimType :: Int -> TypeQ
+        dimType 0 = [t|R.Z|]
+        dimType n = appsT [[t|(R.:.)|], dimType (n-1), [t|Int|]]
+    toHType tau = faildoc $ text "Cannot convert" <+> ppr tau <+> text "to a Haskell type"
+
+appsT :: [TypeQ] -> TypeQ
+appsT = foldl1 TH.appT
+
+tupsT :: [TypeQ] -> TypeQ
+tupsT taus = foldl TH.appT (TH.tupleT (length taus)) taus
+
+sigE :: IsHType tau => ExpQ -> tau -> ExpQ
+sigE qe tau = TH.sigE qe (toHType tau)
+
+sigP :: IsHType tau => PatQ -> tau -> PatQ
+sigP qp tau = TH.sigP qp (toHType tau)
