@@ -35,7 +35,7 @@ instance Num Complex where
     signum z@(x,y)  = (x/r, y/r) where r = magnitude z
     fromInteger n   = (fromInteger n, 0)
 
-step :: ComplexPlane M -> StepPlane M -> P (StepPlane M)
+step :: ComplexPlane G -> StepPlane G -> P (StepPlane G)
 step cs zs =
     computeP $ zipWith stepPoint cs zs
   where
@@ -56,7 +56,7 @@ genPlane :: Exp R
          -> Exp R
          -> Exp Int32
          -> Exp Int32
-         -> P (ComplexPlane M)
+         -> P (ComplexPlane G)
 genPlane lowx lowy highx highy viewx viewy =
     computeP $
     fromFunction (Z:.viewy:.viewx) $ \(Z:.y:.x) ->
@@ -66,7 +66,7 @@ genPlane lowx lowy highx highy viewx viewy =
       xsize = highx - lowx
       ysize = highy - lowy
 
-mkinit :: ComplexPlane M -> P (StepPlane M)
+mkinit :: ComplexPlane G -> P (StepPlane G)
 mkinit cs = computeP $ map f cs
   where
     f :: Complex -> (Complex, Exp Int32)
@@ -82,5 +82,5 @@ prettyRGBA limit (_, s) = r + g + b + a
     b = (t * 3 `mod` 256     ) * 0x100
     a = 0xFF
 
-prettyMandelbrot :: Exp Int32 -> StepPlane M -> P (Bitmap M)
+prettyMandelbrot :: Exp Int32 -> StepPlane G -> P (Bitmap G)
 prettyMandelbrot limit zs = computeP $ map (prettyRGBA limit) zs

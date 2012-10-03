@@ -22,9 +22,9 @@ main :: IO ()
 main =
     defaultMain blackscholes
 
-blackscholes :: Array M DIM1 (Exp Double)
-             -> Array M DIM1 (Exp Double)
-             -> Array M DIM1 (Exp Double)
+blackscholes :: Array G DIM1 (Exp Double)
+             -> Array G DIM1 (Exp Double)
+             -> Array G DIM1 (Exp Double)
              -> Exp Double
              -> Exp Double
              -> Array D DIM1 (Exp Double)

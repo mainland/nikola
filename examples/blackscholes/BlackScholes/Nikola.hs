@@ -25,9 +25,9 @@ type F = Double
 -- make the @blackscholes@ function polymorphic in the numeric type, we need to
 -- pass an extra unused argument that plays the role of a type lambda. Pretty
 -- disgusting.
-blackscholes :: Vector M (Exp F)
-             -> Vector M (Exp F)
-             -> Vector M (Exp F)
+blackscholes :: Vector G (Exp F)
+             -> Vector G (Exp F)
+             -> Vector G (Exp F)
              -> Exp F
              -> Exp F
              -> Vector D (Exp F)

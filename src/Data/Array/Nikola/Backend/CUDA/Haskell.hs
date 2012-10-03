@@ -70,10 +70,10 @@ data PreEx a = PreEx ExState (Ex Val)
 -- any necessary cleanup, and then induct.
 --
 -- Note that it is not the case that 'a' implies 'b'. For example, we can
--- compile an embedded function that takes a 'N.Array N.M sh (N.Exp a)' as an
+-- compile an embedded function that takes a 'N.Array N.G sh (N.Exp a)' as an
 -- argument into a function that takes a 'R.Array R.CUF rsh (N.Rep a)' a an
 -- argument /or/ into a function that takes a '[N.Rep a]' as an argument. That
--- is, a DSL term that takes a Nikola manifest array as an argument can be
+-- is, a DSL term that takes a Nikola global array as an argument can be
 -- compiled to a Haskell term that takes a Repa CUDA array as an argument or to
 -- a Haskell term that can take a Haskell list as an argument.
 --
@@ -156,7 +156,7 @@ instance (arep ~ N.Rep (N.Exp a),
 instance (arep ~ N.Rep a,
           IsArrayVal [arep],
           Compilable b c)
-    => Compilable (N.Array N.M N.DIM1 a -> b)
+    => Compilable (N.Array N.G N.DIM1 a -> b)
                   ([arep]               -> c) where
     precompile p = \x -> precompile (pushArg x p)
 
@@ -165,7 +165,7 @@ instance (arep ~ N.Rep a,
           Storable arep,
           IsArrayVal (V.Vector arep),
           Compilable b c)
-    => Compilable (N.Array  N.M N.DIM1 a -> b)
+    => Compilable (N.Array  N.G N.DIM1 a -> b)
                   (V.Vector arep         -> c) where
     precompile p = \x -> precompile (pushArg x p)
 
@@ -174,8 +174,8 @@ instance (arep ~ N.Rep a,
           Storable arep,
           IsArrayVal (VCS.Vector arep),
           Compilable b c)
-    => Compilable (N.Array  N.M N.DIM1 a -> b)
-                  (VCS.Vector arep       -> c) where
+    => Compilable (N.Array    N.G N.DIM1 a -> b)
+                  (VCS.Vector arep         -> c) where
     precompile p = \x -> precompile (pushArg x p)
 
 instance (arep ~ N.Rep a,
@@ -185,7 +185,7 @@ instance (arep ~ N.Rep a,
           IsArrayVal (R.Array R.CUF rsh arep),
           VCUF.UnboxForeign arep,
           Compilable b c)
-    => Compilable (N.Array N.M  sh  a     -> b)
+    => Compilable (N.Array N.G   sh  a    -> b)
                   (R.Array R.CUF rsh arep -> c) where
     precompile p = \x -> precompile (pushArg x p)
 

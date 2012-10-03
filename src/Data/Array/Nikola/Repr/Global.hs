@@ -7,7 +7,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- |
--- Module      : Data.Array.Nikola.Repr.Manifest
+-- Module      : Data.Array.Nikola.Repr.Global
 -- Copyright   : (c) Geoffrey Mainland 2012
 -- License     : BSD-style
 --
@@ -15,8 +15,8 @@
 -- Stability   : experimental
 -- Portability : non-portable
 
-module Data.Array.Nikola.Repr.Manifest (
-    M,
+module Data.Array.Nikola.Repr.Global (
+    G,
     Array(..),
 
     IsElem(..)
@@ -35,24 +35,24 @@ import Data.Array.Nikola.Language.Monad
 import qualified Data.Array.Nikola.Language.Syntax as S
 import Data.Array.Nikola.Language.Syntax hiding (Exp, Var)
 
--- | "Manifest" arrays represented by an array expression
-data M
+-- | "Global" arrays exist in GPU global memory.
+data G
   deriving (Typeable)
 
-instance IsElem a => IsArray M a where
-    data Array M sh a = AManifest sh S.Exp
+instance IsElem a => IsArray G a where
+    data Array G sh a = AGlobal sh S.Exp
 
-    extent (AManifest sh _) = sh
+    extent (AGlobal sh _) = sh
 
-instance IsElem e => Source M e where
-    index (AManifest sh arr) ix =
+instance IsElem e => Source G e where
+    index (AGlobal sh arr) ix =
         indexElem (E arr) (toIndex sh ix)
 
-    linearIndex (AManifest _ arr) ix =
+    linearIndex (AGlobal _ arr) ix =
         indexElem (E arr) ix
 
-instance IsElem e => Target M e where
-    data MArray M sh e = MManifest sh S.Exp
+instance IsElem e => Target G e where
+    data MArray G sh e = MGlobal sh S.Exp
 
     newMArray sh = do
         v         <- gensym "vec_alloca"
@@ -62,13 +62,13 @@ instance IsElem e => Target M e where
             let alloc =  AllocE atau (map unE (listOfShape sh))
             return $ BindE v atau alloc p
         shift $ \k -> do
-        extendVarTypes [(v, atau)] $ k (MManifest sh (VarE v))
+        extendVarTypes [(v, atau)] $ k (MGlobal sh (VarE v))
       where
         tau :: ScalarType
         tau = typeOf (undefined :: e)
 
-    unsafeWriteMArray (MManifest sh arr) idx x =
+    unsafeWriteMArray (MGlobal sh arr) idx x =
         writeElem (E arr) (toIndex sh idx) x
 
-    unsafeFreezeMArray (MManifest sh arr) =
-        return $ AManifest sh arr
+    unsafeFreezeMArray (MGlobal sh arr) =
+        return $ AGlobal sh arr

@@ -103,7 +103,7 @@ map_test :: Test
 map_test = testCase "map" $
     g (V.fromList [1..10]) @=? V.map (+1) (V.fromList [1..10])
   where
-    f :: N.Array N.M N.DIM1 (N.Exp Float) -> N.Array N.D N.DIM1 (N.Exp Float)
+    f :: N.Array N.G N.DIM1 (N.Exp Float) -> N.Array N.D N.DIM1 (N.Exp Float)
     f v = N.map (\x -> x + 1) v
 
     g :: V.Vector Float -> V.Vector Float
@@ -113,7 +113,7 @@ map_inc_test :: Test
 map_inc_test = testCase "map inc" $
     g (V.fromList [1..10]) @=? V.map (+1) (V.fromList [1..10])
   where
-    f :: N.Array N.M N.DIM1 (N.Exp Int32) -> N.Array N.D N.DIM1 (N.Exp Int32)
+    f :: N.Array N.G N.DIM1 (N.Exp Int32) -> N.Array N.D N.DIM1 (N.Exp Int32)
     f v = N.map (\x -> x + 1) v
 
     g :: V.Vector Int32 -> V.Vector Int32
@@ -125,8 +125,8 @@ zip_test = testCase "zip" $
                           in
                             zipWith (+) xs xs
   where
-    f :: N.Array N.M N.DIM1 (N.Exp Float)
-      -> N.Array N.M N.DIM1 (N.Exp Float)
+    f :: N.Array N.G N.DIM1 (N.Exp Float)
+      -> N.Array N.G N.DIM1 (N.Exp Float)
       -> N.Array N.D N.DIM1 (N.Exp Float)
     f x y = N.zipWith (+) temp temp
       where
@@ -163,7 +163,7 @@ iterate_test :: Test
 iterate_test = testCase "iterate" $
     g (V.fromList [1..10]) @=? V.map (+5) (V.fromList [1..10])
   where
-    f :: N.Array N.M N.DIM1 (N.Exp Float) -> N.Array N.D N.DIM1 (N.Exp Float)
+    f :: N.Array N.G N.DIM1 (N.Exp Float) -> N.Array N.D N.DIM1 (N.Exp Float)
     f v = N.map (N.iterate (5 :: N.Exp Int32) (+1)) v
 
     g :: V.Vector Float -> V.Vector Float
@@ -275,7 +275,7 @@ prop_reverse :: [Float] -> Property
 prop_reverse xs = length xs > 0 ==> reverseN xs == reverse xs
   where
     reverseN :: [Float] -> [Float]
-    reverseN = $(NTH.compileSig (N.reverse :: N.Array N.M N.DIM1 (N.Exp Float)
+    reverseN = $(NTH.compileSig (N.reverse :: N.Array N.G N.DIM1 (N.Exp Float)
                                            -> N.Array N.D N.DIM1 (N.Exp Float))
                                 (undefined :: [Float] -> [Float]))
 
@@ -283,7 +283,7 @@ prop_init :: [Float] -> Property
 prop_init xs = length xs > 0 ==> initN xs == init xs
   where
     initN :: [Float] -> [Float]
-    initN = $(NTH.compileSig (N.init :: N.Array N.M N.DIM1 (N.Exp Float)
+    initN = $(NTH.compileSig (N.init :: N.Array N.G N.DIM1 (N.Exp Float)
                                      -> N.Array N.D N.DIM1 (N.Exp Float))
                              (undefined :: [Float] -> [Float]))
 
@@ -291,7 +291,7 @@ prop_tail :: [Float] -> Property
 prop_tail xs = length xs > 0 ==> tailN xs == tail xs
   where
     tailN :: [Float] -> [Float]
-    tailN = $(NTH.compileSig (N.tail :: N.Array N.M N.DIM1 (N.Exp Float)
+    tailN = $(NTH.compileSig (N.tail :: N.Array N.G N.DIM1 (N.Exp Float)
                                      -> N.Array N.D N.DIM1 (N.Exp Float))
                              (undefined :: [Float] -> [Float]))
 
@@ -300,7 +300,7 @@ prop_take n xs = property $ takeN n xs == take (fromIntegral n) xs
   where
     takeN :: Int32 -> [Float] -> [Float]
     takeN = $(NTH.compileSig (N.take :: N.Exp Int32
-                                     -> N.Array N.M N.DIM1 (N.Exp Float)
+                                     -> N.Array N.G N.DIM1 (N.Exp Float)
                                      -> N.Array N.D N.DIM1 (N.Exp Float))
                              (undefined :: Int32 -> [Float] -> [Float]))
 
@@ -309,7 +309,7 @@ prop_drop n xs = property $ dropN n xs == drop (fromIntegral n) xs
   where
     dropN :: Int32 -> [Float] -> [Float]
     dropN = $(NTH.compileSig (N.drop :: N.Exp Int32
-                                     -> N.Array N.M N.DIM1 (N.Exp Float)
+                                     -> N.Array N.G N.DIM1 (N.Exp Float)
                                      -> N.Array N.D N.DIM1 (N.Exp Float))
                              (undefined :: Int32 -> [Float] -> [Float]))
 

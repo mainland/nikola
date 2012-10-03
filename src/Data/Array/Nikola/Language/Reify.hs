@@ -31,8 +31,7 @@ import Data.Typeable (Typeable)
 import Data.Array.Nikola.Array
 import Data.Array.Nikola.Exp
 import Data.Array.Nikola.Eval
-import Data.Array.Nikola.Repr.Delayed
-import Data.Array.Nikola.Repr.Manifest
+import Data.Array.Nikola.Repr.Global
 import Data.Array.Nikola.Shape
 
 import Data.Array.Nikola.Language.Generic
@@ -62,14 +61,14 @@ instance (Typeable r,
           Load r sh a)
       => Reifiable (Array r sh a) S.Exp where
     reify arr = liftK $ do
-        AManifest _ arr <- computeP arr
+        AGlobal _ arr <- computeP arr
         returnK $ E arr
 
 instance (Shape sh,
           IsElem a)
-      => Reifiable (P (Array M sh a)) S.Exp where
+      => Reifiable (P (Array G sh a)) S.Exp where
     reify m = liftK $ do
-        AManifest _ arr <- m
+        AGlobal _ arr <- m
         returnK $ E arr
 
 liftK :: P S.Exp -> R S.Exp S.Exp
@@ -95,14 +94,14 @@ instance (IsElem (Exp t a),
 
 instance (Shape sh,
           IsElem a,
-          Reifiable b S.Exp) => Reifiable (Array M sh a -> b) S.Exp where
+          Reifiable b S.Exp) => Reifiable (Array G sh a -> b) S.Exp where
     reify f = do
         v        <- gensym "vec"
         let n    =  rank (undefined :: sh)
         let dims =  [DimE i n (VarE v) | i <- [0..n-1]]
         let sh   =  shapeOfList (P.map E dims)
         lamE [(v, ArrayT tau n)] $ do
-        reify $ f (AManifest sh (VarE v))
+        reify $ f (AGlobal sh (VarE v))
       where
         tau :: ScalarType
         tau = typeOf (undefined :: a)

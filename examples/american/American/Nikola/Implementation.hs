@@ -30,18 +30,18 @@ bankDays = 252
 s0 = 100
 r = 0.03; alpha = 0.07; sigma = 0.20
 
-finalPut :: Vector M (Exp F)
-         -> Vector M (Exp F)
+finalPut :: Vector G (Exp F)
+         -> Vector G (Exp F)
          -> Vector D (Exp F)
 finalPut uPow dPow = pmax (strike -^ st) 0
   where
     st :: Vector D (Exp F)
     st = s0 *^ (uPow ^*^ dPow)
 
-prevPut :: Vector M (Exp F)
-        -> Vector M (Exp F)
+prevPut :: Vector G (Exp F)
+        -> Vector G (Exp F)
         -> Exp Int32
-        -> Vector M (Exp F)
+        -> Vector G (Exp F)
         -> Exp Int32
         -> Vector D (Exp F)
 prevPut uPow dPow expiry put i =

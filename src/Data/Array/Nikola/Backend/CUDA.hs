@@ -27,7 +27,7 @@ module Data.Array.Nikola.Backend.CUDA (
     -- module Data.Array.Nikola.Operators.Reduction,
     module Data.Array.Nikola.Program,
     module Data.Array.Nikola.Repr.Delayed,
-    module Data.Array.Nikola.Repr.Manifest,
+    module Data.Array.Nikola.Repr.Global,
     module Data.Array.Nikola.Repr.Push,
 
     currentContext,
@@ -78,7 +78,7 @@ import Data.Array.Nikola.Operators.Mapping
 --import Data.Array.Nikola.Operators.Reduction
 import Data.Array.Nikola.Program
 import Data.Array.Nikola.Repr.Delayed
-import Data.Array.Nikola.Repr.Manifest
+import Data.Array.Nikola.Repr.Global
 import Data.Array.Nikola.Repr.Push
 import qualified Data.Array.Nikola.Shape as Sh
 

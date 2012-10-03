@@ -321,7 +321,7 @@ instance (arep ~ N.Rep a,
           N.IsElem a,
           IsArrayVal [arep],
           Compilable b c)
-    => Compilable (N.Array N.M N.DIM1 a -> b)
+    => Compilable (N.Array N.G N.DIM1 a -> b)
                   ([arep]               -> c) where
     precompile pq =
         castPreExpQ (precompile p' :: PreExpQ c)
@@ -333,7 +333,7 @@ instance (arep ~ N.Rep a,
           N.IsElem a,
           IsArrayVal (V.Vector arep),
           Compilable b c)
-    => Compilable (N.Array N.M N.DIM1 a -> b)
+    => Compilable (N.Array N.G N.DIM1 a -> b)
                   (V.Vector arep        -> c) where
     precompile pq =
         castPreExpQ (precompile p' :: PreExpQ c)
@@ -345,7 +345,7 @@ instance (arep ~ N.Rep a,
           N.IsElem a,
           IsArrayVal (VCS.Vector arep),
           Compilable b c)
-    => Compilable (N.Array N.M N.DIM1 a -> b)
+    => Compilable (N.Array N.G N.DIM1 a -> b)
                   (VCS.Vector arep      -> c) where
     precompile pq =
         castPreExpQ (precompile p' :: PreExpQ c)
@@ -361,7 +361,7 @@ instance (rsh ~ Rsh sh,
           N.IsElem a,
           IsVal (R.Array R.CUF rsh arep),
           Compilable b c)
-    => Compilable (N.Array N.M   sh  a    -> b)
+    => Compilable (N.Array N.G   sh  a    -> b)
                   (R.Array R.CUF rsh arep -> c) where
     precompile pq =
         castPreExpQ (precompile p' :: PreExpQ c)
@@ -442,10 +442,10 @@ compile a = compileSig a (undefined :: Compiled a)
 type family Compiled a :: *
 type instance Compiled (N.Exp a)                = N.Rep (N.Exp a)
 type instance Compiled (N.Array r sh a)         = R.Array R.CUF (Rsh sh) (N.Rep a)
-type instance Compiled (N.P (N.Array N.M sh a)) = IO (R.Array R.CUF (Rsh sh) (N.Rep a))
+type instance Compiled (N.P (N.Array N.G sh a)) = IO (R.Array R.CUF (Rsh sh) (N.Rep a))
 
 type instance Compiled (N.Exp a          -> b)  = N.Rep (N.Exp a) -> Compiled b
-type instance Compiled (N.Array N.M sh a -> b)  = R.Array R.CUF (Rsh sh) (N.Rep a) -> Compiled b
+type instance Compiled (N.Array N.G sh a -> b)  = R.Array R.CUF (Rsh sh) (N.Rep a) -> Compiled b
 
 -- The 'IsVal' type class tells us how to bind arguments in the form expected by
 -- the TH expression representation of a Nikola program and how to coerce the

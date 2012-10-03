@@ -32,7 +32,6 @@ import Data.Array.Nikola.Array
 import Data.Array.Nikola.Exp
 import Data.Array.Nikola.Eval
 import Data.Array.Nikola.Program
-import Data.Array.Nikola.Repr.Manifest
 import Data.Array.Nikola.Shape
 
 import Data.Array.Nikola.Language.Monad
