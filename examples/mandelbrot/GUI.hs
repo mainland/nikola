@@ -108,7 +108,7 @@ defaultViewControl = ViewControl
 defaultState :: Display -> View -> FrameGen -> IO State
 defaultState disp view framegen = do
     pic            <- framegen 0 view (displaySize disp)
-    realTimeRef    <- newIORef False
+    realTimeRef    <- newIORef True
     viewRef        <- newIORef view
     viewPortRef    <- newIORef (defaultViewPort (displaySize disp))
     viewControlRef <- newIORef defaultViewControl
