@@ -10,10 +10,12 @@ GHC_FLAGS += -W -Werror \
 	-Iinclude -Iinternal -Idist/build \
 	-optP-include -optPdist/build/autogen/cabal_macros.h
 
+GHC_FLAGS+=-rtsopts
+
 GHC_FLAGS+=-O
 #GHC_FLAGS+=-O2
 
-GHC_FLAGS+=-rtsopts -threaded
+#GHC_FLAGS+=-threaded
 
 #GHC_FLAGS+=-fno-liberate-case \
 #	   -funfolding-use-threshold1000 \
@@ -127,7 +129,7 @@ mandelbrot : $(SOURCE) $(shell find examples/mandelbrot -type f)
 	$(_QUIET)$(GHC) --make examples/mandelbrot/Main.hs \
 		-iexamples/mandelbrot \
 		-odir obj/mandelbrot -hidir obj/mandelbrot \
-		$(GHC_FLAGS) -o $@
+		$(GHC_FLAGS) -threaded -o $@
 
 unit : $(SOURCE) tests/unit/Main.hs
 	@echo "Compiling and linking" $@

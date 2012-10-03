@@ -22,9 +22,6 @@ import qualified Graphics.UI.GLUT as GLUT
 --import qualified System.Exit as System
 import Unsafe.Coerce
 
-import qualified Foreign.CUDA.Driver.Context as CU
-import Foreign.CUDA.Driver.Graphics.OpenGL as CUGL
-
 import qualified Data.Array.Nikola.Backend.CUDA as N
 
 import GUI.Commands
@@ -152,8 +149,11 @@ display :: Display   -- ^ Display mode.
 display disp view f = do
     initializeGLUT False
     openWindowGLUT disp
-    --initializeCUDACtx
-    return $! N.currentContext
+    N.initializeCUDACtx
+    -- This doesn't work with optimization on...it fails with the error "invalid
+    -- context handle."
+    --N.initializeCUDAGLCtx N.DeviceListAll
+    -- CU.allocaArray 10 $ \(_ :: CU.DevicePtr Int) -> print "initializeCUDACtx allocation succeeded"
     state    <- defaultState disp view f
     stateRef <- newIORef state
     GLUT.displayCallback       $= callbackDisplay stateRef
@@ -162,19 +162,6 @@ display disp view f = do
     GLUT.motionCallback        $= Just (callbackMotion stateRef)
     GLUT.passiveMotionCallback $= Just (callbackMotion stateRef)
     GLUT.mainLoop
-
---
--- Initialize a CUDA context that is set up for OpenGL interoperability.
---
--- This doesn't work with optimization on...it fails with the error "invalid
--- context handle."
---
-initializeCUDACtx :: IO ()
-initializeCUDACtx = do
-    CU.destroy N.currentContext
-    dev <- head <$> CUGL.getGLDevices 100 DeviceListAll
-    void $ CUGL.createGLContext dev []
-    -- CU.allocaArray 10 $ \(_ :: CU.DevicePtr Int) -> print "initializeCUDACtx allocation succeeded"
 
 initializeGLUT :: Bool -> IO ()
 initializeGLUT debug = do

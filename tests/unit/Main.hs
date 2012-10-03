@@ -64,7 +64,9 @@ instance Num Complex where
     fromInteger n   = (fromInteger n, 0)
 
 main :: IO ()
-main = defaultMain tests
+main =  do
+  N.initializeCUDACtx
+  defaultMain tests
 
 tests :: [Test]
 tests = [ id_test

@@ -424,8 +424,8 @@ finalizeExpQ isMonadic env = do
     TH.lamE (map return (nqLamPats env)) $
       TH.letE (kernelDecQs ++ map return (nqDecs env)) $
       if isMonadic && nqMorallyPure env
-      then [|N.currentContext `seq` unsafePerformIO $(nqBody env)|]
-      else [|N.currentContext `seq` $(nqBody env)|]
+      then [|unsafePerformIO $(nqBody env)|]
+      else [|$(nqBody env)|]
   where
     kernelDecQs :: [String] -> [C.Definition] -> Q [DecQ]
     kernelDecQs [] _ =

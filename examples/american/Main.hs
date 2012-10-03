@@ -20,6 +20,7 @@ import qualified Criterion.Main as C
 import System.Environment
 import Text.Printf
 
+import qualified Data.Array.Nikola.Backend.CUDA as N
 import Data.Array.Nikola.Util.Statistics
 
 import qualified Data.Vector.Storable as V
@@ -32,6 +33,7 @@ type F = Double
 main :: IO ()
 main = do
   args <- System.Environment.getArgs
+  N.initializeCUDACtx
   case args of
     ["--validate"] -> validate
     _              -> C.defaultMain $

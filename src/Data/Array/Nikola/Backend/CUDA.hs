@@ -30,7 +30,10 @@ module Data.Array.Nikola.Backend.CUDA (
     module Data.Array.Nikola.Repr.Global,
     module Data.Array.Nikola.Repr.Push,
 
-    currentContext,
+    initializeCUDACtx,
+
+    CUGL.DeviceList(..),
+    initializeCUDAGLCtx,
 
     CUDA,
     Vector,
@@ -64,8 +67,8 @@ import Data.Int
 import Data.Typeable (Typeable)
 import Data.Word
 import qualified Foreign.CUDA.Driver as CU
+import qualified Foreign.CUDA.Driver.Graphics.OpenGL as CUGL
 import Foreign.Storable (sizeOf)
-import System.IO.Unsafe (unsafePerformIO)
 
 import Data.Array.Nikola.Backend.Main
 import Data.Array.Nikola.Backend.C.Codegen
@@ -85,8 +88,8 @@ import qualified Data.Array.Nikola.Shape as Sh
 import Data.Array.Nikola.Language.Reify
 import Data.Array.Nikola.Language.Syntax hiding (Exp)
 
-currentContext :: CU.Context
-currentContext = unsafePerformIO $ do
+initializeCUDACtx :: IO CU.Context
+initializeCUDACtx = do
     CU.initialise []
     ndevs <- CU.count
     ctxCreate 0 ndevs
@@ -96,6 +99,13 @@ currentContext = unsafePerformIO $ do
     ctxCreate i n =
         (CU.device i >>= \dev -> CU.create dev [])
       `catch` \(_ :: CU.CUDAException) -> ctxCreate (i+1) n
+
+initializeCUDAGLCtx :: CUGL.DeviceList -> IO CU.Context
+initializeCUDAGLCtx deviceList = do
+    devs <- CUGL.getGLDevices 255 deviceList
+    case devs of
+      dev:_ -> CUGL.createGLContext dev []
+      _     -> CU.cudaError "No device available for OpenGl interoperability"
 
 -- | The CUDA target
 data CUDA

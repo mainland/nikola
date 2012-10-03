@@ -25,6 +25,7 @@ import Foreign (Storable)
 import System.Environment
 import Text.Printf
 
+import qualified Data.Array.Nikola.Backend.CUDA as N
 import qualified Data.Array.Nikola.Backend.CUDA.Haskell as NH
 import qualified Data.Array.Nikola.Backend.CUDA.TH as NTH
 import Data.Array.Nikola.Util.Statistics
@@ -44,6 +45,7 @@ vOLATILITY = 0.30;
 main :: IO ()
 main = do
   args <- System.Environment.getArgs
+  N.initializeCUDACtx
   case args of
     ["--validate"] -> validate
     _              -> mapM benchmarksForN [0,2..20] >>=

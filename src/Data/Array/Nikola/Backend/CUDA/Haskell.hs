@@ -197,7 +197,6 @@ compile = precompile . unsafePerformIO . reifyAndCompileToEx
         (_, p)    <- runR (reify a >>= detectSharing ExpA >>= optimizeHostProgram) env
         -- putStrLn $ pretty 200 (ppr p)
         (defs, m) <- evalCEx (compileToEx p)
-        return $! N.currentContext
         -- putStrLn $ pretty 200 (ppr defs)
         mod <- Nvcc.compile defs >>= CU.loadData
         return $ PreEx (ExState mod []) m
