@@ -64,22 +64,22 @@ deriving instance (Read sh, Read e, U.UnboxForeign e) => Read (Array CUF sh e)
 
 -- | Filling of unboxed vector arrays.
 instance U.UnboxForeign e => Target CUF e where
-    data MVec CUF e = CUMVec (UM.IOVector e)
+    data MVec CUF e = CUFMVec (UM.IOVector e)
 
     {-# INLINE newMVec #-}
-    newMVec n = liftM CUMVec (UM.new n)
+    newMVec n = liftM CUFMVec (UM.new n)
 
     {-# INLINE unsafeWriteMVec #-}
-    unsafeWriteMVec (CUMVec v) ix =
+    unsafeWriteMVec (CUFMVec v) ix =
         UM.unsafeWrite v ix
 
     {-# INLINE unsafeFreezeMVec #-}
-    unsafeFreezeMVec sh (CUMVec mvec) = do
+    unsafeFreezeMVec sh (CUFMVec mvec) = do
         vec <- U.unsafeFreeze mvec
         return $ ACFUnboxed sh vec
 
     {-# INLINE deepSeqMVec #-}
-    deepSeqMVec (CUMVec vec) x =
+    deepSeqMVec (CUFMVec vec) x =
         vec `seq` x
 
     {-# INLINE touchMVec #-}
