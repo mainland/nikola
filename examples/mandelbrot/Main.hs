@@ -1,13 +1,11 @@
 module Main where
 
 import Data.Array.Repa
+import Data.Array.Repa.Eval
 import Data.Array.Repa.Repr.ForeignPtr
 import Data.Word
 import Foreign (castForeignPtr)
 import System.Environment (getArgs)
-
-import Config
-import ParseConfig
 
 import qualified Mandelbrot.NikolaV1 as MN1
 import qualified Mandelbrot.NikolaV2 as MN2
@@ -15,6 +13,8 @@ import qualified Mandelbrot.NikolaV3 as MN3
 import qualified Mandelbrot.RepaV1 as MR1
 import qualified Mandelbrot.RepaV2 as MR2
 
+import Config
+import ParseConfig
 import qualified GUI as G
 
 type R = Double
@@ -22,6 +22,8 @@ type R = Double
 type RGBA = Word32
 
 type Bitmap r = Array r DIM2 RGBA
+
+type MBitmap r = MVec r RGBA
 
 defaultView :: G.View
 defaultView = G.View { G.left  = -0.25
@@ -47,11 +49,12 @@ frameGenerator RepaV1 limit = return f
         bmap <- MR1.mandelbrotImage lowx lowy highx highy sizeX sizeY limit
         return $ bitmapToPicture bmap
 
-frameGenerator RepaV2 limit = return f
+frameGenerator RepaV2 limit = do
+    gen <- MR2.mandelbrotImageGenerator
+    return $ f gen
   where
-    f :: G.FrameGen
-    f _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
-        bmap <- MR2.mandelbrotImage lowx lowy highx highy sizeX sizeY limit
+    f gen _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
+        bmap <- gen lowx lowy highx highy sizeX sizeY limit
         return $ bitmapToPicture bmap
 
 frameGenerator Repa limit = frameGenerator RepaV2 limit

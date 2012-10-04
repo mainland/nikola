@@ -3,22 +3,26 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module Mandelbrot.RepaV2 (mandelbrotImage) where
+module Mandelbrot.RepaV2 (mandelbrotImageGenerator) where
 
 import Prelude hiding (map, zipWith)
 import qualified Prelude as P
 
 import Data.Array.Repa
+import Data.Array.Repa.Eval
 import Data.Array.Repa.Repr.ForeignPtr
+import Data.IORef
 import Data.Word
 
 type R = Double
+
+type Complex = (R, R)
 
 type RGBA = Word32
 
 type Bitmap r = Array r DIM2 RGBA
 
-type Complex = (R, R)
+type MBitmap r = MVec r RGBA
 
 type ComplexPlane r = Array r DIM2 Complex
 
@@ -110,17 +114,48 @@ prettyRGBA limit (_, s) = r + g + b + a
     b = (t * 3 `mod` 256     ) * 0x100
     a = 0xFF
 
-prettyMandelbrot :: Int -> StepPlane U -> IO (Bitmap F)
-prettyMandelbrot limit zs = computeP $ map (prettyRGBA limit) zs
+prettyMandelbrot :: Int -> StepPlane U -> MBitmap F -> IO ()
+prettyMandelbrot limit zs mbmap =
+    loadP (map (prettyRGBA limit) zs) mbmap
 
-mandelbrotImage :: R
-                -> R
-                -> R
-                -> R
-                -> Int
-                -> Int
-                -> Int
-                -> IO (Bitmap F)
-mandelbrotImage lowx lowy highx highy viewx viewy depth =
-    mandelbrot lowx lowy highx highy viewx viewy depth >>=
-    prettyMandelbrot depth
+type MandelFun =  R
+               -> R
+               -> R
+               -> R
+               -> Int
+               -> Int
+               -> Int
+               -> IO (Bitmap F)
+
+data MandelState = MandelState
+    { manDim   :: DIM2
+    , manMbmap :: MBitmap F
+    }
+
+mandelbrotImageGenerator :: IO MandelFun
+mandelbrotImageGenerator = do
+    mbmap    <- newMVec 0
+    stateRef <- newIORef (MandelState (ix2 0 0) mbmap)
+    return $ mandelbrotImage stateRef
+  where
+    mandelbrotImage :: IORef MandelState -> MandelFun
+    mandelbrotImage stateRef lowx lowy highx highy viewx viewy depth = do
+        let sh =  ix2 viewy viewx
+        state  <- updateState stateRef sh
+        zs     <- mandelbrot lowx lowy highx highy viewx viewy depth
+        prettyMandelbrot depth zs (manMbmap state)
+        unsafeFreezeMVec sh (manMbmap state)
+
+    updateState :: IORef MandelState -> DIM2 -> IO MandelState
+    updateState stateRef sh = do
+        state <- readIORef stateRef
+        if manDim state == sh
+          then return state
+          else newState
+      where
+        newState :: IO MandelState
+        newState = do
+            mbmap      <- newMVec (size sh)
+            let state' =  MandelState sh mbmap
+            writeIORef stateRef state'
+            return state'

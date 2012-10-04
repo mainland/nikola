@@ -14,11 +14,11 @@ import Data.Word
 
 type R = Double
 
+type Complex = (R, R)
+
 type RGBA = Word32
 
 type Bitmap r = Array r DIM2 RGBA
-
-type Complex = (R, R)
 
 type ComplexPlane r = Array r DIM2 Complex
 
