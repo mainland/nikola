@@ -102,6 +102,7 @@ initializeCUDACtx = do
 
 initializeCUDAGLCtx :: CUGL.DeviceList -> IO CU.Context
 initializeCUDAGLCtx deviceList = do
+    CU.initialise []
     devs <- CUGL.getGLDevices 255 deviceList
     case devs of
       dev:_ -> CUGL.createGLContext dev []
