@@ -18,13 +18,19 @@ type R = Double
 
 type RGBA = Word32
 
+type Complex = (Exp R, Exp R)
+
 type Bitmap r = Array r DIM2 (Exp RGBA)
 
-type Complex = (Exp R, Exp R)
+type MBitmap r = MArray r DIM2 (Exp RGBA)
 
 type ComplexPlane r = Array r DIM2 Complex
 
+type MComplexPlane r = MArray r DIM2 Complex
+
 type StepPlane r = Array r DIM2 (Complex, Exp Int32)
+
+type MStepPlane r = MArray r DIM2 (Complex, Exp Int32)
 
 magnitude :: Complex -> Exp R
 magnitude (x,y) = x*x + y*y
@@ -39,9 +45,10 @@ instance Num Complex where
     signum z@(x,y)  = (x/r, y/r) where r = magnitude z
     fromInteger n   = (fromInteger n, 0)
 
-stepN :: Exp Int32 -> ComplexPlane G -> StepPlane G -> P (StepPlane G)
-stepN n cs zs =
-    computeP $ zipWith stepPoint cs zs
+stepN :: Exp Int32 -> ComplexPlane G -> MStepPlane G -> P ()
+stepN n cs mzs = do
+    zs <- unsafeFreezeMArray mzs
+    loadP (zipWith stepPoint cs zs) mzs
   where
     stepPoint :: Complex -> (Complex, Exp Int32) -> (Complex, Exp Int32)
     stepPoint c (z,i) = iterate n go (z,i)
@@ -63,8 +70,10 @@ genPlane :: Exp R
          -> Exp R
          -> Exp Int32
          -> Exp Int32
-         -> ComplexPlane D
-genPlane lowx lowy highx highy viewx viewy =
+         -> MComplexPlane G
+         -> P ()
+genPlane lowx lowy highx highy viewx viewy mcs =
+    flip loadP mcs $
     fromFunction (Z:.viewy:.viewx) $ \(Z:.y:.x) ->
         (lowx + (fromInt x*xsize)/fromInt viewx, lowy + (fromInt y*ysize)/fromInt viewy)
    where
@@ -72,24 +81,11 @@ genPlane lowx lowy highx highy viewx viewy =
       xsize = highx - lowx
       ysize = highy - lowy
 
-mkinit :: ComplexPlane G -> StepPlane D
-mkinit cs = map f cs
+mkinit :: ComplexPlane G -> MStepPlane G -> P ()
+mkinit cs mzs = loadP (map f cs) mzs
   where
     f :: Complex -> (Complex, Exp Int32)
     f z = (z,0)
-
-mandelbrot :: Exp R
-           -> Exp R
-           -> Exp R
-           -> Exp R
-           -> Exp Int32
-           -> Exp Int32
-           -> Exp Int32
-           -> P (StepPlane G)
-mandelbrot lowx lowy highx highy viewx viewy depth = do
-    cs  <- computeP $ genPlane lowx lowy highx highy viewx viewy
-    zs0 <- computeP $ mkinit cs
-    stepN depth cs zs0
 
 prettyRGBA :: Exp Int32 -> (Complex, Exp Int32) -> Exp RGBA
 {-# INLINE prettyRGBA #-}
@@ -101,5 +97,22 @@ prettyRGBA limit (_, s) = r + g + b + a
     b = (t * 3 `mod` 256     ) * 0x100
     a = 0xFF
 
-prettyMandelbrot :: Exp Int32 -> StepPlane G -> P (Bitmap G)
-prettyMandelbrot limit zs = computeP $ map (prettyRGBA limit) zs
+prettyMandelbrot :: Exp Int32 -> StepPlane G -> MBitmap G -> P ()
+prettyMandelbrot limit zs mbmap =
+    loadP (map (prettyRGBA limit) zs) mbmap
+
+mandelbrot :: Exp R
+           -> Exp R
+           -> Exp R
+           -> Exp R
+           -> Exp Int32
+           -> Exp Int32
+           -> Exp Int32
+           -> MComplexPlane G
+           -> MStepPlane G
+           -> P ()
+mandelbrot lowx lowy highx highy viewx viewy depth mcs mzs = do
+    genPlane lowx lowy highx highy viewx viewy mcs
+    cs <- unsafeFreezeMArray mcs
+    mkinit cs mzs
+    stepN depth cs mzs

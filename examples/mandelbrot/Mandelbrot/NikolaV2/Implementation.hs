@@ -17,15 +17,15 @@ type R = Double
 
 type RGBA = Word32
 
+type Complex = (Exp R, Exp R)
+
 type Bitmap r = Array r DIM2 (Exp RGBA)
 
 type MBitmap r = MArray r DIM2 (Exp RGBA)
 
-type Complex = (Exp R, Exp R)
+type ComplexPlane r = Array r DIM2 Complex
 
 type MComplexPlane r = MArray r DIM2 Complex
-
-type ComplexPlane r = Array r DIM2 Complex
 
 type StepPlane r = Array r DIM2 (Complex, Exp Int32)
 

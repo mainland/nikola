@@ -74,11 +74,12 @@ frameGenerator NikolaV2 limit = do
         bmap <- gen lowx lowy highx highy sizeX sizeY limit
         return $ bitmapToPicture bmap
 
-frameGenerator NikolaV3 limit = return f
+frameGenerator NikolaV3 limit = do
+    gen <- MN3.mandelbrotImageGenerator
+    return $ f gen
   where
-    f :: G.FrameGen
-    f _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
-        bmap <- MN3.mandelbrotImage lowx lowy highx highy sizeX sizeY limit
+    f gen _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
+        bmap <- gen lowx lowy highx highy sizeX sizeY limit
         return $ bitmapToPicture bmap
 
 frameGenerator Nikola limit = frameGenerator NikolaV3 limit
