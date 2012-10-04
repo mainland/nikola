@@ -12,7 +12,6 @@ import Data.Word
 import Control.Applicative
 import Control.Monad
 import Data.Maybe (isJust)
---import Control.Concurrent
 import Foreign (ForeignPtr,
                 nullPtr,
                 withForeignPtr)
@@ -149,11 +148,8 @@ display :: Display     -- ^ Display mode.
 display disp view mf = do
     initializeGLUT False
     openWindowGLUT disp
-    N.initializeCUDACtx
-    -- This doesn't work with optimization on...it fails with the error "invalid
-    -- context handle."
-    --N.initializeCUDAGLCtx N.DeviceListAll
-    -- CU.allocaArray 10 $ \(_ :: CU.DevicePtr Int) -> print "initializeCUDACtx allocation succeeded"
+    --N.initializeCUDACtx
+    N.initializeCUDAGLCtx N.DeviceListAll
     f        <- mf
     state    <- defaultState disp view f
     stateRef <- newIORef state
