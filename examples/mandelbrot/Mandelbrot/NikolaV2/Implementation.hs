@@ -19,6 +19,8 @@ type RGBA = Word32
 
 type Bitmap r = Array r DIM2 (Exp RGBA)
 
+type MBitmap r = MArray r DIM2 (Exp RGBA)
+
 type Complex = (Exp R, Exp R)
 
 type MComplexPlane r = MArray r DIM2 Complex
@@ -91,5 +93,6 @@ prettyRGBA limit (_, s) = r + g + b + a
     b = (t * 3 `mod` 256     ) * 0x100
     a = 0xFF
 
-prettyMandelbrot :: Exp Int32 -> StepPlane G -> P (Bitmap G)
-prettyMandelbrot limit zs = computeP $ map (prettyRGBA limit) zs
+prettyMandelbrot :: Exp Int32 -> StepPlane G -> MBitmap G -> P ()
+prettyMandelbrot limit zs mbmap =
+    loadP (map (prettyRGBA limit) zs) mbmap
