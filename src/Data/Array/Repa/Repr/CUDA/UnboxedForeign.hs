@@ -25,6 +25,8 @@ module Data.Array.Repa.Repr.CUDA.UnboxedForeign
 
     , fromUnboxedForeign, toUnboxedForeign
 
+    , fromMUnboxedForeign, toMUnboxedForeign
+
     , fromHostArray, toHostArray
 
     , zip,   zip3,   zip4,   zip5,   zip6
@@ -119,6 +121,16 @@ toUnboxedForeign :: U.UnboxForeign e
                  => Array CUF sh e -> U.Vector e
 {-# INLINE toUnboxedForeign #-}
 toUnboxedForeign (ACFUnboxed _ vec) = vec
+
+fromMUnboxedForeign :: (Shape sh, U.UnboxForeign e)
+                    => sh -> UM.IOVector e -> MArray CUF sh e
+{-# INLINE fromMUnboxedForeign #-}
+fromMUnboxedForeign sh vec = MCFUnboxed sh vec
+
+toMUnboxedForeign :: U.UnboxForeign e
+                  => MArray CUF sh e -> UM.IOVector e
+{-# INLINE toMUnboxedForeign #-}
+toMUnboxedForeign (MCFUnboxed _ mvec) = mvec
 
 fromHostArray :: U.EverywhereUnboxForeign a => Array UF.UF sh a -> Array CUF sh a
 fromHostArray (UF.AFUnboxed sh v) = ACFUnboxed sh (U.fromHostVector v)
