@@ -86,8 +86,8 @@ frameGenerator NikolaV4 limit = do
     return $ f gen
   where
     f gen _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
-        bmap <- gen lowx lowy highx highy sizeX sizeY limit
-        return $ bitmapToPicture bmap
+        pbo <- gen lowx lowy highx highy sizeX sizeY limit
+        return $ G.PBO sizeX sizeY pbo
 
 bitmapToPicture :: Bitmap F -> G.Picture
 bitmapToPicture arr =
