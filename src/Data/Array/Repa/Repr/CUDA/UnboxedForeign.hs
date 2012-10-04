@@ -19,6 +19,8 @@
 module Data.Array.Repa.Repr.CUDA.UnboxedForeign
     ( CUF
     , Array(..)
+    , MVec(..)
+    , MArray(..)
 
     , fromUnboxedForeign, toUnboxedForeign
 
@@ -30,8 +32,9 @@ module Data.Array.Repa.Repr.CUDA.UnboxedForeign
 
 import Prelude hiding (zip, zip3, unzip, unzip3)
 import Control.Monad
-import Data.Array.Repa      as R
-import Data.Array.Repa.Eval as R
+import Data.Array.Repa         as R
+import Data.Array.Repa.Eval    as R
+import Data.Array.Repa.Mutable as R
 import qualified Data.Array.Repa.Repr.UnboxedForeign     as UF
 import qualified Data.Vector.CUDA.UnboxedForeign         as U
 import qualified Data.Vector.CUDA.UnboxedForeign.Mutable as UM
@@ -85,6 +88,22 @@ instance U.UnboxForeign e => Target CUF e where
     {-# INLINE touchMVec #-}
     touchMVec _ =
         return ()
+
+-- | Mutable unboxed vector arrays.
+instance (U.UnboxForeign e, Shape sh) => Mutable CUF sh e where
+    data MArray CUF sh e = MCFUnboxed !sh !(UM.IOVector e)
+
+    {-# INLINE newMArray #-}
+    newMArray sh = liftM (MCFUnboxed sh) (UM.new (size sh))
+
+    {-# INLINE unsafeWriteMArray #-}
+    unsafeWriteMArray (MCFUnboxed sh mv) ix =
+        UM.unsafeWrite mv (toIndex sh ix)
+
+    {-# INLINE unsafeFreezeMArray #-}
+    unsafeFreezeMArray (MCFUnboxed sh mv) = do
+        v <- U.unsafeFreeze mv
+        return $ ACFUnboxed sh v
 
 -- | O(1). Wrap an unboxed vector as an array.
 fromUnboxedForeign :: (Shape sh, U.UnboxForeign e)
