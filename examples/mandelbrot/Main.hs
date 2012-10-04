@@ -10,6 +10,7 @@ import System.Environment (getArgs)
 import qualified Mandelbrot.NikolaV1 as MN1
 import qualified Mandelbrot.NikolaV2 as MN2
 import qualified Mandelbrot.NikolaV3 as MN3
+import qualified Mandelbrot.NikolaV4 as MN4
 import qualified Mandelbrot.RepaV1 as MR1
 import qualified Mandelbrot.RepaV2 as MR2
 
@@ -57,8 +58,6 @@ frameGenerator RepaV2 limit = do
         bmap <- gen lowx lowy highx highy sizeX sizeY limit
         return $ bitmapToPicture bmap
 
-frameGenerator Repa limit = frameGenerator RepaV2 limit
-
 frameGenerator NikolaV1 limit = return f
   where
     f :: G.FrameGen
@@ -82,7 +81,13 @@ frameGenerator NikolaV3 limit = do
         bmap <- gen lowx lowy highx highy sizeX sizeY limit
         return $ bitmapToPicture bmap
 
-frameGenerator Nikola limit = frameGenerator NikolaV3 limit
+frameGenerator NikolaV4 limit = do
+    gen <- MN4.mandelbrotImageGenerator
+    return $ f gen
+  where
+    f gen _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
+        bmap <- gen lowx lowy highx highy sizeX sizeY limit
+        return $ bitmapToPicture bmap
 
 bitmapToPicture :: Bitmap F -> G.Picture
 bitmapToPicture arr =

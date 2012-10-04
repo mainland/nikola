@@ -3,13 +3,12 @@ module Config where
 import Data.Function (on)
 import Data.Monoid (Monoid(..), Last(..))
 
-data Backend = Repa
-             | RepaV1
+data Backend = RepaV1
              | RepaV2
-             | Nikola
              | NikolaV1
              | NikolaV2
              | NikolaV3
+             | NikolaV4
   deriving (Eq, Show)
 
 data Config = Config
@@ -29,7 +28,7 @@ defaultConfig :: Config
 defaultConfig = Config
     { confSize    = ljust 512
     , confLimit   = ljust 255
-    , confBackend = ljust Repa
+    , confBackend = ljust NikolaV4
     , confBench   = ljust False
     , confHelp    = ljust False
     }
