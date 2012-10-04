@@ -35,11 +35,11 @@ defaultView = G.View { G.left  = -0.25
 main :: IO ()
 main = do
     (opts, _) <- getArgs >>= parseArgs defaultConfig
-    let size  = fromIntegral $ fromLJust confSize opts
-        limit = fromIntegral $ fromLJust confLimit opts
-        disp = G.InWindow "Mandelbrot" (fromIntegral size, fromIntegral size) (10, 10)
-    f <- frameGenerator (fromLJust confBackend opts) limit
-    G.display disp defaultView f
+    let size    = fromIntegral $ fromLJust confSize opts
+        limit   = fromIntegral $ fromLJust confLimit opts
+        backend = fromLJust confBackend opts
+        disp    = G.InWindow "Mandelbrot" (size, size) (10, 10)
+    G.display disp defaultView (frameGenerator backend limit)
 
 frameGenerator :: Backend -> Int -> IO G.FrameGen
 frameGenerator RepaV1 limit = return f

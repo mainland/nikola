@@ -142,11 +142,11 @@ pboOfForeignPtr width height fptr = do
   where
     len = width * height * 4
 
-display :: Display   -- ^ Display mode.
-        -> View      -- ^ Default view
-        -> FrameGen  -- ^ Frame generation function
+display :: Display     -- ^ Display mode.
+        -> View        -- ^ Default view
+        -> IO FrameGen -- ^ Frame generation function
         -> IO ()
-display disp view f = do
+display disp view mf = do
     initializeGLUT False
     openWindowGLUT disp
     N.initializeCUDACtx
@@ -154,6 +154,7 @@ display disp view f = do
     -- context handle."
     --N.initializeCUDAGLCtx N.DeviceListAll
     -- CU.allocaArray 10 $ \(_ :: CU.DevicePtr Int) -> print "initializeCUDACtx allocation succeeded"
+    f        <- mf
     state    <- defaultState disp view f
     stateRef <- newIORef state
     GLUT.displayCallback       $= callbackDisplay stateRef
