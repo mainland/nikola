@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -14,6 +15,15 @@ module Data.Array.Nikola.Eval.Target (
     Target(..),
   ) where
 
+
+import Data.Typeable ( Typeable3(..), mkTyConApp,
+#if MIN_VERSION_base(4,4,0)
+                       mkTyCon3
+#else
+                       mkTyCon
+#endif
+                     )
+
 import Data.Array.Nikola.Array
 import Data.Array.Nikola.Shape
 
@@ -28,6 +38,9 @@ class Target r e where
     -- | Mutable version of the representation.
     data MArray r sh e
 
+    -- | Get the shape of a mutable array.
+    mextent :: MArray r sh e -> sh
+
     -- | Allocate a new mutable array of the given size.
     newMArray :: Shape sh => sh -> P (MArray r sh e)
 
@@ -36,3 +49,12 @@ class Target r e where
 
     -- | Freeze the mutable array into an immutable Nikola array.
     unsafeFreezeMArray :: Shape sh => MArray r sh e -> P (Array r sh e)
+
+#if MIN_VERSION_base(4,4,0)
+nikolaTyCon = mkTyCon3 "nikola"
+#else
+nikolaTyCon m s = mkTyCon $ m ++ "." ++ s
+#endif
+
+instance Typeable3 MArray where
+  typeOf3 _ = mkTyConApp (nikolaTyCon "Data.Array.Nikola.Eval.Target" "MArray") []

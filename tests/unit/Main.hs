@@ -24,15 +24,17 @@ module Main where
 
 import qualified Funs
 
+import Control.Applicative
 import Data.Int
 import Test.Framework
 import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2
-import Test.HUnit ((@=?))
+import Test.HUnit (assert, (@=?))
 import Test.QuickCheck
 
 import qualified Data.Array.Repa as R
 import qualified Data.Array.Repa.Eval as R
+import qualified Data.Array.Repa.Mutable as R
 import qualified Data.Array.Repa.Repr.CUDA.UnboxedForeign as R
 import qualified Data.Array.Repa.Repr.UnboxedForeign as R
 
@@ -79,6 +81,7 @@ tests = [ id_test
         , th_revmap_test3
         , th_append_push
         , th_append_delayed
+        , th_marray
         , th_mandelbrot_init
         -- , testProperty "mandelbrot_init" prop_mandelbrot_init
         , testGroup "QuickCheck index space operations"
@@ -242,6 +245,28 @@ th_append_delayed = testCase "TH append delayed arrays" $
     f :: V.Vector Float -> V.Vector Float
     f = $(NTH.compileSig Funs.append_delayed
                          (undefined :: V.Vector Float -> V.Vector Float))
+
+th_marray :: Test
+th_marray = testCase "TH mutable array" $ do
+    a <- f (length xs)
+    b <- return xs
+    assert (a == b)
+  where
+    xs :: [Int32]
+    xs = map (^2) [0..10-1]
+
+    f0 :: R.MArray R.CUF R.DIM1 Int32 -> IO ()
+    f0 = $(NTH.compile Funs.load_squares)
+
+    f :: Int -> IO [Int32]
+    f n = do
+        marr <- R.newMArray (R.ix1 n)
+        f0 marr
+        toHostList <$> R.unsafeFreezeMArray marr
+
+    toHostList :: VCUF.EverywhereUnboxForeign a
+               => R.Array R.CUF R.DIM1 a -> [a]
+    toHostList = R.toList . R.toHostArray
 
 th_mandelbrot_init :: Test
 th_mandelbrot_init = testCase "TH mandelbrot init" $

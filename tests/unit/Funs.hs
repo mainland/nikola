@@ -15,6 +15,7 @@ module Funs where
 import Prelude hiding (map, reverse, zipWith)
 
 import Data.Array.Nikola.Backend.CUDA
+import Data.Array.Nikola.Eval
 import Data.Int
 
 type R = Float
@@ -62,3 +63,10 @@ mandelbrot_init :: Array G DIM1 Complex
                 -> Array G DIM1 Complex
                 -> Array D DIM1 (Complex, Exp Int32)
 mandelbrot_init = zipWith (\x y -> (x*y, 0))
+
+load_squares :: MArray G DIM1 (Exp Int32) -> P ()
+load_squares marr =
+    loadP arr marr
+  where
+    arr :: Array D DIM1 (Exp Int32)
+    arr = fromFunction (mextent marr) (\(Z:.i) -> i*i)

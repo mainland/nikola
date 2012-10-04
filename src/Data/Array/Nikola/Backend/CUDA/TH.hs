@@ -42,7 +42,9 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.CUDA.Storable as VCS
+import qualified Data.Vector.CUDA.Storable.Mutable as MVCS
 import qualified Data.Vector.CUDA.UnboxedForeign as VCUF
+import qualified Data.Vector.CUDA.UnboxedForeign.Mutable as MVCUF
 
 import qualified Data.Array.Repa as R
 import qualified Data.Array.Repa.Repr.CUDA.UnboxedForeign as R
@@ -290,6 +292,11 @@ instance (arep ~ N.Rep a,
         setMorallyPure True .
         addResultCoercion (coerceResult (undefined :: R.Array R.CUF rsh arep))
 
+instance Compilable (N.P ())
+                    (IO  ()) where
+    precompile =
+        addResultCoercion id
+
 instance (arep ~ N.Rep a,
           rsh ~ Rsh sh,
           ToRsh sh,
@@ -368,6 +375,22 @@ instance (rsh ~ Rsh sh,
         p' :: PreExpQ b
         p' = addArgBinder (bindArgs (undefined :: R.Array R.CUF rsh arep)) pq
 
+instance (rsh ~ Rsh sh,
+          arep ~ N.Rep a,
+          ToRsh sh,
+          N.Shape sh,
+          R.Shape (Rsh sh),
+          N.IsElem a,
+          IsVal (R.MArray R.CUF rsh arep),
+          Compilable b c)
+    => Compilable (N.MArray N.G   sh  a    -> b)
+                  (R.MArray R.CUF rsh arep -> c) where
+    precompile pq =
+        castPreExpQ (precompile p' :: PreExpQ c)
+      where
+        p' :: PreExpQ b
+        p' = addArgBinder (bindArgs (undefined :: R.MArray R.CUF rsh arep)) pq
+
 -- | If we can reify a value of type @a@ as a Nikola program, and if we can
 -- compile a value of type @a@ into a value of type @b@, then 'compileSig' will
 -- reify, optimize, and compile it. Note that the second argument of type @b@
@@ -439,12 +462,14 @@ compile a = compileSig a (undefined :: Compiled a)
 -- The 'Compiled' type function specifies the default compilation scheme for
 -- 'compile'.
 type family Compiled a :: *
-type instance Compiled (N.Exp a)                = N.Rep (N.Exp a)
-type instance Compiled (N.Array r sh a)         = R.Array R.CUF (Rsh sh) (N.Rep a)
-type instance Compiled (N.P (N.Array N.G sh a)) = IO (R.Array R.CUF (Rsh sh) (N.Rep a))
+type instance Compiled (N.P ())                  = IO ()
+type instance Compiled (N.Exp a)                 = N.Rep (N.Exp a)
+type instance Compiled (N.Array r sh a)          = R.Array R.CUF (Rsh sh) (N.Rep a)
+type instance Compiled (N.P (N.Array N.G sh a))  = IO (R.Array R.CUF (Rsh sh) (N.Rep a))
 
-type instance Compiled (N.Exp a          -> b)  = N.Rep (N.Exp a) -> Compiled b
-type instance Compiled (N.Array N.G sh a -> b)  = R.Array R.CUF (Rsh sh) (N.Rep a) -> Compiled b
+type instance Compiled (N.Exp a           -> b)  = N.Rep (N.Exp a) -> Compiled b
+type instance Compiled (N.Array  N.G sh a -> b)  = R.Array  R.CUF (Rsh sh) (N.Rep a) -> Compiled b
+type instance Compiled (N.MArray N.G sh a -> b)  = R.MArray R.CUF (Rsh sh) (N.Rep a) -> Compiled b
 
 -- The 'IsVal' type class tells us how to bind arguments in the form expected by
 -- the TH expression representation of a Nikola program and how to coerce the
@@ -482,7 +507,7 @@ baseTypeVal(Double)
 instance IsArrayVal (VCUF.Vector a) => IsVal (R.Array R.CUF rsh a) where
     bindArgs _ = do
         arr  <- fst <$> takeLamVar
-        rarr <- qNewName "rarr"
+        rarr <- qNewName "repa_arr"
         p    <- liftQ $ TH.varP rarr
         appendLamPats [p]
 
@@ -498,6 +523,32 @@ instance IsArrayVal (VCUF.Vector a) => IsVal (R.Array R.CUF rsh a) where
            do { let sz = R.size sh
               ; v <- $(coerceArrayResult (undefined :: VCUF.Vector a)) fdptrs (R.Z R.:. sz)
               ; return $ R.fromUnboxedForeign sh v
+              }
+         |]
+
+--
+-- Val instance for mutable CUDA UnboxedForeign arrays
+--
+
+instance IsArrayVal (MVCUF.IOVector a) => IsVal (R.MArray R.CUF sh a) where
+    bindArgs _ = do
+        arr  <- fst <$> takeLamVar
+        rarr <- qNewName "repa_marr"
+        p    <- liftQ $ TH.varP rarr
+        appendLamPats [p]
+
+        modifyBody $ \qm ->
+            [|do { let { R.MCFUnboxed sh v = $(TH.varE rarr) }
+                 ; $(coerceArrayArg (undefined :: MVCUF.IOVector a)) v $ \ptrs ->
+                   $(lamsE [arr] qm) (NArray ptrs sh)
+                 }
+             |]
+
+    coerceResult _ qm =
+        [|$qm >>= \(NArray fdptrs sh) ->
+           do { let sz = R.size sh
+              ; v <- $(coerceArrayResult (undefined :: MVCUF.IOVector a)) fdptrs (R.Z R.:. sz)
+              ; return $ R.MCFUnboxed sh v
               }
          |]
 
@@ -736,5 +787,52 @@ instance ( IsArrayVal (VCUF.Vector a)
           do { v_a <- $(coerceArrayResult (undefined :: VCUF.Vector a)) ptr_a sh
              ; v_b <- $(coerceArrayResult (undefined :: VCUF.Vector b)) ptr_b sh
              ; return $ VCUF.V_2 n v_a v_b
+             }
+         |]
+
+--
+-- 'IsArrayVal' instances for mutable CUDA UnboxedForeign Vectors
+--
+
+#define baseTypeCUDAUnboxedMVectorArrayVal(ty,con)           \
+instance IsArrayVal (MVCUF.IOVector ty) where {              \
+; coerceArrayArg _ =                                         \
+  [|\(con v) kont ->                                         \
+    do { let { (fdptr, _) = MVCS.unsafeToForeignDevPtr0 v }  \
+       ; kont fdptr                                          \
+       }                                                     \
+   |]                                                        \
+; coerceArrayResult _ =                                      \
+  [|\fdptr (R.Z R.:. n) ->                                   \
+        return $ con $ MVCS.unsafeFromForeignDevPtr0 fdptr n \
+   |]                                                        \
+}
+
+baseTypeCUDAUnboxedMVectorArrayVal(Int8,   MVCUF.MV_Int8)
+baseTypeCUDAUnboxedMVectorArrayVal(Int16,  MVCUF.MV_Int16)
+baseTypeCUDAUnboxedMVectorArrayVal(Int32,  MVCUF.MV_Int32)
+baseTypeCUDAUnboxedMVectorArrayVal(Int64,  MVCUF.MV_Int64)
+baseTypeCUDAUnboxedMVectorArrayVal(Word8,  MVCUF.MV_Word8)
+baseTypeCUDAUnboxedMVectorArrayVal(Word16, MVCUF.MV_Word16)
+baseTypeCUDAUnboxedMVectorArrayVal(Word32, MVCUF.MV_Word32)
+baseTypeCUDAUnboxedMVectorArrayVal(Word64, MVCUF.MV_Word64)
+baseTypeCUDAUnboxedMVectorArrayVal(Float,  MVCUF.MV_Float)
+baseTypeCUDAUnboxedMVectorArrayVal(Double, MVCUF.MV_Double)
+
+instance ( IsArrayVal (MVCUF.IOVector a)
+         , IsArrayVal (MVCUF.IOVector b)
+         ) => IsArrayVal (MVCUF.IOVector (a, b)) where
+    coerceArrayArg _ =
+        [|\(MVCUF.MV_2 _ v_a v_b) kont ->
+          $(coerceArrayArg (undefined :: MVCUF.IOVector a)) v_a $ \ptr_a ->
+          $(coerceArrayArg (undefined :: MVCUF.IOVector b)) v_b $ \ptr_b ->
+          kont (ptr_a, ptr_b)
+         |]
+
+    coerceArrayResult _ =
+        [|\(ptr_a, ptr_b) sh@(R.Z R.:. n) ->
+          do { v_a <- $(coerceArrayResult (undefined :: MVCUF.IOVector a)) ptr_a sh
+             ; v_b <- $(coerceArrayResult (undefined :: MVCUF.IOVector b)) ptr_b sh
+             ; return $ MVCUF.MV_2 n v_a v_b
              }
          |]

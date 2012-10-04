@@ -18,6 +18,7 @@
 module Data.Array.Nikola.Repr.Global (
     G,
     Array(..),
+    MArray(..),
 
     IsElem(..)
   ) where
@@ -53,6 +54,8 @@ instance IsElem e => Source G e where
 
 instance IsElem e => Target G e where
     data MArray G sh e = MGlobal sh S.Exp
+
+    mextent (MGlobal sh _) = sh
 
     newMArray sh = do
         v         <- gensym "vec_alloca"

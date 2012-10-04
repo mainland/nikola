@@ -96,12 +96,26 @@ instance (Shape sh,
           IsElem a,
           Reifiable b S.Exp) => Reifiable (Array G sh a -> b) S.Exp where
     reify f = do
-        v        <- gensym "vec"
+        v        <- gensym "arr"
         let n    =  rank (undefined :: sh)
         let dims =  [DimE i n (VarE v) | i <- [0..n-1]]
         let sh   =  shapeOfList (P.map E dims)
         lamE [(v, ArrayT tau n)] $ do
         reify $ f (AGlobal sh (VarE v))
+      where
+        tau :: ScalarType
+        tau = typeOf (undefined :: a)
+
+instance (Shape sh,
+          IsElem a,
+          Reifiable b S.Exp) => Reifiable (MArray G sh a -> b) S.Exp where
+    reify f = do
+        v        <- gensym "marr"
+        let n    =  rank (undefined :: sh)
+        let dims =  [DimE i n (VarE v) | i <- [0..n-1]]
+        let sh   =  shapeOfList (P.map E dims)
+        lamE [(v, ArrayT tau n)] $ do
+        reify $ f (MGlobal sh (VarE v))
       where
         tau :: ScalarType
         tau = typeOf (undefined :: a)
