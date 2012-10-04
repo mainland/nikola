@@ -184,6 +184,7 @@ import Prelude hiding ( length, null,
                         mapM, mapM_ )
 import qualified Prelude
 
+import Control.Monad    ( liftM, liftM2, liftM3 )
 import Control.Monad.ST ( ST )
 import Control.Monad.Primitive
 import Data.Int
@@ -192,11 +193,14 @@ import Data.Monoid   ( Monoid(..) )
 import Text.Read     ( Read(..), readListPrecDefault )
 
 import Data.Vector.CUDA.UnboxedForeign.Base
-import qualified Data.Vector.CUDA.Storable as S
 import qualified Data.Vector.Generic as G
 import qualified Data.Vector.Fusion.Stream as Stream
 import Data.Vector.Fusion.Util ( delayed_min )
-import qualified Data.Vector.UnboxedForeign  as UF
+import qualified Data.Vector.CUDA.Storable               as S
+import qualified Data.Vector.CUDA.Storable.Mutable       as MS
+import qualified Data.Vector.CUDA.UnboxedForeign.Mutable as M
+import qualified Data.Vector.UnboxedForeign              as UF
+import qualified Data.Vector.UnboxedForeign.Mutable      as MUF
 
 #include "vector.h"
 
@@ -1406,27 +1410,41 @@ class HostVector a where
     fromHostVector :: UF.Vector a -> Vector a
     toHostVector   :: Vector a -> UF.Vector a
 
-#define primHostVector(ty,hcon,con)                  \
-instance HostVector ty where {                       \
-; {-# INLINE fromHostVector #-}                      \
-; fromHostVector (hcon v) = con (S.fromHostVector v) \
-; {-# INLINE toHostVector #-}                        \
-; toHostVector (con v) = hcon (S.toHostVector v)     \
+    fromHostMVector :: MUF.IOVector a -> IO (M.IOVector a)
+    toHostMVector   :: M.IOVector a -> IO (MUF.IOVector a)
+
+    copyFromHostMVector :: UF.Vector a -> M.IOVector a -> IO ()
+    copyToHostMVector   :: Vector a -> MUF.IOVector a -> IO ()
+
+#define primHostVector(ty,hcon,con, mhcon, mcon)                      \
+instance HostVector ty where {                                        \
+; {-# INLINE fromHostVector #-}                                       \
+; fromHostVector (hcon v) = con (S.fromHostVector v)                  \
+; {-# INLINE toHostVector #-}                                         \
+; toHostVector (con v) = hcon (S.toHostVector v)                      \
+; {-# INLINE fromHostMVector #-}                                      \
+; fromHostMVector (mhcon mvh) = liftM mcon (S.fromHostMVector mvh)    \
+; {-# INLINE toHostMVector #-}                                        \
+; toHostMVector (mcon mv) = liftM mhcon (S.toHostMVector mv)          \
+; {-# INLINE copyFromHostMVector #-}                                  \
+; copyFromHostMVector (hcon v) (mcon mv) = S.copyFromHostMVector v mv \
+; {-# INLINE copyToHostMVector #-}                                    \
+; copyToHostMVector (con v) (mhcon mv) = S.copyToHostMVector v mv     \
 }
 
-primHostVector(Int,    UF.V_Int,    V_Int)
-primHostVector(Int8,   UF.V_Int8,   V_Int8)
-primHostVector(Int16,  UF.V_Int16,  V_Int16)
-primHostVector(Int32,  UF.V_Int32,  V_Int32)
-primHostVector(Int64,  UF.V_Int64,  V_Int64)
-primHostVector(Word,   UF.V_Word,   V_Word)
-primHostVector(Word8,  UF.V_Word8,  V_Word8)
-primHostVector(Word16, UF.V_Word16, V_Word16)
-primHostVector(Word32, UF.V_Word32, V_Word32)
-primHostVector(Word64, UF.V_Word64, V_Word64)
-primHostVector(Float,  UF.V_Float,  V_Float)
-primHostVector(Double, UF.V_Double, V_Double)
-primHostVector(Char,   UF.V_Char,   V_Char)
+primHostVector(Int,    UF.V_Int,    V_Int,    MUF.MV_Int,    MV_Int)
+primHostVector(Int8,   UF.V_Int8,   V_Int8,   MUF.MV_Int8,   MV_Int8)
+primHostVector(Int16,  UF.V_Int16,  V_Int16,  MUF.MV_Int16,  MV_Int16)
+primHostVector(Int32,  UF.V_Int32,  V_Int32,  MUF.MV_Int32,  MV_Int32)
+primHostVector(Int64,  UF.V_Int64,  V_Int64,  MUF.MV_Int64,  MV_Int64)
+primHostVector(Word,   UF.V_Word,   V_Word,   MUF.MV_Word,   MV_Word)
+primHostVector(Word8,  UF.V_Word8,  V_Word8,  MUF.MV_Word8,  MV_Word8)
+primHostVector(Word16, UF.V_Word16, V_Word16, MUF.MV_Word16, MV_Word16)
+primHostVector(Word32, UF.V_Word32, V_Word32, MUF.MV_Word32, MV_Word32)
+primHostVector(Word64, UF.V_Word64, V_Word64, MUF.MV_Word64, MV_Word64)
+primHostVector(Float,  UF.V_Float,  V_Float,  MUF.MV_Float,  MV_Float)
+primHostVector(Double, UF.V_Double, V_Double, MUF.MV_Double, MV_Double)
+primHostVector(Char,   UF.V_Char,   V_Char,   MUF.MV_Char,   MV_Char)
 
 instance HostVector Bool where
     {-# INLINE fromHostVector #-}
@@ -1434,6 +1452,18 @@ instance HostVector Bool where
 
     {-# INLINE toHostVector #-}
     toHostVector (V_Bool v) = UF.V_Bool (S.toHostVector v)
+
+    {-# INLINE fromHostMVector #-}
+    fromHostMVector (MUF.MV_Bool mvh) = liftM MV_Bool (S.fromHostMVector mvh)
+
+    {-# INLINE toHostMVector #-}
+    toHostMVector (MV_Bool mv) = liftM MUF.MV_Bool (S.toHostMVector mv)
+
+    {-# INLINE copyFromHostMVector #-}
+    copyFromHostMVector (UF.V_Bool v) (MV_Bool mv) = S.copyFromHostMVector v mv
+
+    {-# INLINE copyToHostMVector #-}
+    copyToHostMVector (V_Bool v) (MUF.MV_Bool mv) = S.copyToHostMVector v mv
 
 instance ( EverywhereUnboxForeign a
          , EverywhereUnboxForeign b
@@ -1448,6 +1478,30 @@ instance ( EverywhereUnboxForeign a
     toHostVector v =
         case unzip v of
           (as, bs) -> UF.zip (toHostVector as) (toHostVector bs)
+
+    {-# INLINE fromHostMVector #-}
+    fromHostMVector v =
+        case MUF.unzip v of
+          (as, bs) -> liftM2 M.zip (fromHostMVector as) (fromHostMVector bs)
+
+    {-# INLINE toHostMVector #-}
+    toHostMVector v =
+        case M.unzip v of
+          (as, bs) -> liftM2 MUF.zip (toHostMVector as) (toHostMVector bs)
+
+    {-# INLINE copyFromHostMVector #-}
+    copyFromHostMVector v mv =
+        case UF.unzip v of
+          (as, bs) -> case M.unzip mv of
+                        (mas, mbs) -> copyFromHostMVector as mas >>
+                                      copyFromHostMVector bs mbs
+
+    {-# INLINE copyToHostMVector #-}
+    copyToHostMVector v mv =
+        case unzip v of
+          (as, bs) -> case MUF.unzip mv of
+                        (mas, mbs) -> copyToHostMVector as mas >>
+                                      copyToHostMVector bs mbs
 
 instance ( EverywhereUnboxForeign a
          , EverywhereUnboxForeign b
@@ -1465,6 +1519,34 @@ instance ( EverywhereUnboxForeign a
         case unzip3 v of
           (as, bs, cs) -> UF.zip3 (toHostVector as) (toHostVector bs)
                                  (toHostVector cs)
+
+    {-# INLINE fromHostMVector #-}
+    fromHostMVector v =
+        case MUF.unzip3 v of
+          (as, bs, cs) -> liftM3 M.zip3 (fromHostMVector as) (fromHostMVector bs)
+                                        (fromHostMVector cs)
+
+    {-# INLINE toHostMVector #-}
+    toHostMVector v =
+        case M.unzip3 v of
+          (as, bs, cs) -> liftM3 MUF.zip3 (toHostMVector as) (toHostMVector bs)
+                                          (toHostMVector cs)
+
+    {-# INLINE copyFromHostMVector #-}
+    copyFromHostMVector v mv =
+        case UF.unzip3 v of
+          (as, bs, cs) -> case M.unzip3 mv of
+                            (mas, mbs, mcs) -> copyFromHostMVector as mas >>
+                                               copyFromHostMVector bs mbs >>
+                                               copyFromHostMVector cs mcs
+
+    {-# INLINE copyToHostMVector #-}
+    copyToHostMVector v mv =
+        case unzip3 v of
+          (as, bs, cs) -> case MUF.unzip3 mv of
+                            (mas, mbs, mcs) -> copyToHostMVector as mas >>
+                                               copyToHostMVector bs mbs >>
+                                               copyToHostMVector cs mcs
 
 #define DEFINE_IMMUTABLE
 #include "unbox-tuple-instances"

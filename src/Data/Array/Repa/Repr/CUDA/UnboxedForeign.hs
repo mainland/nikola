@@ -29,6 +29,8 @@ module Data.Array.Repa.Repr.CUDA.UnboxedForeign
 
     , zip,   zip3,   zip4,   zip5,   zip6
     , unzip, unzip3, unzip4, unzip5, unzip6
+
+    , loadHostP, loadDeviceP
     ) where
 
 import Prelude hiding (zip, zip3, unzip, unzip3)
@@ -250,3 +252,9 @@ unzip6 (ACFUnboxed sh vec)
    in   (ACFUnboxed sh as, ACFUnboxed sh bs, ACFUnboxed sh cs,
          ACFUnboxed sh ds, ACFUnboxed sh es, ACFUnboxed sh fs)
 {-# INLINE unzip6 #-}
+
+loadHostP :: U.HostVector e => Array CUF sh e -> MVec UF.UF e -> IO ()
+loadHostP (ACFUnboxed _ v) (UF.UFMVec mv) = U.copyToHostMVector v mv
+
+loadDeviceP :: U.HostVector e => Array UF.UF sh e -> MVec CUF e -> IO ()
+loadDeviceP (UF.AFUnboxed _ v) (CUFMVec mv) = U.copyFromHostMVector v mv

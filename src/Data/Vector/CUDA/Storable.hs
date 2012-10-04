@@ -136,6 +136,7 @@ module Data.Vector.CUDA.Storable (
 
   fromHostVector, toHostVector,
   fromHostMVector, toHostMVector,
+  copyFromHostMVector, copyToHostMVector,
 
   -- ** Mutable vectors
   freeze, thaw, copy, unsafeFreeze, unsafeThaw, unsafeCopy,
@@ -1349,7 +1350,7 @@ toHostVector v = unsafePerformIO $ do
     S.freeze mv
 
 fromHostMVector :: Storable a
-                => MS.MVector (PrimState IO) a -> IO (MVector (PrimState IO) a)
+                => MS.IOVector a -> IO (M.IOVector a)
 fromHostMVector mv = do
     let n  =  MS.length mv
     mv'    <- GM.new n
@@ -1359,14 +1360,28 @@ fromHostMVector mv = do
     return mv'
 
 toHostMVector :: Storable a
-              => MVector (PrimState IO) a -> IO (MS.MVector (PrimState IO) a)
+              => M.IOVector a -> IO (MS.IOVector a)
 toHostMVector mv = do
     let n  =  M.length mv
     mv'    <- GM.new n
-    M.unsafeWith mv $ \ptr  ->
-        MS.unsafeWith mv' $ \dptr ->
-        CU.peekArray n ptr dptr
+    M.unsafeWith mv $ \dptr  ->
+        MS.unsafeWith mv' $ \ptr ->
+        CU.peekArray n dptr ptr
     return mv'
+
+copyFromHostMVector :: Storable a
+                    => S.Vector a -> M.IOVector a -> IO ()
+copyFromHostMVector v mv =
+    S.unsafeWith v  $ \ptr  ->
+    M.unsafeWith mv $ \dptr  ->
+    CU.pokeArray (S.length v) ptr dptr
+
+copyToHostMVector :: Storable a
+                  => Vector a -> MS.IOVector a -> IO ()
+copyToHostMVector v mv =
+    unsafeWith v     $ \dptr  ->
+    MS.unsafeWith mv $ \ptr  ->
+    CU.peekArray (length v) dptr ptr
 
 -- Conversions - Mutable vectors
 -- -----------------------------

@@ -19,6 +19,7 @@
 module Data.Array.Repa.Repr.UnboxedForeign
     ( UF
     , Array(..)
+    , MVec(..)
     , fromListUnboxedForeign
     , fromUnboxedForeign, toUnboxedForeign
 
@@ -61,22 +62,22 @@ deriving instance (Read sh, Read e, U.UnboxForeign e) => Read (Array UF sh e)
 
 -- | Filling of unboxed vector arrays.
 instance U.UnboxForeign e => Target UF e where
-    data MVec UF e = CUMVec (UM.IOVector e)
+    data MVec UF e = UFMVec (UM.IOVector e)
 
     {-# INLINE newMVec #-}
-    newMVec n = liftM CUMVec (UM.new n)
+    newMVec n = liftM UFMVec (UM.new n)
 
     {-# INLINE unsafeWriteMVec #-}
-    unsafeWriteMVec (CUMVec v) ix =
+    unsafeWriteMVec (UFMVec v) ix =
         UM.unsafeWrite v ix
 
     {-# INLINE unsafeFreezeMVec #-}
-    unsafeFreezeMVec sh (CUMVec mvec) = do
+    unsafeFreezeMVec sh (UFMVec mvec) = do
         vec <- U.unsafeFreeze mvec
         return $ AFUnboxed sh vec
 
     {-# INLINE deepSeqMVec #-}
-    deepSeqMVec (CUMVec vec) x =
+    deepSeqMVec (UFMVec vec) x =
         vec `seq` x
 
     {-# INLINE touchMVec #-}
