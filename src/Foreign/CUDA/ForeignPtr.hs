@@ -1,3 +1,4 @@
+{-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 -- |
@@ -24,9 +25,10 @@ module Foreign.CUDA.ForeignPtr
 import Prelude hiding (catch)
 
 import Control.Concurrent (yield)
+import Control.Exception
 import Foreign.CUDA.Driver
-import Foreign.Concurrent (newForeignPtr)
-import Foreign.ForeignPtr hiding (newForeignPtr)
+import Foreign.ForeignPtr
+import Foreign.Ptr
 import Foreign.Storable
 import GHC.ForeignPtr (ForeignPtr(..))
 import GHC.Ptr (Ptr(..))
@@ -38,21 +40,22 @@ castForeignDevPtr :: ForeignDevicePtr a -> ForeignDevicePtr b
 castForeignDevPtr = castForeignPtr
 
 newForeignDevPtr :: DevicePtr a -> IO (ForeignDevicePtr a)
-newForeignDevPtr dptr = newForeignPtr (useDevicePtr dptr) (free dptr)
+newForeignDevPtr dptr = newForeignPtr cuMemFree_ (useDevicePtr dptr)
+
+foreign import ccall unsafe "cuda.h &cuMemFree"
+  cuMemFree_ :: FunPtr (Ptr a -> IO ())
 
 newForeignDevPtr_ :: DevicePtr a -> IO (ForeignDevicePtr a)
 newForeignDevPtr_ dptr = newForeignPtr_ (useDevicePtr dptr)
 
--- | Allocate an array on a CUDA device. We used to call 'performGC' when
--- allocation failed and then try once more, but that doesn't work! We need the
--- GC to finalize unreachable 'ForeignDevicePtr's, but I don't know how to get
--- that to happen reliably. The solution below seems to work well, but it does
--- mean every GPU allocation requires invoking the GC.
+-- | Allocate an array on a CUDA device. When allocation fails, we call
+-- performGC, yield, and try again. Thanks to Simon Marlow for recommending the
+-- use of a C finalizer---Haskell finalizers don't get called predictably enough
+-- to make ForeignDevicePtr's useful.
 mallocDeviceArray :: Storable a => Int -> IO (DevicePtr a)
-mallocDeviceArray n = do
-    performGC
-    yield
-    mallocArray n'
+mallocDeviceArray n =
+    mallocArray n' `catch` \(_ :: CUDAException) ->
+        performGC >> yield >> mallocArray n'
   where
     n' :: Int
     n' = max 1 n
