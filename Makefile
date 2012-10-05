@@ -65,7 +65,8 @@ TARGETS	= \
 	mandelbrot unit \
 	american \
 	blackscholes blackscholes-compile \
-	blackscholes-cuda blackscholes-openmp
+	blackscholes-cuda blackscholes-openmp \
+	mandelbrot-compile
 
 #TARGETS = test bs demo search nikola blackscholes blackscholes-opt scan scan-opt radix radix-opt unit
 
@@ -118,6 +119,12 @@ blackscholes-compile : $(SOURCE) examples/blackscholes-compile/*.hs
 		-odir obj/blackscholes-compile -hidir obj/blackscholes-compile \
 		-iexamples/blackscholes-compile $(GHC_FLAGS) -o $@
 
+mandelbrot-compile : $(SOURCE) examples/mandelbrot-compile/*.hs
+	@echo "Compiling and linking" $@
+	$(_QUIET)$(GHC) --make examples/mandelbrot-compile/Main.hs \
+		-odir obj/mandelbrot-compile -hidir obj/mandelbrot-compile \
+		-iexamples/mandelbrot-compile $(GHC_FLAGS) -o $@
+
 test : $(SOURCE) test.hs
 	@echo "Compiling and linking" $@
 	$(_QUIET)$(GHC) --make test.hs \
@@ -165,3 +172,11 @@ american.html : ./dist/build/american/american
 
 mandelbrot.html : ./dist/build/mandelbrot/mandelbrot
 	$< --benchmark -q -s 10 -t $(CRITERION_TEMPLATE) -o $@ +RTS -N4
+
+mandelbrot_cuda.cu : mandelbrot-compile
+	./mandelbrot-compile -O 1 --cuda --func mandelbrot_cuda -o $@
+
+mandelbrot-cuda : examples/mandelbrot-compile/mandelbrot.cc \
+	mandelbrot_cuda.cu \
+	examples/mandelbrot-compile/mandelbrot_cuda_2.cu
+	nvcc -DCUDA --gpu-architecture=compute_20 $^ -lm -o $@
