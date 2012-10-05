@@ -750,9 +750,9 @@ pprMonadic _ e =
     go (ForE isPar vs es prog) =
         [align $ nest 4 $
          (if isPar then text "parfor" else text "for") <>
-         parens (commasep (replicate (length vs) (text "0")) <+> text "<=" <+>
-                 commasep (map ppr vs) <+> text "<" <+>
-                 commasep (map ppr es)) </>
+         parens (tuple (replicate (length vs) (text "0")) <+> text "<=" <+>
+                 tuple (map ppr vs) <+> text "<" <+>
+                 tuple (map ppr es)) </>
          pprMonadic 0 prog]
 
     go SyncE =
