@@ -14,7 +14,7 @@ module Data.Array.Nikola.Language.Optimize.Simpl (simpl) where
 
 import Prelude hiding (mapM)
 
-import Control.Applicative (Applicative, (<$>), (<*>), pure)
+import Control.Applicative (Applicative, pure)
 import Text.PrettyPrint.Mainland
 
 import Data.Array.Nikola.Language.Generic
@@ -24,17 +24,6 @@ import Data.Array.Nikola.Language.Syntax
 
 simpl :: AST a -> a -> O a
 simpl ExpA (VarE v) = lookupSubst VarA v ExpA (return (VarE v))
-
-simpl ExpA (LetE _ _ Never _ e2) =
-    simpl ExpA e2
-
-simpl ExpA (LetE v _ Once e1 e2) = do
-    e1' <- simpl ExpA e1
-    insertSubst VarA v ExpA e1'
-    simpl ExpA e2
-
-simpl ExpA (LetE v tau Many e1 e2) =
-    LetE v tau Many <$> simpl ExpA e1 <*> simpl ExpA e2
 
 simpl ExpA (UnopE op e) = do  e' <- simpl ExpA e
                               go op e'

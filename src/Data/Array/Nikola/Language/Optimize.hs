@@ -50,6 +50,7 @@ import qualified Data.Array.Nikola.Exp as E
 import Data.Array.Nikola.Language.Check
 import Data.Array.Nikola.Language.Generic
 import Data.Array.Nikola.Language.Monad
+import Data.Array.Nikola.Language.Optimize.Inliner
 import Data.Array.Nikola.Language.Optimize.Monad
 import Data.Array.Nikola.Language.Optimize.Occ
 import Data.Array.Nikola.Language.Optimize.Simpl
@@ -70,8 +71,10 @@ optimizeHostProgram =
     >=> oPass (norm ExpA)
     >=> oPass (occ ExpA)
     >=> oPass (simpl ExpA)
+    >=> oPass (inliner ExpA)
     >=> oPass (norm ExpA)
     >=> oPass (simpl ExpA)
+    >=> oPass (inliner ExpA)
     >=> whenDialect CUDA (constructKernels ExpA)
     >=> oPass (lambdaLift ExpA)
 
