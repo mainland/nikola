@@ -293,7 +293,7 @@ compileExp (BindE v tau m1 m2) = do
 compileExp (AllocE atau e_sh) = do
     (tau, _) <- checkArrayT atau
     qe_sh    <- mapM compileExp e_sh
-    return [|do { let sh = R.shapeOfList $(TH.listE [ [|fromIntegral $qe|] | qe <- qe_sh])
+    return [|do { let sh = R.shapeOfList $(TH.listE [ [|fromIntegral ($qe :: Int32)|] | qe <- qe_sh])
                 ; let sz = R.size sh
                 ; NArray <$> $(go tau) sz <*> pure sh
                 }

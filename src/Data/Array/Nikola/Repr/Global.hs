@@ -58,14 +58,12 @@ instance IsElem e => Target G e where
     mextent (MGlobal sh _) = sh
 
     newMArray sh = do
-        v         <- gensym "vec_alloca"
-        let atau  =  ArrayT tau (rank sh)
-        shiftH $ \k -> do
-            p         <- reset $ extendVarTypes [(v, atau)] $ k ()
-            let alloc =  AllocE atau (map unE (listOfShape sh))
-            return $ BindE v atau alloc p
+        v <- gensym "vec_alloca"
         shift $ \k -> do
-        extendVarTypes [(v, atau)] $ k (MGlobal sh (VarE v))
+        let atau  =  ArrayT tau (rank sh)
+        let alloc =  AllocE atau (map unE (listOfShape sh))
+        p         <- reset $ extendVarTypes [(v, atau)] $ k (MGlobal sh (VarE v))
+        return $ BindE v atau alloc p
       where
         tau :: ScalarType
         tau = typeOf (undefined :: e)

@@ -28,9 +28,6 @@ module Data.Array.Nikola.Language.Monad (
     reset,
     shift,
 
-    resetH,
-    shiftH,
-
     getFlags,
 
     gensym,
@@ -67,7 +64,6 @@ data REnv = REnv
     ,  rFlags    :: Flags
     ,  rContext  :: Context
     ,  rVarTypes :: Map.Map Var Type
-    ,  rHost     :: H ()
     ,  rExpCache :: IntMap.IntMap [(Dynamic, Exp)]
     }
   deriving (Typeable)
@@ -78,7 +74,6 @@ emptyREnv flags = REnv
     ,  rFlags    = flags
     ,  rContext  = Host
     ,  rVarTypes = Map.empty
-    ,  rHost     = R $ \s k -> k s ()
     ,  rExpCache = IntMap.empty
     }
 
@@ -131,26 +126,6 @@ shift f = R $ \s k ->
                                    k' s' y
     in
       runR (f c) s
-
-resetH :: P Exp -> R r Exp
-resetH m = reset $ do
-    (host, p) <- savingH $ reset m
-    host
-    return (CallE (LamE [] p) [])
-  where
-    savingH :: R r a -> R r (H (), a)
-    savingH m = do
-        old_host <- gets rHost
-        modify $ \s -> s { rHost = R $ \s k -> k s () }
-        a <- m
-        host <- gets rHost
-        modify $ \s -> s { rHost = old_host }
-        return (host, a)
-
-shiftH :: ((() -> H Exp) -> H Exp) -> P ()
-shiftH m = do
-    let m' = shift $ \k -> m k
-    modify $ \s -> s { rHost = rHost s >> m' }
 
 getFlags :: R r Flags
 getFlags = gets rFlags

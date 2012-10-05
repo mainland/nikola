@@ -15,7 +15,15 @@
 -- Stability   : experimental
 -- Portability : non-portable
 
-module Data.Array.Nikola.Language.Optimize where
+module Data.Array.Nikola.Language.Optimize
+    ( optimizeHostProgram
+    , liftHostProgram
+    , mergeParfor
+    , whenE
+    , bind
+    , binds
+    , subst
+    ) where
 
 import Prelude hiding (mapM)
 
@@ -38,7 +46,6 @@ import Text.PrettyPrint.Mainland
 import Data.Array.Nikola.Backend.Flags
 import Data.Array.Nikola.Exp hiding (Var, Exp)
 import qualified Data.Array.Nikola.Exp as E
-import Data.Array.Nikola.Program
 
 import Data.Array.Nikola.Language.Check
 import Data.Array.Nikola.Language.Generic
@@ -58,7 +65,6 @@ optimizeHostProgram =
     return
     >=> oPass (norm ExpA)
     -- >=> whenDialect CUDA (oPass (mergeParfor ExpA))
-    >=> whenDialect CUDA (splitKernels ExpA)
     >=> oPass (shareBindings ExpA)
     >=> aPass (mergeBounds ExpA)
     >=> oPass (norm ExpA)
@@ -66,6 +72,7 @@ optimizeHostProgram =
     >=> oPass (simpl ExpA)
     >=> oPass (norm ExpA)
     >=> oPass (simpl ExpA)
+    >=> whenDialect CUDA (constructKernels ExpA)
     >=> oPass (lambdaLift ExpA)
 
 liftHostProgram :: Exp -> R r Exp
@@ -116,25 +123,16 @@ instance MustEq Exp where
     IndexE v1 idx1          ==! IndexE v2 idx2          = v1 == v2 && idx1 ==! idx2
     _                       ==! _                       = False
 
--- Kernel splitting
+-- Kernel construction
 
-splitKernels :: AST a -> a -> R r a
-splitKernels = split
+constructKernels :: AST a -> a -> R r a
+constructKernels = go
   where
-    split :: AST a -> a -> R r a
-    split ExpA (CallE (LamE [] p) []) = do
-        resetH $ splitK ExpA p
+    go :: AST a -> a -> R r a
+    go ExpA e@(ForE True _ _ _) = do
+        return (CallE (LamE [] e) [])
 
-    split w a = checkTraverseFam split w a
-
-    splitK :: AST a -> a -> R Exp a
-    -- Sequential parallel fors must be split into separate kernels.
-    splitK ExpA (SeqE m1@(ForE True _ _ _) m2) = do
-        m1' <- checkTraverseFam splitK ExpA m1
-        m2' <- reset $ checkTraverseFam splitK ExpA m2
-        SeqE m1' <$> isolateK m2'
-
-    splitK w a = checkTraverseFam splitK w a
+    go w a = checkTraverseFam go w a
 
 -- Lift shared bindings out of branches
 

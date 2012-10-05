@@ -24,7 +24,6 @@ module Data.Array.Nikola.Language.Reify (
 import Prelude hiding ((++), map, replicate, reverse)
 import qualified Prelude as P
 
-import Control.Applicative
 import Data.Typeable (Typeable)
 -- import Text.PrettyPrint.Mainland
 
@@ -50,31 +49,26 @@ instance (IsElem (Exp t a)) => Reifiable (Exp t a) S.Exp where
     reify e = return $ unE e
 
 instance Reifiable (P ()) S.Exp where
-    reify m = liftK $ m >> return (ReturnE UnitE)
+    reify m = m >> return (ReturnE UnitE)
 
 instance (IsElem (Exp t a)) => Reifiable (P (Exp t a)) S.Exp where
-    reify m = liftK $ m >>= returnK
+    reify m = m >>= returnK
 
 instance (Typeable r,
           Shape sh,
           IsElem a,
           Load r sh a)
       => Reifiable (Array r sh a) S.Exp where
-    reify arr = liftK $ do
+    reify arr = do
         AGlobal _ arr <- computeP arr
         returnK $ E arr
 
 instance (Shape sh,
           IsElem a)
       => Reifiable (P (Array G sh a)) S.Exp where
-    reify m = liftK $ do
+    reify m = do
         AGlobal _ arr <- m
         returnK $ E arr
-
-liftK :: P S.Exp -> R S.Exp S.Exp
-liftK m =
-    lamE [] $ do
-    LamE [] <$> resetH m
 
 returnK :: Exp t a -> P S.Exp
 returnK = return . ReturnE . unE
