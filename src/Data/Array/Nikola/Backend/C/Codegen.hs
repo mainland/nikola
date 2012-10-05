@@ -183,8 +183,8 @@ compileExp (CallE f es) =
     cudaGridDims []            = []
     cudaGridDims [(dim, bs)]   = [(dim, (bs, 480, 128))]
     cudaGridDims [(dim1, bs1)
-                 ,(dim2, bs2)] = [(dim1, (bs1, 16, 128))
-                                 ,(dim2, (bs2,  8, 128))]
+                 ,(dim2, bs2)] = [(dim1, (bs1, 128, 16))
+                                 ,(dim2, (bs2, 128,  8))]
     cudaGridDims _             = error "cudaGridDims: failed to compute grid dimensions"
 
     boundsOf :: CudaDim -> [(Idx, Exp)] -> [Exp]
