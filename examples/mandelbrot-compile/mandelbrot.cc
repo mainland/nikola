@@ -71,6 +71,14 @@ cudaError_t mandelbrot_cuda_2(double lowx, double lowy, double highx, double hig
                               double* zs_x, double* zs_y, int32_t* zs_i,
                               int32_t zs_dimx, int32_t zs_dimy);
 
+cudaError_t mandelbrot_cuda_3(double lowx, double lowy, double highx, double highy,
+                              int32_t viewx, int32_t viewy,
+                              int32_t depth,
+                              double* cs_x, double* cs_y,
+                              int32_t cs_dimx, int32_t cs_dimy,
+                              double* zs_x, double* zs_y, int32_t* zs_i,
+                              int32_t zs_dimx, int32_t zs_dimy);
+
 void blackscholes(Float* callResults,
                   Float* putResults,
                   Float* prices,
@@ -97,6 +105,7 @@ int main(int argc, char** argv)
 {
     measure_mp(mandelbrot_cuda);
     measure_mp(mandelbrot_cuda_2);
+    measure_mp(mandelbrot_cuda_3);
 
     return 0;
 }
