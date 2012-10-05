@@ -1093,6 +1093,7 @@ bindExp maybe_v e = do
 isAtomic :: CExp -> Bool
 isAtomic (ScalarCE (C.Var {}))   = True
 isAtomic (ScalarCE (C.Const {})) = True
-isAtomic (ArrayCE {})            = True
+isAtomic (TupCE ces)             = all isAtomic ces
+isAtomic (ArrayCE _ ces)         = all isAtomic ces
 isAtomic (FunCE {})              = True
 isAtomic _                       = False
