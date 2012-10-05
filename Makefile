@@ -179,5 +179,6 @@ mandelbrot_cuda.cu : mandelbrot-compile
 mandelbrot-cuda : examples/mandelbrot-compile/mandelbrot.cc \
 	mandelbrot_cuda.cu \
 	examples/mandelbrot-compile/mandelbrot_cuda_2.cu \
-	examples/mandelbrot-compile/mandelbrot_cuda_3.cu
+	examples/mandelbrot-compile/mandelbrot_cuda_3.cu \
+	examples/mandelbrot-compile/mandelbrot_cuda_4.cu
 	nvcc -DCUDA --gpu-architecture=compute_20 $^ -lm -o $@
