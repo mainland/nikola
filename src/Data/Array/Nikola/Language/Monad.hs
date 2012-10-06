@@ -148,13 +148,13 @@ instance MonadCheck (R r) where
                                 text "not in scope."
 
     extendVarTypes vtaus act = do
+        old_vtaus <- gets rVarTypes
         modify $ \s -> s { rVarTypes = foldl' insert (rVarTypes s) vtaus }
         x  <- act
-        modify $ \s -> s { rVarTypes = foldl' delete (rVarTypes s) vtaus }
+        modify $ \s -> s { rVarTypes = old_vtaus }
         return x
       where
         insert m (k, v) = Map.insert k v m
-        delete m (k, _) = Map.delete k m
 
 -- | Our monad for constructing host programs
 type H a = R Exp a
