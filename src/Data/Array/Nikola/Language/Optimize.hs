@@ -50,6 +50,7 @@ import qualified Data.Array.Nikola.Exp as E
 import Data.Array.Nikola.Language.Check
 import Data.Array.Nikola.Language.Generic
 import Data.Array.Nikola.Language.Monad
+import Data.Array.Nikola.Language.Optimize.CSE
 import Data.Array.Nikola.Language.Optimize.Inliner
 import Data.Array.Nikola.Language.Optimize.Monad
 import Data.Array.Nikola.Language.Optimize.Occ
@@ -64,17 +65,34 @@ import Data.Array.Nikola.Language.Syntax
 optimizeHostProgram :: Exp -> R r Exp
 optimizeHostProgram =
     return
+    >=> pprStage "Start"
     >=> oPass (norm ExpA)
     -- >=> whenDialect CUDA (oPass (mergeParfor ExpA))
     >=> oPass (shareBindings ExpA)
     >=> aPass (mergeBounds ExpA)
     >=> oPass (norm ExpA)
+
+    >=> pprStage "Pre-simplify pass 1"
+    >=> oPass (simpl ExpA)
+    >=> pprStage "Simplify pass 1"
+    >=> cse ExpA
+    >=> pprStage "CSE pass 1"
     >=> oPass (occ ExpA)
-    >=> oPass (simpl ExpA)
+    >=> pprStage "Occ pass 1"
     >=> oPass (inliner ExpA)
+    >=> pprStage "Inliner pass 1"
+
     >=> oPass (norm ExpA)
+
+    >=> pprStage "Pre-simplify pass 2"
     >=> oPass (simpl ExpA)
+    >=> pprStage "Simplify pass 2"
+    >=> cse ExpA
+    >=> pprStage "CSE pass 2"
+    >=> oPass (occ ExpA)
     >=> oPass (inliner ExpA)
+    >=> pprStage "Inliner pass 2"
+
     >=> whenDialect CUDA (constructKernels ExpA)
     >=> oPass (lambdaLift ExpA)
 
@@ -98,6 +116,16 @@ oPass f = liftIO . evalO . f
 
 aPass :: (Exp -> A Exp) -> Exp -> R r Exp
 aPass f = liftIO . evalA . f
+
+pprIO :: MonadIO m => Doc -> m ()
+pprIO = liftIO . putStrLn . pretty 200
+
+pprStage :: MonadIO m => String -> Exp -> m Exp
+pprStage desc e =
+    if False
+    then do pprIO $ nest 4 $ text desc </> line </> ppr e
+            return e
+    else return e
 
 -- Deciding whether or not things must be equal ("must be equal" implies
 -- "equal", but "equal" does not imply "must be equal")

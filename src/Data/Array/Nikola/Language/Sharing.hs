@@ -96,9 +96,9 @@ cacheExp :: Typeable a
          -> R Exp Exp
 cacheExp x comp = do
     sn      <- liftIO $ makeStableName $! x
-    maybe_e <- lookupExp sn
+    maybe_e <- lookupStableName sn
     case maybe_e of
       Just e  -> return e
       Nothing -> do  e <- comp >>= mkLetE
-                     insertExp sn e
+                     insertStableName sn e
                      return e

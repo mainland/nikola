@@ -66,6 +66,7 @@ library
     Data.Array.Nikola.Language.Generic
     Data.Array.Nikola.Language.Monad
     Data.Array.Nikola.Language.Optimize
+    Data.Array.Nikola.Language.Optimize.CSE
     Data.Array.Nikola.Language.Optimize.Inliner
     Data.Array.Nikola.Language.Optimize.Monad
     Data.Array.Nikola.Language.Optimize.Occ

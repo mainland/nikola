@@ -33,7 +33,10 @@ module Data.Array.Nikola.Language.Monad (
     gensym,
 
     lookupExp,
-    insertExp,
+    extendExps,
+
+    lookupStableName,
+    insertStableName,
 
     lamE,
     letE,
@@ -60,21 +63,23 @@ import Data.Array.Nikola.Language.Syntax
 type StableNameHash = Int
 
 data REnv = REnv
-    {  rUniq     :: Int
-    ,  rFlags    :: Flags
-    ,  rContext  :: Context
-    ,  rVarTypes :: Map.Map Var Type
-    ,  rExpCache :: IntMap.IntMap [(Dynamic, Exp)]
+    {  rUniq         :: Int
+    ,  rFlags        :: Flags
+    ,  rContext      :: Context
+    ,  rVarTypes     :: Map.Map Var Type
+    ,  rExpCache     :: Map.Map Exp Exp
+    ,  rSharingCache :: IntMap.IntMap [(Dynamic, Exp)]
     }
   deriving (Typeable)
 
 emptyREnv :: Flags -> REnv
 emptyREnv flags = REnv
-    {  rUniq     = 0
-    ,  rFlags    = flags
-    ,  rContext  = Host
-    ,  rVarTypes = Map.empty
-    ,  rExpCache = IntMap.empty
+    {  rUniq         = 0
+    ,  rFlags        = flags
+    ,  rContext      = Host
+    ,  rVarTypes     = Map.empty
+    ,  rExpCache     = Map.empty
+    ,  rSharingCache = IntMap.empty
     }
 
 defaultREnv :: REnv
@@ -163,9 +168,23 @@ gensym v = do
     modify $ \s -> s { rUniq = u + 1 }
     return $ Var (v ++ "_" ++ show u)
 
-lookupExp :: Typeable a => StableName a -> R r (Maybe Exp)
-lookupExp sn = do
+lookupExp :: Exp -> R r (Maybe Exp)
+lookupExp e =
+    gets $ \s -> Map.lookup e (rExpCache s)
+
+extendExps :: [(Exp, Exp)] -> R r a -> R r a
+extendExps es kont = do
     cache <- gets rExpCache
+    modify $ \s -> s { rExpCache = foldl' insert (rExpCache s) es }
+    x <- kont
+    modify $ \s -> s { rExpCache = cache }
+    return x
+  where
+    insert m (k, v) = Map.insert k v m
+
+lookupStableName :: Typeable a => StableName a -> R r (Maybe Exp)
+lookupStableName sn = do
+    cache <- gets rSharingCache
     case IntMap.lookup hash cache of
       Just xs -> return $ Prelude.lookup  (Just sn)
                                           [(fromDynamic d,x) | (d,x) <- xs]
@@ -174,9 +193,11 @@ lookupExp sn = do
     hash :: StableNameHash
     hash = hashStableName sn
 
-insertExp :: Typeable a => StableName a -> Exp -> R r ()
-insertExp sn e =
-    modify $ \s -> s { rExpCache = IntMap.alter add (hashStableName sn) (rExpCache s) }
+insertStableName :: Typeable a => StableName a -> Exp -> R r ()
+insertStableName sn e =
+    modify $ \s ->
+        s { rSharingCache = IntMap.alter add (hashStableName sn)
+                                             (rSharingCache s) }
   where
     add :: Maybe [(Dynamic, Exp)] -> Maybe [(Dynamic, Exp)]
     add Nothing   = Just [(toDyn sn, e)]
@@ -184,8 +205,7 @@ insertExp sn e =
 
 lamE :: [(Var, Type)] -> R Exp Exp -> R Exp Exp
 lamE vtaus m = do
-    e <- extendVarTypes vtaus $ reset $
-             m
+    e <- extendVarTypes vtaus $ reset $ m
     case e of
       LamE vtaus' e  -> return $ LamE (vtaus ++ vtaus') e
       _              -> return $ LamE vtaus e
@@ -193,7 +213,9 @@ lamE vtaus m = do
 letE :: Var -> Type -> Exp -> R Exp Exp
 letE v tau e =
     shift $ \k -> do
-    body <- extendVarTypes [(v, tau)] $ reset $
+    body <- extendVarTypes [(v, tau)] $
+            extendExps [(e, VarE v)] $
+            reset $
             k (VarE v)
     return $ LetE v tau Many e body
 
@@ -203,7 +225,7 @@ mkLetE e | isAtomicE e =
     return e
 
 mkLetE e = do
-    tau  <- inferExp e
+    tau <- inferExp e
     if isMT tau
       then return e
       else do v <- if isFunT tau then gensym "f" else gensym "v"
@@ -211,9 +233,14 @@ mkLetE e = do
 
 inNewScope :: Bool -> R a a -> R r a
 inNewScope isLambda comp = do
-    expCache <- gets rExpCache
+    expCache     <- gets rExpCache
+    sharingCache <- gets rSharingCache
     when isLambda $ do
-      modify $ \s -> s { rExpCache = IntMap.empty }
+      modify $ \s -> s { rExpCache     = Map.empty
+                       , rSharingCache = IntMap.empty
+                       }
     a <- reset comp
-    modify $ \s -> s { rExpCache = expCache }
+    modify $ \s -> s { rExpCache     = expCache
+                     , rSharingCache = sharingCache
+                     }
     return a
