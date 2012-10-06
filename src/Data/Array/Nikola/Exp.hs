@@ -110,17 +110,34 @@ instance IfThenElse Bool a where
     ifThenElse True  th _  = th
     ifThenElse False _  el = el
 
-instance IfThenElse (Exp t Bool) (Exp t a) where
-    ifThenElse t th el = E $ IfThenElseE (unE t) (unE th) (unE el)
+instance Unlift t a => IfThenElse (Exp t Bool) a where
+    ifThenElse t th el =
+        unlift e
+      where
+        th' :: Exp t (Lifted t a)
+        th' = lift th
 
-instance (IfThenElse (Exp t Bool) a, IfThenElse (Exp t Bool) b)
-    => IfThenElse (Exp t Bool) (a, b) where
-    ifThenElse t (tha, thb) (ela, elb) =
-        (ifThenElse t tha ela, ifThenElse t thb elb)
+        el' :: Exp t (Lifted t a)
+        el' = lift el
+
+        e :: Exp t (Lifted t a)
+        e = E $ IfThenElseE (unE t) (unE th') (unE el')
 
 -- | A binary if-then-else combinator.
-(?) :: Exp t Bool -> (Exp t a, Exp t a) -> Exp t a
-t ? (th, el) = E $ IfThenElseE (unE t) (unE th) (unE el)
+(?) :: forall t a . Unlift t a
+    => Exp t Bool
+    -> (a, a)
+    -> a
+t ? (th, el) = unlift e
+  where
+    th' :: Exp t (Lifted t a)
+    th' = lift th
+
+    el' :: Exp t (Lifted t a)
+    el' = lift el
+
+    e :: Exp t (Lifted t a)
+    e = E $ IfThenElseE (unE t) (unE th') (unE el')
 
 infix 4 ==*, /=*, <*, <=*, >*, >=*
 
