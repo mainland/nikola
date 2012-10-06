@@ -12,6 +12,8 @@
 
 module Data.Array.Nikola.Language.Optimize.Inliner (inliner) where
 
+import Control.Applicative
+
 import Data.Array.Nikola.Language.Generic
 import Data.Array.Nikola.Language.Optimize.Monad
 import Data.Array.Nikola.Language.Optimize.Subst
@@ -28,5 +30,12 @@ inliner ExpA (LetE v _ Once e1 e2) = do
     e1' <- inliner ExpA e1
     insertSubst VarA v ExpA e1'
     inliner ExpA e2
+
+inliner ExpA (LetE v tau Many e1 e2) = do
+    e1' <- inliner ExpA e1
+    if isAtomicE e1'
+      then do  insertSubst VarA v ExpA e1'
+               inliner ExpA e2
+      else LetE v tau Many e1' <$> inliner ExpA e2
 
 inliner w a = traverseFam inliner w a

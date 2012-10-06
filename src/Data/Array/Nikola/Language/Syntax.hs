@@ -46,6 +46,9 @@ module Data.Array.Nikola.Language.Syntax (
     flattenT,
 
     Exp(..),
+
+    isAtomicE,
+
     splitLamE,
 
     seqE,
@@ -311,6 +314,15 @@ instance Num Exp where
 
     abs e    = UnopE AbsN e
     signum e = UnopE SignumN e
+
+isAtomicE :: Exp -> Bool
+isAtomicE (VarE {})        = True
+isAtomicE (ConstE {})      = True
+isAtomicE (UnitE {})       = True
+isAtomicE (ProjArrE _ _ e) = isAtomicE e
+isAtomicE (DimE _ _ e)     = isAtomicE e
+isAtomicE (UnopE NegN _)   = True
+isAtomicE _                = False
 
 splitLamE :: Exp -> ([(Var, Type)], Exp)
 splitLamE (LamE vtaus e) = (vtaus, e)

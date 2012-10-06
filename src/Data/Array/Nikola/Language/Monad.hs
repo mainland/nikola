@@ -197,13 +197,17 @@ letE v tau e =
             k (VarE v)
     return $ LetE v tau Many e body
 
+-- We never let-bind atomic expressions or monadic values.
 mkLetE :: Exp -> R Exp Exp
-mkLetE e@(VarE {})   = return e
-mkLetE e@(ConstE {}) = return e
-mkLetE e@(UnitE {})  = return e
-mkLetE e             = do  tau  <- inferExp e
-                           v    <- if isFunT tau then gensym "f" else gensym "v"
-                           letE v tau e
+mkLetE e | isAtomicE e =
+    return e
+
+mkLetE e = do
+    tau  <- inferExp e
+    if isMT tau
+      then return e
+      else do v <- if isFunT tau then gensym "f" else gensym "v"
+              letE v tau e
 
 inNewScope :: Bool -> R a a -> R r a
 inNewScope isLambda comp = do
