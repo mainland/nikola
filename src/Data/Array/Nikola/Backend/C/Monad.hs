@@ -37,7 +37,7 @@ module Data.Array.Nikola.Backend.C.Monad (
     getFlags,
 
     useIndex,
-    getIndices,
+    collectIndices,
 
     lookupVarTrans,
     extendVarTrans,
@@ -277,11 +277,14 @@ useIndex :: (Idx, Exp) -> C ()
 useIndex idx =
     modify $ \s -> s { cIndices = idx : cIndices s }
 
-getIndices :: C [(Idx, Exp)]
-getIndices = do
-    idxs <- gets cIndices
+collectIndices :: C a -> C (a, [(Idx, Exp)])
+collectIndices act = do
+    old_idxs <- gets cIndices
     modify $ \s -> s { cIndices = [] }
-    return idxs
+    a    <- act
+    idxs <- gets cIndices
+    modify $ \s -> s { cIndices = old_idxs }
+    return (a, idxs)
 
 lookupVarTrans :: Var -> C CExp
 lookupVarTrans v = do

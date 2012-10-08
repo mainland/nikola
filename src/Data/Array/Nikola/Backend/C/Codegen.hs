@@ -524,20 +524,22 @@ compileKernelFunCollect dialect fname f = do
 -- and their bounds. A bound is represented as a function from the kernel's
 -- arguments to an expression.
 compileKernelFun :: Dialect -> String -> Exp -> C CudaKernel
-compileKernelFun dialect fname f =
-    inContext Kernel $ do
-    tau_kern <- inferExp f
-    tau_ret  <- snd <$> checkFunT tau_kern
-    compileFun dialect Host Kernel fname vtaus tau_ret (compileExp body)
-    idxs <- getIndices
-    return CudaKernel
-        { cukernDefs         = []
-        , cukernName         = fname
-        , cukernIdxs         = [(idx, matchArgs vs bound)
-                                    | (idx, bound) <- idxs]
-        , cudaThreadBlockDim = (1, 1, 1)
-        , cudaGridDim        = (1, 1, 1)
-        }
+compileKernelFun dialect fname f = do
+    (kern, idxs) <- collectIndices $ do
+                    inContext Kernel $ do
+                    tau_kern <- inferExp f
+                    tau_ret  <- snd <$> checkFunT tau_kern
+                    compileFun dialect Host Kernel
+                               fname vtaus tau_ret (compileExp body)
+                    return CudaKernel
+                        { cukernDefs         = []
+                        , cukernName         = fname
+                        , cukernIdxs         = []
+                        , cudaThreadBlockDim = (1, 1, 1)
+                        , cudaGridDim        = (1, 1, 1)
+                        }
+    return kern
+        { cukernIdxs = [(idx, matchArgs vs bound) | (idx, bound) <- idxs] }
   where
     (vtaus, body) = splitLamE f
     vs            = map fst vtaus
