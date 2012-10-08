@@ -91,8 +91,8 @@ compileProgram flags p = do
 
 -- Compile a constant to a C expression
 compileConst :: Const -> C CExp
-compileConst (BoolC True)  = return $ ScalarCE [cexp|0|]
-compileConst (BoolC False) = return $ ScalarCE [cexp|1|]
+compileConst (BoolC True)  = return $ ScalarCE [cexp|1|]
+compileConst (BoolC False) = return $ ScalarCE [cexp|0|]
 compileConst (Int8C n)     = return $ ScalarCE [cexp|$int:(toInteger n)|]
 compileConst (Int16C n)    = return $ ScalarCE [cexp|$int:(toInteger n)|]
 compileConst (Int32C n)    = return $ ScalarCE [cexp|$int:(toInteger n)|]
