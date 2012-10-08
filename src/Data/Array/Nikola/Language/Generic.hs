@@ -103,6 +103,10 @@ instance TraversableFamily AST where
                                                    <*> trav ExpA n
                                                    <*> trav ExpA x
 
+        go ExpA (IterateWhileE f n x)   = IterateWhileE <$> trav ExpA f
+                                                        <*> trav ExpA n
+                                                        <*> trav ExpA x
+
         go ExpA (ForE isPar vs es p)    = ForE isPar vs <$> traverse (trav ExpA) es
                                                         <*> trav ExpA p
 

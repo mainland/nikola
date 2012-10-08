@@ -420,6 +420,13 @@ inferExp = go
         checkEqT tau_f (FunT [tau_x] tau_x)
         return tau_x
 
+    go (IterateWhileE n f x) = do
+        inferExp n >>= checkIntT
+        tau_x <- inferExp x >>= checkScalarT
+        tau_f <- inferExp f
+        checkEqT tau_f (FunT [ScalarT tau_x] (ScalarT (TupleT [BoolT, tau_x])))
+        return (ScalarT tau_x)
+
     go (ForE _ vs es prog) = do
         taus <- mapM inferExp es
         extendVarTypes (vs `zip` taus) $

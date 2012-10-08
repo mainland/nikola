@@ -439,6 +439,34 @@ compileExp (IterateE n (LamE [(x, tau)] e) x0) = do
 compileExp e@(IterateE {}) =
     faildoc $ nest 2 $ text "Cannot compile:" </> ppr e
 
+compileExp (IterateWhileE n (LamE [(x, tau)] e) x0) = do
+    i     <- gensym "i"
+    cn    <- compileExp n
+    cx0   <- compileExp x0
+    ctest <- newCVar (unVar x ++ "test") boolT
+    cx    <- newCVar (unVar x) tau
+    assignC cx cx0
+    assignC ctest (ScalarCE [cexp|1|])
+    citems <- inNewBlock_ $ do
+              ce <- extendVarTypes [(x, tau)] $
+                    extendVarTrans [(x, cx)] $
+                    compileExp e
+              (ctest', cx') <- case ce of
+                                TupCE [ctest', cx'] -> return (ctest', cx')
+                                _ -> faildoc $ nest 2 $
+                                     text "Bad iteration test:" </> ppr e
+              assignC cx cx'
+              assignC ctest ctest'
+    addStm [cstm|if ($cn > 0) {
+                    for (int $id:i = 0; $ctest && $id:i < $cn; ++$id:i)
+                        { $items:citems }
+                 }
+                |]
+    return cx
+
+compileExp e@(IterateWhileE {}) =
+    faildoc $ nest 2 $ text "Cannot compile:" </> ppr e
+
 compileExp (ForE isPar vs es m) = do
     dialect  <- fromLJust fDialect <$> getFlags
     tau      <- extendVarTypes (vs `zip` repeat ixT) $
