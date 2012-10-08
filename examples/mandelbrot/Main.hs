@@ -18,6 +18,7 @@ import qualified Mandelbrot.NikolaV3 as MN3
 import qualified Mandelbrot.NikolaV4 as MN4
 import qualified Mandelbrot.RepaV1 as MR1
 import qualified Mandelbrot.RepaV2 as MR2
+import qualified Mandelbrot.RepaV3 as MR3
 
 import Config
 import ParseConfig
@@ -58,6 +59,7 @@ doBenchmark args =
     G.openWindowGLUT disp
     N.initializeCUDAGLCtx N.DeviceListAll
     repav2Gen   <- MR2.mandelbrotImageGenerator
+    repav3Gen   <- MR3.mandelbrotImageGenerator
     nikolav2Gen <- MN2.mandelbrotImageGenerator
     nikolav3Gen <- MN3.mandelbrotImageGenerator
     nikolav4Gen <- MN4.mandelbrotImageGenerator
@@ -67,6 +69,9 @@ doBenchmark args =
 
         generateBitmapFrame RepaV2 (G.View lowx lowy highx highy) size limit =
             repav2Gen lowx lowy highx highy size size limit
+
+        generateBitmapFrame RepaV3 (G.View lowx lowy highx highy) size limit =
+            repav3Gen lowx lowy highx highy size size limit
 
         generateBitmapFrame NikolaV1 (G.View lowx lowy highx highy) size limit =
             MN1.mandelbrotImage lowx lowy highx highy size size limit
@@ -90,6 +95,7 @@ doBenchmark args =
     C.defaultMain
          [C.bench "Repa V1" $ C.nfIO (generateBitmapFrame RepaV1 defaultView size limit)
          ,C.bench "Repa V2" $ C.nfIO (generateBitmapFrame RepaV2 defaultView size limit)
+         ,C.bench "Repa V3" $ C.nfIO (generateBitmapFrame RepaV3 defaultView size limit)
          ,C.bench "Nikola V1" $ C.nfIO (generateBitmapFrame NikolaV1 defaultView size limit)
          ,C.bench "Nikola V2" $ C.nfIO (generateBitmapFrame NikolaV2 defaultView size limit)
          ,C.bench "Nikola V3" $ C.nfIO (generateBitmapFrame NikolaV3 defaultView size limit)
@@ -119,6 +125,14 @@ frameGenerator RepaV1 limit = return f
 
 frameGenerator RepaV2 limit = do
     gen <- MR2.mandelbrotImageGenerator
+    return $ f gen
+  where
+    f gen _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
+        bmap <- gen lowx lowy highx highy sizeX sizeY limit
+        return $ bitmapToPicture bmap
+
+frameGenerator RepaV3 limit = do
+    gen <- MR3.mandelbrotImageGenerator
     return $ f gen
   where
     f gen _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do

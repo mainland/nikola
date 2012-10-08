@@ -67,9 +67,10 @@ printUsage options exitCode = do
 backend :: (Last Backend -> Config) -> String -> IO Config
 backend f s =
     case map toLower s of
-      "repa"     -> return . f $ ljust RepaV2
+      "repa"     -> return . f $ ljust RepaV3
       "repav1"   -> return . f $ ljust RepaV1
       "repav2"   -> return . f $ ljust RepaV2
+      "repav3"   -> return . f $ ljust RepaV3
       "nikola"   -> return . f $ ljust NikolaV4
       "nikolav1" -> return . f $ ljust NikolaV1
       "nikolav2" -> return . f $ ljust NikolaV2
