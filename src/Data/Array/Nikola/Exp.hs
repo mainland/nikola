@@ -247,7 +247,7 @@ class Lift t a where
 
 #define baseTypeLift(ty,con)       \
 instance Lift t ty where {         \
-; type Lifted t ty = Exp t ty      \
+; type Lifted t ty = ty            \
 ; lift = E . ConstE . con          \
 } ;                                \
 instance Lift t (Exp t ty) where { \
