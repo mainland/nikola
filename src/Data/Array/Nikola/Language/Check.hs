@@ -415,15 +415,9 @@ inferExp = go
 
     go (IterateE n f x) = do
         inferExp n >>= checkIntT
-        tau_x           <- inferExp x
-        (taus, tau_ret) <- inferExp f >>= checkFunT
-        case taus of
-          [tau] -> checkEqT tau tau_x
-          _     -> faildoc $ text "iterate expected a function of type" <+>
-                             ppr (FunT [tau_x] tau_x) <+>
-                             text "but got one of type" <+>
-                             ppr (FunT taus tau_ret)
-        checkEqT tau_ret tau_x
+        tau_x <- inferExp x
+        tau_f <- inferExp f
+        checkEqT tau_f (FunT [tau_x] tau_x)
         return tau_x
 
     go (ForE _ vs es prog) = do
