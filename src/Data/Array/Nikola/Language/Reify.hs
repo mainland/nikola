@@ -48,6 +48,11 @@ class Typeable a => Reifiable a b where
 instance (IsElem (Exp t a)) => Reifiable (Exp t a) S.Exp where
     reify e = return $ unE e
 
+instance ( Reifiable (Exp t a) S.Exp
+         , Reifiable (Exp t b) S.Exp
+         ) => Reifiable (Exp t a, Exp t b) S.Exp where
+    reify (ea, eb) = return $ TupleE [unE ea, unE eb]
+
 instance Reifiable (P ()) S.Exp where
     reify m = m >> return (ReturnE UnitE)
 
