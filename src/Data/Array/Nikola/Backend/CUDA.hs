@@ -120,6 +120,7 @@ instance IsElem (E.Exp CUDA ty) where                              \
 ; writeElem arr ix x = seqK (WriteE (unE arr) (unE ix) (unE x)) () \
 }
 
+cudaIsElem(Bool,   BoolT)
 cudaIsElem(Int8,   Int8T)
 cudaIsElem(Int16,  Int16T)
 cudaIsElem(Int32,  Int32T)
