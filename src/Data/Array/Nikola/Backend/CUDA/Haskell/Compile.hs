@@ -222,39 +222,15 @@ compileExp (AppE f es) = do
                  return x
 
 compileExp (CallE f es) = do
-    kern  <- addKernel f
-    midxs <- mapM (interpIdx es) (cukernIdxs kern)
-    margs <- mapM compileExp es
-    let cudaIdxs  =  [(dim, boundsOf dim midxs) | dim <- [CudaDimX, CudaDimY, CudaDimZ]
-                                                , let bs = boundsOf dim midxs
-                                                , not (null bs)]
-    mdims <- cudaGridDims cudaIdxs
-    return $ do  mod            <- getCUDAModule
-                 f              <- liftIO $ CU.getFun mod (cukernName kern)
-                 (tdims, gdims) <- mdims
-                 args           <- sequence margs
+    kern           <- addKernel f
+    (tdims, gdims) <- liftIO $ calcKernelDims kern es
+    margs          <- mapM compileExp es
+    return $ do  mod   <- getCUDAModule
+                 f     <- liftIO $ CU.getFun mod (cukernName kern)
+                 args  <- sequence margs
                  liftIO $ toFunParams args $ \fparams ->
-                          CU.launchKernel f tdims gdims 0 Nothing fparams
+                          CU.launchKernel f gdims tdims 0 Nothing fparams
                  return UnitV
-  where
-    interpIdx :: [Exp] -> (Idx, [Exp] -> Exp) -> CEx (Idx, Ex Val)
-    interpIdx es (idx, f) = do
-        val <- compileExp (f es)
-        return (idx, val)
-
-    -- Given a list of CUDA dimensiions (x, y, z) and their bounds (each
-    -- dimension may be used in more than one loop, leading to more than one
-    -- bound), return an action in the 'Ex' monad that yields a pair
-    -- consisting of the thread block dimensions and the grid dimensions,
-    cudaGridDims :: [(CudaDim, [Ex Val])] -> CEx (Ex ((Int, Int, Int), (Int, Int, Int)))
-    cudaGridDims []              = return $ return ((1, 1, 1), (1, 1, 1))
-    cudaGridDims [(CudaDimX, _)] = return $ return ((480, 1, 1), (128, 1, 1))
-    cudaGridDims _               = error "cudaGridDims: failed to compute grid dimensions"
-
-    -- Given a CUDA dimension (x, y, or z) and a list of indices and their
-    -- bounds, return the list of bounds for the given CUDA dimension.
-    boundsOf :: CudaDim -> [(Idx, Ex Val)] -> [Ex Val]
-    boundsOf dim idxs = [val | (CudaThreadIdx dim', val) <- idxs, dim' == dim]
 
 compileExp (BinopE op e1 e2) = do
     m1 <- compileExp e1

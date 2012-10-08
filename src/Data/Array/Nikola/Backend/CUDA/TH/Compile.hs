@@ -29,6 +29,7 @@ import qualified Foreign.CUDA.Driver as CU
 import qualified Foreign.CUDA.ForeignPtr as CU
 import qualified Language.C.Syntax as C
 import qualified Language.Haskell.TH as TH
+import qualified Language.Haskell.TH.Syntax as TH
 import Language.Haskell.TH (ExpQ, PatQ, TypeQ)
 import Language.C.Quote.C
 import Text.PrettyPrint.Mainland
@@ -186,42 +187,18 @@ compileExp e0@(CallE f es) = do
             text "Kernel returns a non-unit value of type" <+>
             ppr tau_ret <> text "." <+>
             text "I can't handle that yet."
-    kern          <- addKernel f
-    qidxs         <- mapM (interpIdx es) (cukernIdxs kern)
-    qargs         <- mapM compileExp es
-    taus          <- mapM inferExp es
-    let cudaIdxs  =  [(dim, boundsOf dim qidxs) | dim <- [CudaDimX, CudaDimY, CudaDimZ]
-                                                , let bs = boundsOf dim qidxs
-                                                , not (null bs)]
-    (qtdims, qgdims) <- cudaGridDims cudaIdxs
+    kern           <- addKernel f
+    (tdims, gdims) <- liftIO $ calcKernelDims kern es
+    qargs          <- mapM compileExp es
+    taus           <- mapM inferExp es
     return [|do { $(allFunParams (qargs `zip` taus)) $ \fparams ->
                   CU.launchKernel $(TH.varE (TH.mkName (cukernName kern)))
-                                  $qtdims $qgdims 0 Nothing fparams
+                                  $(TH.lift gdims)
+                                  $(TH.lift tdims)
+                                  0 Nothing fparams
                 }
             |]
   where
-    interpIdx :: [Exp] -> (Idx, [Exp] -> Exp) -> CEx (Idx, ExpQ)
-    interpIdx es (idx, f) = do
-        qe <- compileExp (f es)
-        return (idx, qe)
-
-    -- Given a list of CUDA dimensions (x, y, z) and their bounds (each
-    -- dimension may be used in more than one loop, leading to more than one
-    -- bound), return an action in the 'Ex' monad that yields a pair consisting
-    -- of the thread block dimensions and the grid dimensions,
-    cudaGridDims :: [(CudaDim, [ExpQ])] -> CEx (ExpQ, ExpQ)
-    cudaGridDims []              = return ([|(1, 1, 1)|],   [|(1, 1, 1)|])
-    cudaGridDims [(CudaDimX, _)] = return ([|(128, 1, 1)|], [|(480, 1, 1)|])
-    cudaGridDims [(CudaDimX, _)
-                 ,(CudaDimY, _)
-                 ]               = return ([|(128, 128, 1)|], [|(16, 8, 1)|])
-    cudaGridDims _               = error "cudaGridDims: failed to compute grid dimensions"
-
-    -- Given a CUDA dimension (x, y, or z) and a list of indices and their
-    -- bounds, return the list of bounds for the given CUDA dimension.
-    boundsOf :: CudaDim -> [(Idx, ExpQ)] -> [ExpQ]
-    boundsOf dim idxs = [val | (CudaThreadIdx dim', val) <- idxs, dim' == dim]
-
     allFunParams :: [(ExpQ, Type)] -> ExpQ
     allFunParams []           = [|\kont -> kont []|]
     allFunParams ((qe,_):qes) = [|\kont -> toFunParams $qe     $ \fparams1 ->

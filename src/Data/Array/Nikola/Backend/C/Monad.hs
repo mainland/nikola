@@ -159,8 +159,6 @@ data CudaKernel = CudaKernel
                                                   -- represented as a function
                                                   -- from the kernel's arguments
                                                   -- to an expression.
-    , cudaThreadBlockDim :: CudaThreadBlockDim    -- ^ Thread block dimensions
-    , cudaGridDim        :: CudaGridDim           -- ^ Grid dimensions
     }
 
 type CudaThreadBlockDim = (Int, Int, Int)
