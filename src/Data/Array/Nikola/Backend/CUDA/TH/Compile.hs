@@ -123,15 +123,14 @@ gensym s = do
     modify $ \s -> s { cexUniq = u + 1 }
     return $ s ++ show u
 
-addKernel :: Exp -> CEx (String, [(Idx, [Exp] -> Exp)])
-addKernel e = do
-    let (vtaus, body) =  splitLamE e
-    fname             <- gensym "kernel"
-    (idxs, defs)      <- liftIO $ runC flags (compileKernelFun CUDA fname vtaus body)
-    modify $ \s -> s { cexKernels = fname : cexKernels s
-                     , cexDefs    = cexDefs s ++ defs
+addKernel :: Exp -> CEx CudaKernel
+addKernel f = do
+    kname <- gensym "kernel"
+    kern  <- liftIO $ evalC flags (compileKernelFunCollect CUDA kname f)
+    modify $ \s -> s { cexKernels = kname : cexKernels s
+                     , cexDefs    = cexDefs s ++ cukernDefs kern
                      }
-    return (fname, idxs)
+    return kern
   where
     flags :: Flags
     flags = defaultFlags { fOptimize = ljust 1 }
@@ -187,8 +186,8 @@ compileExp e0@(CallE f es) = do
             text "Kernel returns a non-unit value of type" <+>
             ppr tau_ret <> text "." <+>
             text "I can't handle that yet."
-    (fname, idxs) <- addKernel f
-    qidxs         <- mapM (interpIdx es) idxs
+    kern          <- addKernel f
+    qidxs         <- mapM (interpIdx es) (cukernIdxs kern)
     qargs         <- mapM compileExp es
     taus          <- mapM inferExp es
     let cudaIdxs  =  [(dim, boundsOf dim qidxs) | dim <- [CudaDimX, CudaDimY, CudaDimZ]
@@ -196,7 +195,8 @@ compileExp e0@(CallE f es) = do
                                                 , not (null bs)]
     (qtdims, qgdims) <- cudaGridDims cudaIdxs
     return [|do { $(allFunParams (qargs `zip` taus)) $ \fparams ->
-                  CU.launchKernel $(TH.varE (TH.mkName fname)) $qtdims $qgdims 0 Nothing fparams
+                  CU.launchKernel $(TH.varE (TH.mkName (cukernName kern)))
+                                  $qtdims $qgdims 0 Nothing fparams
                 }
             |]
   where

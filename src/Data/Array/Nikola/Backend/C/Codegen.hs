@@ -18,7 +18,8 @@
 
 module Data.Array.Nikola.Backend.C.Codegen (
     compileProgram,
-    compileKernelFun
+    compileKernelFun,
+    compileKernelFunCollect
   ) where
 
 import Control.Applicative ((<$>),
@@ -145,15 +146,14 @@ compileExp (AppE f es) = do
 
 compileExp (CallE f es) =
     inContext Kernel $ do
-    dialect   <- fromLJust fDialect <$> getFlags
-    tau       <- inferExp f
-    kern      <- gensym "kern"
-    let cf    =  ScalarCE [cexp|$id:kern|]
-    idxs      <- compileKernelFun dialect kern vtaus body
-    let idxs' =  [(idx, f es) | (idx, f) <- idxs]
-    compileCall dialect Host Kernel tau es (callKernel dialect cf idxs')
+    dialect  <- fromLJust fDialect <$> getFlags
+    tau      <- inferExp f
+    kname    <- gensym "kern"
+    let cf   =  ScalarCE [cexp|$id:kname|]
+    kern     <- compileKernelFun dialect kname f
+    let idxs =  [(idx, f es) | (idx, f) <- cukernIdxs kern]
+    compileCall dialect Host Kernel tau es (callKernel dialect cf idxs)
   where
-    (vtaus, body) =  splitLamE f
     callKernel :: Dialect -> CExp -> [(Idx, Exp)] -> Maybe CExp -> [C.Exp] -> C ()
     callKernel CUDA cf idxs _ cargs = inBlock $ do
         let cudaIdxs = [(dim, boundsOf dim idxs) | dim <- [CudaDimX, CudaDimY, CudaDimZ]
@@ -513,19 +513,34 @@ compileExp SyncE = do
 compileExp e@(DelayedE {}) =
     faildoc $ text "Cannot compile:" <+> ppr e
 
+-- | Compile a kernel and collect the resulting C source into the resulting
+-- 'CudaKernel'.
+compileKernelFunCollect :: Dialect -> String -> Exp -> C CudaKernel
+compileKernelFunCollect dialect fname f = do
+    (kern, defs) <- collectDefinitions $ compileKernelFun dialect fname f
+    return kern { cukernDefs = defs }
+
 -- | Compile a kernel function given a dialect. The result is a list of indices
 -- and their bounds. A bound is represented as a function from the kernel's
 -- arguments to an expression.
-compileKernelFun :: Dialect -> String -> [(Var, Type)] -> Exp -> C [(Idx, [Exp] -> Exp)]
-compileKernelFun dialect fname vtaus m =
+compileKernelFun :: Dialect -> String -> Exp -> C CudaKernel
+compileKernelFun dialect fname f =
     inContext Kernel $ do
-    tau_kern <- inferExp (LamE vtaus m)
+    tau_kern <- inferExp f
     tau_ret  <- snd <$> checkFunT tau_kern
-    compileFun dialect Host Kernel fname vtaus tau_ret (compileExp m)
+    compileFun dialect Host Kernel fname vtaus tau_ret (compileExp body)
     idxs <- getIndices
-    return [(idx, matchArgs vs bound) | (idx, bound) <- idxs]
+    return CudaKernel
+        { cukernDefs         = []
+        , cukernName         = fname
+        , cukernIdxs         = [(idx, matchArgs vs bound)
+                                    | (idx, bound) <- idxs]
+        , cudaThreadBlockDim = (1, 1, 1)
+        , cudaGridDim        = (1, 1, 1)
+        }
   where
-    vs = map fst vtaus
+    (vtaus, body) = splitLamE f
+    vs            = map fst vtaus
 
     -- Given a list of parameters, an expression written in terms of the parameters,
     -- and a list of arguments, @matchArgs@ rewrites the expression in terms of the

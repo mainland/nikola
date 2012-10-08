@@ -146,13 +146,12 @@ gensym s = do
     modify $ \s -> s { cexUniq = u + 1 }
     return $ s ++ show u
 
-addKernel :: Exp -> CEx (String, [(Idx, [Exp] -> Exp)])
-addKernel e = do
-    let (vtaus, body) =  splitLamE e
-    fname             <- gensym "kernel"
-    (idxs, defs)      <- liftIO $ runC flags (compileKernelFun CUDA fname vtaus body)
-    modify $ \s -> s { cexDefs = cexDefs s ++ defs }
-    return (fname, idxs)
+addKernel :: Exp -> CEx CudaKernel
+addKernel f = do
+    kname <- gensym "kernel"
+    kern  <- liftIO $ evalC flags (compileKernelFunCollect CUDA kname f)
+    modify $ \s -> s { cexDefs = cexDefs s ++ cukernDefs kern }
+    return kern
   where
     flags :: Flags
     flags = defaultFlags { fOptimize = ljust 1 }
@@ -223,15 +222,15 @@ compileExp (AppE f es) = do
                  return x
 
 compileExp (CallE f es) = do
-    (fname, idxs) <- addKernel f
-    midxs         <- mapM (interpIdx es) idxs
-    margs         <- mapM compileExp es
+    kern  <- addKernel f
+    midxs <- mapM (interpIdx es) (cukernIdxs kern)
+    margs <- mapM compileExp es
     let cudaIdxs  =  [(dim, boundsOf dim midxs) | dim <- [CudaDimX, CudaDimY, CudaDimZ]
                                                 , let bs = boundsOf dim midxs
                                                 , not (null bs)]
     mdims <- cudaGridDims cudaIdxs
     return $ do  mod            <- getCUDAModule
-                 f              <- liftIO $ CU.getFun mod fname
+                 f              <- liftIO $ CU.getFun mod (cukernName kern)
                  (tdims, gdims) <- mdims
                  args           <- sequence margs
                  liftIO $ toFunParams args $ \fparams ->

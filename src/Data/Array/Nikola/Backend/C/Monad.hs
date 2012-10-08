@@ -25,9 +25,14 @@ module Data.Array.Nikola.Backend.C.Monad (
     CudaDim(..),
     cudaDimVar,
 
+    CudaKernel(..),
+    CudaThreadBlockDim,
+    CudaGridDim,
+
     C(..),
     CEnv(..),
     runC,
+    evalC,
 
     getFlags,
 
@@ -51,7 +56,8 @@ module Data.Array.Nikola.Backend.C.Monad (
     inBlock,
     inNewBlock,
     inNewBlock_,
-    inNewFunction
+    inNewFunction,
+    collectDefinitions
   ) where
 
 import Control.Applicative (Applicative,
@@ -112,7 +118,7 @@ instance ToExp CExp where
                          (squotes . ppr) ce <+>
                          text "to a C expression"
 
--- Loop index variable
+-- ^ Loop index variable
 data Idx = CIdx
          | CudaThreadIdx CudaDim
   deriving (Eq, Ord, Show)
@@ -131,6 +137,7 @@ idxStride (CudaThreadIdx dim) v =
   where
     x = cudaDimVar dim
 
+-- ^ CUDA dimension
 data CudaDim = CudaDimX
              | CudaDimY
              | CudaDimZ
@@ -140,6 +147,25 @@ cudaDimVar :: CudaDim -> String
 cudaDimVar CudaDimX = "x"
 cudaDimVar CudaDimY = "y"
 cudaDimVar CudaDimZ = "z"
+
+-- ^ CUDA kernel
+data CudaKernel = CudaKernel
+    { cukernDefs         ::  [C.Definition]       -- ^ The kernel's compiled C
+                                                  -- source
+    , cukernName         :: String                -- ^ The name of the kernel
+    , cukernIdxs         :: [(Idx, [Exp] -> Exp)] -- ^ A list of indices the
+                                                  -- kernel uses and their
+                                                  -- bounds. A bound is
+                                                  -- represented as a function
+                                                  -- from the kernel's arguments
+                                                  -- to an expression.
+    , cudaThreadBlockDim :: CudaThreadBlockDim    -- ^ Thread block dimensions
+    , cudaGridDim        :: CudaGridDim           -- ^ Grid dimensions
+    }
+
+type CudaThreadBlockDim = (Int, Int, Int)
+
+type CudaGridDim = (Int, Int, Int)
 
 -- The state used by the C code generation monad
 data CEnv = CEnv
@@ -201,22 +227,27 @@ runC :: Flags -> C a -> IO (a, [C.Definition])
 runC flags m = do
     (a, env) <- runExceptionT (runStateT (unC m) (emptyCEnv flags)) >>= liftException
     return (a, envToCUnit env)
-  where
-    envToCUnit :: CEnv -> [C.Definition]
-    envToCUnit env =
-        [cunit|$edecls:includes
-               $edecls:typedefs
-               $edecls:prototypes
-               $edecls:globals|]
-      where
-        includes = map toInclude (Set.toList (cIncludes env))
-          where
-            toInclude :: String -> C.Definition
-            toInclude inc = [cedecl|$esc:("#include " ++ inc)|]
 
-        typedefs   = (reverse . cTypedefs) env
-        prototypes = (reverse . cPrototypes) env
-        globals    = (reverse . cGlobals) env
+evalC :: Flags -> C a -> IO a
+evalC flags m = do
+    (a, _) <- runExceptionT (runStateT (unC m) (emptyCEnv flags)) >>= liftException
+    return a
+
+envToCUnit :: CEnv -> [C.Definition]
+envToCUnit env =
+    [cunit|$edecls:includes
+           $edecls:typedefs
+           $edecls:prototypes
+           $edecls:globals|]
+  where
+    includes = map toInclude (Set.toList (cIncludes env))
+      where
+        toInclude :: String -> C.Definition
+        toInclude inc = [cedecl|$esc:("#include " ++ inc)|]
+
+    typedefs   = (reverse . cTypedefs) env
+    prototypes = (reverse . cPrototypes) env
+    globals    = (reverse . cGlobals) env
 
 instance MonadCheck C where
     getContext = gets cContext
@@ -342,3 +373,23 @@ inNewFunction comp = do
     params <- gets cParams
     modify $ \s -> s { cParams = oldCParams }
     return (reverse params, items)
+
+collectDefinitions :: C a -> C (a, [C.Definition])
+collectDefinitions act = do
+    old_cIncludes   <- gets cIncludes
+    old_cTypedefs   <- gets cTypedefs
+    old_cPrototypes <- gets cPrototypes
+    old_cGlobals    <- gets cGlobals
+    modify $ \s -> s {  cIncludes   = Set.empty
+                     ,  cTypedefs   = []
+                     ,  cPrototypes = []
+                     ,  cGlobals    = []
+                     }
+    a    <- act
+    defs <- envToCUnit <$> get
+    modify $ \s -> s {  cIncludes   = old_cIncludes
+                     ,  cTypedefs   = old_cTypedefs
+                     ,  cPrototypes = old_cPrototypes
+                     ,  cGlobals    = old_cGlobals
+                     }
+    return (a, defs)
