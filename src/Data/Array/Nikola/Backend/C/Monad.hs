@@ -389,10 +389,10 @@ collectDefinitions act = do
                      ,  cGlobals    = []
                      }
     a    <- act
-    defs <- envToCUnit <$> get
-    modify $ \s -> s {  cIncludes   = old_cIncludes
-                     ,  cTypedefs   = old_cTypedefs
-                     ,  cPrototypes = old_cPrototypes
-                     ,  cGlobals    = old_cGlobals
+    s'   <- get
+    modify $ \s -> s {  cIncludes   = old_cIncludes `Set.union` cIncludes s'
+                     ,  cTypedefs   = old_cTypedefs   ++ cTypedefs s'
+                     ,  cPrototypes = old_cPrototypes ++ cPrototypes s'
+                     ,  cGlobals    = old_cGlobals    ++ cGlobals s'
                      }
-    return (a, defs)
+    return (a, envToCUnit s')

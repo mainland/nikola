@@ -18,8 +18,7 @@
 
 module Data.Array.Nikola.Backend.C.Codegen (
     compileProgram,
-    compileKernelFun,
-    compileKernelFunCollect
+    compileKernelFun
   ) where
 
 import Control.Applicative ((<$>),
@@ -513,33 +512,29 @@ compileExp SyncE = do
 compileExp e@(DelayedE {}) =
     faildoc $ text "Cannot compile:" <+> ppr e
 
--- | Compile a kernel and collect the resulting C source into the resulting
--- 'CudaKernel'.
-compileKernelFunCollect :: Dialect -> String -> Exp -> C CudaKernel
-compileKernelFunCollect dialect fname f = do
-    (kern, defs) <- collectDefinitions $ compileKernelFun dialect fname f
-    return kern { cukernDefs = defs }
-
 -- | Compile a kernel function given a dialect. The result is a list of indices
 -- and their bounds. A bound is represented as a function from the kernel's
 -- arguments to an expression.
 compileKernelFun :: Dialect -> String -> Exp -> C CudaKernel
 compileKernelFun dialect fname f = do
-    (kern, idxs) <- collectIndices $ do
-                    inContext Kernel $ do
-                    tau_kern <- inferExp f
-                    tau_ret  <- snd <$> checkFunT tau_kern
-                    compileFun dialect Host Kernel
-                               fname vtaus tau_ret (compileExp body)
-                    return CudaKernel
-                        { cukernDefs         = []
-                        , cukernName         = fname
-                        , cukernIdxs         = []
-                        , cudaThreadBlockDim = (1, 1, 1)
-                        , cudaGridDim        = (1, 1, 1)
-                        }
+    ((kern, idxs), cdefs) <- collectDefinitions $ do
+                             collectIndices $ do
+                             inContext Kernel $ do
+                             tau_kern <- inferExp f
+                             tau_ret  <- snd <$> checkFunT tau_kern
+                             compileFun dialect Host Kernel
+                                        fname vtaus tau_ret (compileExp body)
+                             return CudaKernel
+                                 { cukernDefs         = []
+                                 , cukernName         = fname
+                                 , cukernIdxs         = []
+                                 , cudaThreadBlockDim = (1, 1, 1)
+                                 , cudaGridDim        = (1, 1, 1)
+                                 }
     return kern
-        { cukernIdxs = [(idx, matchArgs vs bound) | (idx, bound) <- idxs] }
+        { cukernDefs = cdefs
+        , cukernIdxs = [(idx, matchArgs vs bound) | (idx, bound) <- idxs]
+        }
   where
     (vtaus, body) = splitLamE f
     vs            = map fst vtaus

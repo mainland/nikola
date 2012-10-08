@@ -149,7 +149,7 @@ gensym s = do
 addKernel :: Exp -> CEx CudaKernel
 addKernel f = do
     kname <- gensym "kernel"
-    kern  <- liftIO $ evalC flags (compileKernelFunCollect CUDA kname f)
+    kern  <- liftIO $ evalC flags (compileKernelFun CUDA kname f)
     modify $ \s -> s { cexDefs = cexDefs s ++ cukernDefs kern }
     return kern
   where
