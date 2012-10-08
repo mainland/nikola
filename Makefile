@@ -162,3 +162,6 @@ american.csv : ./dist/build/american/american
 
 american.html : ./dist/build/american/american
 	$< -q -s 10 -t $(CRITERION_TEMPLATE) -o $@
+
+mandelbrot.html : ./dist/build/mandelbrot/mandelbrot
+	$< --benchmark -q -s 10 -t $(CRITERION_TEMPLATE) -o $@ +RTS -N4
