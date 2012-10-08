@@ -55,13 +55,13 @@ stepN n cs mzs = do
     loadP (zipWith stepPoint cs zs) mzs
   where
     stepPoint :: Complex -> (Complex, Exp Int32) -> (Complex, Exp Int32)
-    stepPoint c (z,i) = iterate n go (z,i)
+    stepPoint c (z,i) = iterateWhile n go (z,i)
       where
-        go :: (Complex, Exp Int32) -> (Complex, Exp Int32)
+        go :: (Complex, Exp Int32) -> (Exp Bool, (Complex, Exp Int32))
         go (z,i) =
             if magnitude z' >* 4.0
-            then (z, i)
-            else (z', i+1)
+            then (lift False, (z, i))
+            else (lift True, (z', i+1))
           where
              z' = next c z
 
