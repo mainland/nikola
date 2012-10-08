@@ -137,7 +137,7 @@ unit : $(SOURCE) tests/unit/Main.hs
 		-odir obj -hidir obj \
 		$(GHC_FLAGS) -o $@
 
-CRITERION_TEMPLATE=${HOME}/.cabal/ghc-7.4.2-linux-x86_64/share/criterion-0.6.0.1/templates/report.tpl
+CRITERION_TEMPLATE=${HOME}/.cabal/ghc-7.4.2-linux-x86_64/share/$(shell ghc-pkg list | grep criterion | sed -e 's| *||g')/templates/report.tpl
 
 blackscholes.csv : ./dist/build/blackscholes/blackscholes
 	$< -q -s 10 -u $@
