@@ -76,20 +76,20 @@ compileProgram flags p = do
         mark ce
         return ce
 
-    addIncludes :: Dialect -> C ()
-    addIncludes CUDA = do
-        addInclude "\"cuda.h\""
-        addInclude "\"cuda_runtime_api.h\""
-        addInclude "<inttypes.h>"
+addIncludes :: Dialect -> C ()
+addIncludes CUDA = do
+    addInclude "\"cuda.h\""
+    addInclude "\"cuda_runtime_api.h\""
+    addInclude "<inttypes.h>"
 
-    addIncludes OpenMP = do
-        addInclude "<stdlib.h>"
-        addInclude "<inttypes.h>"
-        addInclude "<math.h>"
-        addInclude "<omp.h>"
+addIncludes OpenMP = do
+    addInclude "<stdlib.h>"
+    addInclude "<inttypes.h>"
+    addInclude "<math.h>"
+    addInclude "<omp.h>"
 
-    addIncludes _ =
-        return ()
+addIncludes _ =
+    return ()
 
 -- Compile a constant to a C expression
 compileConst :: Const -> C CExp
@@ -503,6 +503,7 @@ compileExp e@(DelayedE {}) =
 compileKernelFun :: Dialect -> String -> Exp -> C CudaKernel
 compileKernelFun dialect fname f = do
     ((kern, idxs), cdefs) <- collectDefinitions $ do
+                             addIncludes dialect
                              collectIndices $ do
                              inContext Kernel $ do
                              tau_kern <- inferExp f
