@@ -1,4 +1,5 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 -- |
@@ -27,6 +28,7 @@ import qualified Data.Map as Map
 import Data.Word
 import qualified Foreign.CUDA.Driver as CU
 import qualified Foreign.CUDA.ForeignPtr as CU
+import Language.C.Quote.C
 import qualified Language.C.Syntax as C
 import Text.PrettyPrint.Mainland
 
@@ -57,7 +59,10 @@ data CExEnv = CExEnv
 emptyCExEnv :: CExEnv
 emptyCExEnv = CExEnv
     { cexUniq     = 0
-    , cexDefs     = []
+    , cexDefs     = [cunit|$esc:("#include \"cuda.h\"")
+                           $esc:("#include \"cuda_runtime_api.h\"")
+                           $esc:("#include <inttypes.h>")
+                          |]
     , cexContext  = Host
     , cexVarTypes = Map.empty
     , cexVarIdxs  = Map.empty
