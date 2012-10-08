@@ -205,10 +205,10 @@ compileExp e0@(CallE f es) = do
         qe <- compileExp (f es)
         return (idx, qe)
 
-    -- Given a list of CUDA dimensiions (x, y, z) and their bounds (each
+    -- Given a list of CUDA dimensions (x, y, z) and their bounds (each
     -- dimension may be used in more than one loop, leading to more than one
-    -- bound), return an action in the 'Ex' monad that yields a pair
-    -- consisting of the thread block dimensions and the grid dimensions,
+    -- bound), return an action in the 'Ex' monad that yields a pair consisting
+    -- of the thread block dimensions and the grid dimensions,
     cudaGridDims :: [(CudaDim, [ExpQ])] -> CEx (ExpQ, ExpQ)
     cudaGridDims []              = return ([|(1, 1, 1)|],   [|(1, 1, 1)|])
     cudaGridDims [(CudaDimX, _)] = return ([|(128, 1, 1)|], [|(480, 1, 1)|])
