@@ -358,11 +358,11 @@ compileExp (AllocE tau_arr sh) = do
     allocPtr dialect csz tau = do
         ctemp    <- gensym "alloc"
         let cptr =  PtrCE [cexp|$id:ctemp|]
-        addLocal [cdecl|$ty:ctau $id:ctemp = NULL;|]
+        addLocal [cdecl|$ty:ctau* $id:ctemp = NULL;|]
         case dialect of
           CUDA -> addStm [cstm|if(cudaMalloc(&$cptr, $exp:csz*sizeof($ty:ctau)) != cudaSuccess)
                                 $stm:(failWithResult dialect cnegone) |]
-          _    -> addStm [cstm|if(($cptr = ($ty:ctau) malloc($exp:csz*sizeof($ty:ctau))) == NULL)
+          _    -> addStm [cstm|if(($cptr = ($ty:ctau*) malloc($exp:csz*sizeof($ty:ctau))) == NULL)
                                 $stm:(failWithResult dialect cnegone) |]
         addStm [cstm|allocs[nallocs] = (void*) $cptr;|]
         addStm [cstm|marks[nallocs++] = 0;|]
@@ -372,7 +372,7 @@ compileExp (AllocE tau_arr sh) = do
         cnegone = [cexp|-1|]
 
         ctau :: C.Type
-        ctau = [cty|$ty:(toCType tau) *|]
+        ctau = [cty|$ty:(toCType tau)|]
 
 compileExp (DimE i _ e) = do
     ce  <- compileExp e
