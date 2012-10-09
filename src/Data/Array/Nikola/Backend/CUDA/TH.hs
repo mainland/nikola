@@ -49,6 +49,7 @@ import qualified Data.Vector.CUDA.UnboxedForeign.Mutable as MVCUF
 import qualified Data.Array.Repa as R
 import qualified Data.Array.Repa.Repr.CUDA.UnboxedForeign as R
 
+import Data.Array.Nikola.Backend.C.Monad
 import qualified Data.Array.Nikola.Backend.CUDA as N
 
 import qualified Data.Array.Nikola.Backend.CUDA.Nvcc as Nvcc
@@ -78,13 +79,13 @@ import Data.Array.Nikola.Util.Bool
 
 newtype NQ a = NQ { runNQ :: NQEnv -> Q (NQEnv, a) }
 
-execNQ :: [String] -> [C.Definition] -> [(Var, Type)] -> ExpQ -> NQ () -> Q NQEnv
+execNQ :: [CudaKernel] -> [C.Definition] -> [(Var, Type)] -> ExpQ -> NQ () -> Q NQEnv
 execNQ kernels cdefs vtaus qbody m =
     fst <$> runNQ m (defaultNQEnv kernels cdefs vtaus qbody)
 
 data NQEnv = NQEnv
-    { nqKernels     :: [String]       -- ^ The list of CUDA kernel functions the
-                                      -- Nikola program calls.
+    { nqKernels     :: [CudaKernel]   -- ^ The list of CUDA kernels the Nikola
+                                      -- program calls.
     , nqCDefs       :: [C.Definition] -- ^ The C definitions that comprise the
                                       -- CUDA program containing the CUDA
                                       -- kernels needed by the Nikola program.
@@ -107,7 +108,7 @@ data NQEnv = NQEnv
                                       -- is monadic.
     }
 
-defaultNQEnv :: [String] -> [C.Definition] -> [(Var, Type)] -> ExpQ -> NQEnv
+defaultNQEnv :: [CudaKernel] -> [C.Definition] -> [(Var, Type)] -> ExpQ -> NQEnv
 defaultNQEnv kernels cdefs vtaus qbody = NQEnv
     { nqKernels     = kernels
     , nqCDefs       = cdefs
@@ -427,7 +428,7 @@ finalizeExpQ isMonadic env = do
       then [|unsafePerformIO $(nqBody env)|]
       else [|$(nqBody env)|]
   where
-    kernelDecQs :: [String] -> [C.Definition] -> Q [DecQ]
+    kernelDecQs :: [CudaKernel] -> [C.Definition] -> Q [DecQ]
     kernelDecQs [] _ =
         return []
 
@@ -445,10 +446,10 @@ finalizeExpQ isMonadic env = do
             TH.valD (TH.varP modName) (TH.normalB qbody) []
 
         -- Generate the binding for the CUDA kernel @kern@.
-        kernDecQ :: TH.Name -> String -> DecQ
+        kernDecQ :: TH.Name -> CudaKernel -> DecQ
         kernDecQ modName kern = do
-            let kernName = TH.mkName kern
-            let qbody    = [|unsafePerformIO $ CU.getFun $(TH.varE modName) $(TH.stringE kern)|]
+            let kernName = TH.mkName (cukernName kern)
+            let qbody    = [|unsafePerformIO $ CU.getFun $(TH.varE modName) $(TH.stringE (cukernName kern))|]
             TH.valD (TH.varP kernName) (TH.normalB qbody) []
 
 -- | If you only want the default compiled version of a Nikola program, use

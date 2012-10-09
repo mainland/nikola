@@ -46,14 +46,14 @@ import Data.Array.Nikola.Language.Syntax
 
 newtype CEx a = CEx { runCEx :: CExEnv -> IO (CExEnv, a) }
 
-evalCEx :: CEx a -> IO ([String], [C.Definition], a)
+evalCEx :: CEx a -> IO ([CudaKernel], [C.Definition], a)
 evalCEx m = do
     (env, a) <- runCEx m emptyCExEnv
     return (cexKernels env, cexDefs env, a)
 
 data CExEnv = CExEnv
     { cexUniq     :: !Int
-    , cexKernels  :: [String]
+    , cexKernels  :: [CudaKernel]
     , cexDefs     :: [C.Definition]
     , cexContext  :: Context
     , cexVarTypes :: Map.Map Var Type
@@ -128,7 +128,7 @@ addKernel :: Exp -> CEx CudaKernel
 addKernel f = do
     kname <- gensym "kernel"
     kern  <- liftIO $ evalC flags (compileKernelFun CUDA kname f)
-    modify $ \s -> s { cexKernels = kname : cexKernels s
+    modify $ \s -> s { cexKernels = kern : cexKernels s
                      , cexDefs    = cexDefs s ++ cukernDefs kern
                      }
     return kern
