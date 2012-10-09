@@ -75,6 +75,11 @@ simpl ExpA (BinopE op e1 e2) = do  e1' <- simpl ExpA e1
     go RemI e1          (ConstE c)
         | c `equalTo` 1                      = pure e1
 
+    go DivF e1 (ConstE c)                    = simpl ExpA (BinopE MulN e1 (ConstE c'))
+      where
+        c' :: Const
+        c' = liftFractional (1.0/) c
+
     go DivF (ConstE c) e2
         | c `equalTo` 1                      = simpl ExpA (UnopE RecipF e2)
 
@@ -195,6 +200,18 @@ liftNum2 op c1 c2 =
                                    text "internal error: liftNum2:" <+>
                                    ppr c1 <+> ppr c2
 
+liftFractional :: (forall a . Fractional a => a -> a)
+                -> Const -> Const
+liftFractional op c =
+    go c
+  where
+    go :: Const -> Const
+    go (FloatC c)  = FloatC  (op c)
+    go (DoubleC c) = DoubleC (op c)
+    go c           = errordoc $
+                     text "internal error: liftFractional:" <+>
+                     ppr c
+
 {-
 liftIntegral2 :: (forall a . Integral a => a -> a -> a)
               -> Const -> Const -> Const
@@ -237,14 +254,4 @@ liftFloating2 op c1 c2 =
     go c1           c2           = errordoc $
                                    text "internal error: liftFloating2:" <+>
                                    ppr c1 <+> ppr c2
--}
-
-{-
-isAtomic :: Exp -> Bool
-isAtomic (VarE {})        = True
-isAtomic (ConstE {})      = True
-isAtomic (ProjArrE _ _ e) = isAtomic e
-isAtomic (DimE _ _ e)     = isAtomic e
-isAtomic (UnopE NegN _)   = True
-isAtomic _                = False
 -}
