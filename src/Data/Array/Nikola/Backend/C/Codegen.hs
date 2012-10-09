@@ -53,7 +53,8 @@ import Data.Array.Nikola.Language.Syntax
 -- Compile a program to a C function
 compileProgram :: Flags -> Exp -> IO [C.Definition]
 compileProgram flags p = do
-    snd <$> runC flags go
+    (_, cenv) <- runC go (defaultCEnv flags)
+    return $ cenvToCUnit cenv
   where
     (vtaus, body) = splitLamE p
 

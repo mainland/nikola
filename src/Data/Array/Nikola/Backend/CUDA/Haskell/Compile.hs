@@ -28,7 +28,6 @@ import qualified Data.Map as Map
 import Data.Word
 import qualified Foreign.CUDA.Driver as CU
 import qualified Foreign.CUDA.ForeignPtr as CU
-import Language.C.Quote.C
 import qualified Language.C.Syntax as C
 import Text.PrettyPrint.Mainland
 
@@ -45,28 +44,28 @@ newtype CEx a = CEx { runCEx :: CExEnv -> IO (CExEnv, a) }
 
 evalCEx :: CEx a -> IO ([C.Definition], a)
 evalCEx m = do
-    (env, a) <- runCEx m emptyCExEnv
-    return (cexDefs env, a)
+    (env, a) <- runCEx m defaultCExEnv
+    return (cenvToCUnit (cexCEnv env), a)
 
 data CExEnv = CExEnv
     { cexUniq     :: !Int
-    , cexDefs     :: [C.Definition]
+    , cexCEnv     :: CEnv
     , cexContext  :: Context
     , cexVarTypes :: Map.Map Var Type
     , cexVarIdxs  :: Map.Map Var Int
     }
 
-emptyCExEnv :: CExEnv
-emptyCExEnv = CExEnv
+defaultCExEnv :: CExEnv
+defaultCExEnv = CExEnv
     { cexUniq     = 0
-    , cexDefs     = [cunit|$esc:("#include \"cuda.h\"")
-                           $esc:("#include \"cuda_runtime_api.h\"")
-                           $esc:("#include <inttypes.h>")
-                          |]
+    , cexCEnv     = defaultCEnv flags
     , cexContext  = Host
     , cexVarTypes = Map.empty
     , cexVarIdxs  = Map.empty
     }
+  where
+    flags :: Flags
+    flags = defaultFlags { fOptimize = ljust 1 }
 
 instance Monad CEx where
     return a = CEx $ \s -> return (s, a)
@@ -148,13 +147,11 @@ gensym s = do
 
 addKernel :: Exp -> CEx CudaKernel
 addKernel f = do
-    kname <- gensym "kernel"
-    kern  <- liftIO $ evalC flags (compileKernelFun CUDA kname f)
-    modify $ \s -> s { cexDefs = cexDefs s ++ cukernDefs kern }
+    kname         <- gensym "kernel"
+    cenv          <- gets cexCEnv
+    (kern, cenv') <- liftIO $ runC (compileKernelFun CUDA kname f) cenv
+    modify $ \s -> s { cexCEnv = cenv' }
     return kern
-  where
-    flags :: Flags
-    flags = defaultFlags { fOptimize = ljust 1 }
 
 fromIx :: Val -> Ex Int
 fromIx (Int32V n) = return (fromIntegral n)

@@ -31,8 +31,9 @@ module Data.Array.Nikola.Backend.C.Monad (
 
     C(..),
     CEnv(..),
+    defaultCEnv,
     runC,
-    evalC,
+    cenvToCUnit,
 
     getFlags,
 
@@ -190,8 +191,8 @@ data CEnv = CEnv
   ,  cFinalStms :: [C.Stm]
   }
 
-emptyCEnv :: Flags -> CEnv
-emptyCEnv flags = CEnv
+defaultCEnv :: Flags -> CEnv
+defaultCEnv flags = CEnv
   {  cFlags = flags
 
   ,  cVarTypes = Map.empty
@@ -222,18 +223,13 @@ newtype C a = C { unC :: StateT CEnv (ExceptionT IO) a }
             MonadIO,
             MonadState CEnv)
 
-runC :: Flags -> C a -> IO (a, [C.Definition])
-runC flags m = do
-    (a, env) <- runExceptionT (runStateT (unC m) (emptyCEnv flags)) >>= liftException
-    return (a, envToCUnit env)
+runC :: C a -> CEnv -> IO (a, CEnv)
+runC m s = do
+    (a, s') <- runExceptionT (runStateT (unC m) s) >>= liftException
+    return (a, s')
 
-evalC :: Flags -> C a -> IO a
-evalC flags m = do
-    (a, _) <- runExceptionT (runStateT (unC m) (emptyCEnv flags)) >>= liftException
-    return a
-
-envToCUnit :: CEnv -> [C.Definition]
-envToCUnit env =
+cenvToCUnit :: CEnv -> [C.Definition]
+cenvToCUnit env =
     [cunit|$edecls:includes
            $edecls:typedefs
            $edecls:prototypes
@@ -394,4 +390,4 @@ collectDefinitions act = do
                      ,  cPrototypes = old_cPrototypes ++ cPrototypes s'
                      ,  cGlobals    = old_cGlobals    ++ cGlobals s'
                      }
-    return (a, envToCUnit s')
+    return (a, cenvToCUnit s')

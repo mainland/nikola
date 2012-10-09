@@ -31,7 +31,6 @@ import qualified Language.C.Syntax as C
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Syntax as TH
 import Language.Haskell.TH (ExpQ, PatQ, TypeQ)
-import Language.C.Quote.C
 import Text.PrettyPrint.Mainland
 
 import qualified Data.Array.Repa as R
@@ -48,28 +47,28 @@ newtype CEx a = CEx { runCEx :: CExEnv -> IO (CExEnv, a) }
 
 evalCEx :: CEx a -> IO ([CudaKernel], [C.Definition], a)
 evalCEx m = do
-    (env, a) <- runCEx m emptyCExEnv
-    return (cexKernels env, cexDefs env, a)
+    (env, a) <- runCEx m defaultCExEnv
+    return (cexKernels env, cenvToCUnit (cexCEnv env), a)
 
 data CExEnv = CExEnv
     { cexUniq     :: !Int
     , cexKernels  :: [CudaKernel]
-    , cexDefs     :: [C.Definition]
+    , cexCEnv     :: CEnv
     , cexContext  :: Context
     , cexVarTypes :: Map.Map Var Type
     }
 
-emptyCExEnv :: CExEnv
-emptyCExEnv = CExEnv
+defaultCExEnv :: CExEnv
+defaultCExEnv = CExEnv
     { cexUniq     = 0
     , cexKernels  = []
-    , cexDefs     = [cunit|$esc:("#include \"cuda.h\"")
-                           $esc:("#include \"cuda_runtime_api.h\"")
-                           $esc:("#include <inttypes.h>")
-                          |]
+    , cexCEnv     = defaultCEnv flags
     , cexContext  = Host
     , cexVarTypes = Map.empty
     }
+  where
+    flags :: Flags
+    flags = defaultFlags { fOptimize = ljust 1 }
 
 instance Monad CEx where
     return a = CEx $ \s -> return (s, a)
@@ -126,15 +125,13 @@ gensym s = do
 
 addKernel :: Exp -> CEx CudaKernel
 addKernel f = do
-    kname <- gensym "kernel"
-    kern  <- liftIO $ evalC flags (compileKernelFun CUDA kname f)
+    kname         <- gensym "kernel"
+    cenv          <- gets cexCEnv
+    (kern, cenv') <- liftIO $ runC (compileKernelFun CUDA kname f) cenv
     modify $ \s -> s { cexKernels = kern : cexKernels s
-                     , cexDefs    = cexDefs s ++ cukernDefs kern
+                     , cexCEnv    = cenv'
                      }
     return kern
-  where
-    flags :: Flags
-    flags = defaultFlags { fOptimize = ljust 1 }
 
 compileToExpQ :: Exp -> CEx ([(Var, Type)], ExpQ, Bool)
 compileToExpQ e = do
