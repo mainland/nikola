@@ -456,25 +456,24 @@ compileExp (ForE forloop vs es m) = do
     tau      <- extendVarTypes (vs `zip` repeat ixT) $
                 inferExp m
     cvresult <- newCVar "for_result" tau
-    go (vs `zip` es) (allIdxs dialect) cvresult
+    go dialect (vs `zip` es) (allIdxs dialect) cvresult
     return cvresult
   where
-    go :: [(Var, Exp)] -> [Idx] -> CExp -> C ()
-    go _ [] _ =
+    go :: Dialect -> [(Var, Exp)] -> [Idx] -> CExp -> C ()
+    go _ _ [] _ =
         fail "compileFor: the impossible happened!"
 
-    go [] _ cvresult = do
+    go _ [] _ cvresult = do
         cresult <- compileExp m
         assignC cvresult cresult
 
-    go ((v@(Var i),bound):is) (idx:idxs) cresult = do
-        dialect <- fromLJust fDialect <$> getFlags
+    go dialect ((v@(Var i),bound):is) (idx:idxs) cresult = do
         useIndex (idx,bound)
         let cv =  ScalarCE [cexp|$id:i|]
         cbound <- bindExp (Just "bound") bound
         extendVarTypes [(v, ixT)] $ do
         extendVarTrans [(v, cv)] $ do
-        body <- inNewBlock_ $ go is idxs cresult
+        body <- inNewBlock_ $ go dialect is idxs cresult
         when (isParFor forloop && dialect == OpenMP) $
             addStm [cstm|$pragma:("omp parallel for")|]
         addStm [cstm|for ($ty:(toCType ixT) $id:i = $(idxInit idx);
