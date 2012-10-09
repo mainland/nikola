@@ -598,7 +598,7 @@ compileFun dialect callerCtx calleeCtx fname vtaus tau_ret mbody = do
       (CUDA, Kernel, Kernel) ->
           addGlobal [cedeclCU|__device__ $ty:ctau_ret $id:fname($params:ps) { $items:body }|]
       (_,    Host,   Host) ->
-          addGlobal [cedecl|int $id:fname($params:ps) { $items:body }|]
+          addGlobal [cedecl|$ty:ctau_ret $id:fname($params:ps) { $items:body }|]
       (_,    Host,   Kernel) ->
           addGlobal [cedecl|void $id:fname($params:ps) { $items:body }|]
       (_,    Kernel, Kernel) ->
