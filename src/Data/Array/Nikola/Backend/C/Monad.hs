@@ -150,15 +150,16 @@ cudaDimVar CudaDimZ = "z"
 
 -- ^ CUDA kernel
 data CudaKernel = CudaKernel
-    { cukernDefs         ::  [C.Definition]       -- ^ The kernel's compiled C
-                                                  -- source
-    , cukernName         :: String                -- ^ The name of the kernel
-    , cukernIdxs         :: [(Idx, [Exp] -> Exp)] -- ^ A list of indices the
-                                                  -- kernel uses and their
-                                                  -- bounds. A bound is
-                                                  -- represented as a function
-                                                  -- from the kernel's arguments
-                                                  -- to an expression.
+    { cukernDefs ::  [C.Definition]  -- ^ The kernel's compiled C source
+    , cukernName :: String           -- ^ The name of the kernel
+    , cukernIdxs :: [(Idx, Exp)]     -- ^ A list of indices the kernel uses and
+                                     -- their bounds. The bounds are written in
+                                     -- terms of the kernel's parameters.
+
+    , cukernRewrite :: Exp -> [Exp] -> Exp -- ^ Rewrite an expression written in
+                                           -- terms of the kernel's parameters
+                                           -- to an expression written in terms
+                                           -- of a list of arguments.
     }
 
 type CudaThreadBlockDim = (Int, Int, Int)

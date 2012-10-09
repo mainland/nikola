@@ -501,38 +501,34 @@ compileExp e@(DelayedE {}) =
 -- arguments to an expression.
 compileKernelFun :: Dialect -> String -> Exp -> C CudaKernel
 compileKernelFun dialect fname f = do
-    ((kern, idxs), cdefs) <- collectDefinitions $ do
-                             addIncludes dialect
-                             collectIndices $ do
-                             inContext Kernel $ do
-                             tau_kern <- inferExp f
-                             tau_ret  <- snd <$> checkFunT tau_kern
-                             compileFun dialect Host Kernel
-                                        fname vtaus tau_ret (compileExp body)
-                             return CudaKernel
-                                 { cukernDefs         = []
-                                 , cukernName         = fname
-                                 , cukernIdxs         = []
-                                 }
-    return kern
-        { cukernDefs = cdefs
-        , cukernIdxs = [(idx, matchArgs vs bound) | (idx, bound) <- idxs]
+    ((_, idxs), cdefs) <-
+        collectDefinitions $ do
+        addIncludes dialect
+        collectIndices $ do
+        inContext Kernel $ do
+        tau_kern <- inferExp f
+        tau_ret  <- snd <$> checkFunT tau_kern
+        compileFun dialect Host Kernel
+                   fname vtaus tau_ret (compileExp body)
+        return ()
+    return CudaKernel
+        { cukernDefs    = cdefs
+        , cukernName    = fname
+        , cukernIdxs    = idxs
+        , cukernRewrite = rewrite
         }
   where
     (vtaus, body) = splitLamE f
     vs            = map fst vtaus
 
-    -- Given a list of parameters, an expression written in terms of the parameters,
-    -- and a list of arguments, @matchArgs@ rewrites the expression in terms of the
-    -- arguments. We use this to take a loop bound, which occurs in the body of a
-    -- kernel, and rewrite it to the equivalent expression in the caller's
-    -- context. This allows the caller to work with the loop bounds and compute
-    -- things like the proper CUDA grid and thread block parameters.
-    matchArgs :: [Var]
-              -> Exp
-              -> [Exp]
-              -> Exp
-    matchArgs vs e args = runIdentity (go ExpA e)
+    -- Rewrite an expression written in terms of the kernel's parameters so that
+    -- it is written in terms of the arguments. We use this to take a loop
+    -- bound, which occurs in the body of a kernel, and rewrite it to the
+    -- equivalent expression in the caller's context. This allows the caller to
+    -- work with the loop bounds and compute things like the proper CUDA grid
+    -- and thread block parameters.
+    rewrite :: Exp -> [Exp] -> Exp
+    rewrite e args = runIdentity (go ExpA e)
       where
         go :: Traversal AST Identity
         go ExpA e@(VarE v) =
@@ -544,7 +540,8 @@ compileKernelFun dialect fname f = do
 
 calcKernelDims :: CudaKernel -> [Exp] -> IO (CudaThreadBlockDim, CudaGridDim)
 calcKernelDims kern args = do
-    let idxs     = [(idx, f args) | (idx, f) <- cukernIdxs kern]
+    let rewrite  = cukernRewrite kern
+    let idxs     = [(idx, rewrite e args) | (idx, e) <- cukernIdxs kern]
     let cudaIdxs = [(dim, bs) | dim <- [CudaDimX, CudaDimY, CudaDimZ]
                               , let bs = boundsOf dim idxs
                               , not (null bs)]
