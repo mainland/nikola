@@ -16,6 +16,7 @@ import qualified Mandelbrot.NikolaV1 as MN1
 import qualified Mandelbrot.NikolaV2 as MN2
 import qualified Mandelbrot.NikolaV3 as MN3
 import qualified Mandelbrot.NikolaV4 as MN4
+import qualified Mandelbrot.NikolaV5 as MN5
 import qualified Mandelbrot.RepaV1 as MR1
 import qualified Mandelbrot.RepaV2 as MR2
 import qualified Mandelbrot.RepaV3 as MR3
@@ -63,6 +64,7 @@ doBenchmark args =
     nikolav2Gen <- MN2.mandelbrotImageGenerator
     nikolav3Gen <- MN3.mandelbrotImageGenerator
     nikolav4Gen <- MN4.mandelbrotImageGenerator
+    nikolav5Gen <- MN5.mandelbrotImageGenerator
     let generateBitmapFrame :: Backend -> G.View -> Int -> Int -> IO (Bitmap F)
         generateBitmapFrame RepaV1 (G.View lowx lowy highx highy) size limit =
             MR1.mandelbrotImage lowx lowy highx highy size size limit
@@ -82,24 +84,28 @@ doBenchmark args =
         generateBitmapFrame NikolaV3 (G.View lowx lowy highx highy) size limit =
             nikolav3Gen lowx lowy highx highy size size limit
 
+        generateBitmapFrame NikolaV4 (G.View lowx lowy highx highy) size limit =
+            nikolav4Gen lowx lowy highx highy size size limit
+
         generateBitmapFrame backend _ _ _ =
             fail $ "Cannot generate bitmap for" ++ show backend
 
     let generatePBOFrame :: Backend -> G.View -> Int -> Int -> IO GL.BufferObject
-        generatePBOFrame NikolaV4 (G.View lowx lowy highx highy) size limit =
-            nikolav4Gen lowx lowy highx highy size size limit
+        generatePBOFrame NikolaV5 (G.View lowx lowy highx highy) size limit =
+            nikolav5Gen lowx lowy highx highy size size limit
 
         generatePBOFrame backend _ _ _ =
             fail $ "Cannot generate PBO for" ++ show backend
 
     C.defaultMain
-         [C.bench "Repa V1" $ C.nfIO (generateBitmapFrame RepaV1 defaultView size limit)
-         ,C.bench "Repa V2" $ C.nfIO (generateBitmapFrame RepaV2 defaultView size limit)
-         ,C.bench "Repa V3" $ C.nfIO (generateBitmapFrame RepaV3 defaultView size limit)
+         [C.bench "Repa V1"   $ C.nfIO (generateBitmapFrame RepaV1   defaultView size limit)
+         ,C.bench "Repa V2"   $ C.nfIO (generateBitmapFrame RepaV2   defaultView size limit)
+         ,C.bench "Repa V3"   $ C.nfIO (generateBitmapFrame RepaV3   defaultView size limit)
          ,C.bench "Nikola V1" $ C.nfIO (generateBitmapFrame NikolaV1 defaultView size limit)
          ,C.bench "Nikola V2" $ C.nfIO (generateBitmapFrame NikolaV2 defaultView size limit)
          ,C.bench "Nikola V3" $ C.nfIO (generateBitmapFrame NikolaV3 defaultView size limit)
-         ,C.bench "Nikola V4" $ C.nfIO (generatePBOFrame NikolaV4 defaultView size limit)
+         ,C.bench "Nikola V4" $ C.nfIO (generateBitmapFrame NikolaV4 defaultView size limit)
+         ,C.bench "Nikola V5" $ C.nfIO (generatePBOFrame    NikolaV5 defaultView size limit)
          ]
   where
     size  = 512
@@ -164,6 +170,14 @@ frameGenerator NikolaV3 limit = do
 
 frameGenerator NikolaV4 limit = do
     gen <- MN4.mandelbrotImageGenerator
+    return $ f gen
+  where
+    f gen _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do
+        bmap <- gen lowx lowy highx highy sizeX sizeY limit
+        return $ bitmapToPicture bmap
+
+frameGenerator NikolaV5 limit = do
+    gen <- MN5.mandelbrotImageGenerator
     return $ f gen
   where
     f gen _ (G.View lowx lowy highx highy) (sizeX, sizeY) = do

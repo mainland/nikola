@@ -4,25 +4,19 @@
 
 module Mandelbrot.NikolaV4 (mandelbrotImageGenerator) where
 
-import Control.Exception
 import Data.IORef
 import Data.Int
 import Data.Word
-import Foreign (sizeOf, nullPtr)
-
-import qualified Graphics.Rendering.OpenGL as GL
-import Graphics.Rendering.OpenGL (($=))
-
-import Foreign.CUDA.ForeignPtr (newForeignDevPtr_)
-import qualified Foreign.CUDA.Driver.Graphics        as CUG
-import qualified Foreign.CUDA.Driver.Graphics.OpenGL as CUGL
 
 import Data.Array.Nikola.Backend.CUDA.TH
 import Data.Array.Repa
+import Data.Array.Repa.Eval
 import Data.Array.Repa.Mutable
-import Data.Array.Repa.Repr.CUDA.UnboxedForeign    as CUF
-import qualified Data.Vector.CUDA.Storable.Mutable as MVCS
-import qualified Data.Vector.CUDA.UnboxedForeign   as VCUF
+import Data.Array.Repa.Repr.ForeignPtr          as F
+import Data.Array.Repa.Repr.UnboxedForeign      as UF
+import Data.Array.Repa.Repr.CUDA.UnboxedForeign as CUF
+import qualified Data.Vector.UnboxedForeign as VUF
+import qualified Data.Vector.Storable as V
 
 import qualified Mandelbrot.NikolaV4.Implementation as I
 
@@ -66,10 +60,12 @@ type MandelFun =  R
                -> Int
                -> Int
                -> Int
-               -> IO GL.BufferObject
+               -> IO (Bitmap F)
 
 data MandelState = MandelState
     { manDim    :: DIM2
+    , manMBmapH :: MVec UF RGBA
+    , manMBmapD :: MBitmap CUF
     , manMCs    :: MComplexPlane CUF
     , manMZs    :: MStepPlane CUF
     }
@@ -78,26 +74,23 @@ mandelbrotImageGenerator :: IO MandelFun
 mandelbrotImageGenerator = do
     state    <- newState (ix2 0 0)
     stateRef <- newIORef state
-    [pbo]    <- GL.genObjectNames 1
-    return $ mandelbrotImage stateRef pbo
+    return $ mandelbrotImage stateRef
   where
-    mandelbrotImage :: IORef MandelState
-                    -> GL.BufferObject
-                    -> MandelFun
-    mandelbrotImage stateRef pbo lowx lowy highx highy viewx viewy depth = do
+    mandelbrotImage :: IORef MandelState -> MandelFun
+    mandelbrotImage stateRef lowx lowy highx highy viewx viewy depth = do
         let sh     =  ix2 viewy viewx
-        state      <- updateState stateRef pbo sh
-        let mcs    =  manMCs state
+        state      <- updateState stateRef sh
+        let mbmapH =  manMBmapH state
+            mbmapD =  manMBmapD state
+            mcs    =  manMCs state
             mzs    =  manMZs state
         mandelbrot lowx' lowy' highx' highy' viewx' viewy' depth' mcs mzs
-        zs <- unsafeFreezeMArray mzs
-
-        withPBOResource pbo $ \pboRes ->
-            withMappedResource pboRes $
-            withResourceMBitmap sh pboRes $ \mbmapD ->
-            prettyMandelbrot depth' zs mbmapD
-
-        return pbo
+        zs     <- unsafeFreezeMArray mzs
+        prettyMandelbrot depth' zs mbmapD
+        bmapD  <- unsafeFreezeMArray mbmapD
+        loadHostP bmapD mbmapH
+        bmapH  <- unsafeFreezeMVec sh mbmapH
+        return (convertBitmap bmapH)
       where
         lowx', lowy', highx', highy' :: R
         lowx'  = realToFrac lowx
@@ -109,42 +102,26 @@ mandelbrotImageGenerator = do
         viewy' = fromIntegral viewy
         depth' = fromIntegral depth
 
+    convertBitmap :: Bitmap UF -> Bitmap F
+    convertBitmap bmap =
+        let VUF.V_Word32 v = UF.toUnboxedForeign bmap
+            (fp, _)        = V.unsafeToForeignPtr0 v
+        in
+          F.fromForeignPtr (extent bmap) fp
+
     newState :: DIM2 -> IO MandelState
     newState sh = do
+        mbmapH <- newMVec (size sh)
+        mbmapD <- newMArray sh
         mcs    <- newMArray sh
         mzs    <- newMArray sh
-        return $ MandelState sh mcs mzs
+        return $ MandelState sh mbmapH mbmapD mcs mzs
 
-    updateState :: IORef MandelState -> GL.BufferObject -> DIM2 -> IO MandelState
-    updateState stateRef pbo sh = do
+    updateState :: IORef MandelState -> DIM2 -> IO MandelState
+    updateState stateRef sh = do
         state <- readIORef stateRef
         if manDim state == sh
           then return state
-          else do resizePBO pbo sh
-                  state' <- newState sh
+          else do state' <- newState sh
                   writeIORef stateRef state'
                   return state'
-
-resizePBO :: GL.BufferObject -> DIM2 -> IO ()
-resizePBO pbo sh = do
-    let nBytes = size sh*sizeOf (undefined :: RGBA)
-    GL.bindBuffer GL.PixelUnpackBuffer $= Just pbo
-    GL.bufferData GL.PixelUnpackBuffer $= (fromIntegral nBytes, nullPtr, GL.DynamicCopy)
-    GL.bindBuffer GL.PixelUnpackBuffer $= Nothing
-
-withPBOResource :: GL.BufferObject -> (CUG.Resource -> IO a) -> IO a
-withPBOResource pbo =
-    bracket (CUGL.registerBuffer pbo CUG.RegisterNone)
-            CUG.unregisterResource
-
-withMappedResource :: CUG.Resource -> IO a -> IO a
-withMappedResource res =
-    bracket_ (CUG.mapResources [res] Nothing)
-             (CUG.unmapResources [res] Nothing)
-
-withResourceMBitmap :: DIM2 -> CUG.Resource -> (MBitmap CUF -> IO a) -> IO a
-withResourceMBitmap sh res kont = do
-    (dptr, _)  <- CUG.getMappedPointer res
-    fdptr      <- newForeignDevPtr_ dptr
-    let mv     =  MVCS.unsafeFromForeignDevPtr0 fdptr (size sh)
-    kont $ CUF.fromMUnboxedForeign sh (VCUF.MV_Word32 mv)

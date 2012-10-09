@@ -3,7 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module Mandelbrot.NikolaV4.Implementation where
+module Mandelbrot.NikolaV5.Implementation where
 
 import qualified Prelude as P
 import Prelude hiding (iterate, map, zipWith)

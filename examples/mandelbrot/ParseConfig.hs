@@ -71,11 +71,12 @@ backend f s =
       "repav1"   -> return . f $ ljust RepaV1
       "repav2"   -> return . f $ ljust RepaV2
       "repav3"   -> return . f $ ljust RepaV3
-      "nikola"   -> return . f $ ljust NikolaV4
+      "nikola"   -> return . f $ ljust NikolaV5
       "nikolav1" -> return . f $ ljust NikolaV1
       "nikolav2" -> return . f $ ljust NikolaV2
       "nikolav3" -> return . f $ ljust NikolaV3
       "nikolav4" -> return . f $ ljust NikolaV4
+      "nikolav5" -> return . f $ ljust NikolaV5
       _          -> parseError $ s ++ " is not a valid back-end"
 
 -- | Parse a positive number.

@@ -11,6 +11,7 @@ import Prelude hiding (iterate, map, zipWith)
 import Data.Array.Nikola.Backend.CUDA
 import Data.Array.Nikola.Combinators
 import Data.Array.Nikola.Eval
+import Data.Array.Nikola.Repr.HintIrregular
 import Data.Int
 import Data.Word
 
@@ -52,7 +53,7 @@ instance Num Complex where
 stepN :: Exp Int32 -> ComplexPlane G -> MStepPlane G -> P ()
 stepN n cs mzs = do
     zs <- unsafeFreezeMArray mzs
-    loadP (zipWith stepPoint cs zs) mzs
+    loadP (hintIrregular (zipWith stepPoint cs zs)) mzs
   where
     stepPoint :: Complex -> (Complex, Exp Int32) -> (Complex, Exp Int32)
     stepPoint c (z,i) = iterateWhile n go (z,i)

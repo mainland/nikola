@@ -10,6 +10,7 @@ data Backend = RepaV1
              | NikolaV2
              | NikolaV3
              | NikolaV4
+             | NikolaV5
   deriving (Eq, Show)
 
 data Config = Config
@@ -29,7 +30,7 @@ defaultConfig :: Config
 defaultConfig = Config
     { confSize    = ljust 512
     , confLimit   = ljust 255
-    , confBackend = ljust NikolaV4
+    , confBackend = ljust NikolaV5
     , confBench   = ljust False
     , confHelp    = ljust False
     }
