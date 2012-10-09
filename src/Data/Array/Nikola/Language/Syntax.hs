@@ -304,11 +304,13 @@ data Exp = VarE Var
 
 data ForLoop = SeqFor
              | ParFor
+             | IrregParFor
   deriving (Eq, Ord, Typeable)
 
 isParFor :: ForLoop -> Bool
-isParFor SeqFor = False
-isParFor ParFor = True
+isParFor SeqFor      = False
+isParFor ParFor      = True
+isParFor IrregParFor = True
 
 instance Num Exp where
     e1 + e2 = BinopE AddN e1 e2
@@ -792,5 +794,6 @@ pprMonadic _ e =
         [ppr e]
 
 instance Pretty ForLoop where
-    ppr SeqFor = text "for"
-    ppr ParFor = text "parfor"
+    ppr SeqFor      = text "for"
+    ppr ParFor      = text "parfor"
+    ppr IrregParFor = text "iparfor"

@@ -81,6 +81,7 @@ library
     Data.Array.Nikola.Program
     Data.Array.Nikola.Repr.Delayed
     Data.Array.Nikola.Repr.Global
+    Data.Array.Nikola.Repr.HintIrregular
     Data.Array.Nikola.Repr.Push
     Data.Array.Nikola.Shape
     Data.Array.Nikola.Util.Bool
