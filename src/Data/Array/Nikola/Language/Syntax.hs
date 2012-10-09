@@ -46,6 +46,8 @@ module Data.Array.Nikola.Language.Syntax (
     flattenT,
 
     Exp(..),
+    ForLoop(..),
+    isParFor,
 
     isAtomicE,
 
@@ -293,18 +295,20 @@ data Exp = VarE Var
          | IterateE Exp Exp Exp
          | IterateWhileE Exp Exp Exp
 
-         | ForE Bool [Var] [Exp] Exp
+         | ForE ForLoop [Var] [Exp] Exp
 
          | SyncE
 
          | DelayedE (R Exp Exp)
   deriving (Eq, Ord, Typeable)
 
-instance Eq (R Exp Exp) where
-    _ == _ = error "R Exp Exp: incomparable"
+data ForLoop = SeqFor
+             | ParFor
+  deriving (Eq, Ord, Typeable)
 
-instance Ord (R Exp Exp) where
-    compare _  _ = error "R Exp Exp: incomparable"
+isParFor :: ForLoop -> Bool
+isParFor SeqFor = False
+isParFor ParFor = True
 
 instance Num Exp where
     e1 + e2 = BinopE AddN e1 e2
@@ -316,6 +320,12 @@ instance Num Exp where
 
     abs e    = UnopE AbsN e
     signum e = UnopE SignumN e
+
+instance Eq (R Exp Exp) where
+    _ == _ = error "R Exp Exp: incomparable"
+
+instance Ord (R Exp Exp) where
+    compare _  _ = error "R Exp Exp: incomparable"
 
 isAtomicE :: Exp -> Bool
 isAtomicE (VarE {})        = True
@@ -767,9 +777,9 @@ pprMonadic _ e =
         [text "write" <+> pprPrec appPrec1 v <>
          brackets (ppr idx) <+> pprPrec appPrec1 x]
 
-    go (ForE isPar vs es prog) =
+    go (ForE forloop vs es prog) =
         [align $ nest 4 $
-         (if isPar then text "parfor" else text "for") <>
+         ppr forloop <>
          parens (tuple (replicate (length vs) (text "0")) <+> text "<=" <+>
                  tuple (map ppr vs) <+> text "<" <+>
                  tuple (map ppr es)) </>
@@ -780,3 +790,7 @@ pprMonadic _ e =
 
     go e =
         [ppr e]
+
+instance Pretty ForLoop where
+    ppr SeqFor = text "for"
+    ppr ParFor = text "parfor"

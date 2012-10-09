@@ -158,7 +158,7 @@ instance (Shape sh, IsElem (Exp t Ix)) => Shape (sh :. Exp t Ix) where
         shift $ \k -> do
         p <- reset $ extendVarTypes [(v, ScalarT tau)] $
                      k (is:.E (VarE v))
-        return $ ForE True [v] [unE n] p
+        return $ ForE ParFor [v] [unE n] p
       where
         tau :: ScalarType
         tau = typeOf (undefined :: Exp t Ix)
@@ -170,8 +170,8 @@ instance (Shape sh, IsElem (Exp t Ix)) => Shape (sh :. Exp t Ix) where
         p <- reset $ extendVarTypes [(v, ScalarT tau)] $
                          k (is:.E (VarE v))
         case p of
-          ForE True vs is' e -> return $ ForE True (vs ++ [v]) (is' ++ [unE n]) e
-          e                  -> return $ ForE True [v] [unE n] e
+          ForE ParFor vs is' e -> return $ ForE ParFor (vs ++ [v]) (is' ++ [unE n]) e
+          e                    -> return $ ForE ParFor [v] [unE n] e
       where
         tau :: ScalarType
         tau = typeOf (undefined :: Exp t Ix)

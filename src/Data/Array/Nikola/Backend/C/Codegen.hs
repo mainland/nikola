@@ -451,7 +451,7 @@ compileExp (IterateWhileE n (LamE [(x, tau)] e) x0) = do
 compileExp e@(IterateWhileE {}) =
     faildoc $ nest 2 $ text "Cannot compile:" </> ppr e
 
-compileExp (ForE isPar vs es m) = do
+compileExp (ForE forloop vs es m) = do
     dialect  <- fromLJust fDialect <$> getFlags
     tau      <- extendVarTypes (vs `zip` repeat ixT) $
                 inferExp m
@@ -475,7 +475,7 @@ compileExp (ForE isPar vs es m) = do
         extendVarTypes [(v, ixT)] $ do
         extendVarTrans [(v, cv)] $ do
         body <- inNewBlock_ $ go is idxs cresult
-        when (isPar && dialect == OpenMP) $
+        when (isParFor forloop && dialect == OpenMP) $
             addStm [cstm|$pragma:("omp parallel for")|]
         addStm [cstm|for ($ty:(toCType ixT) $id:i = $(idxInit idx);
                           $id:i < $cbound;
