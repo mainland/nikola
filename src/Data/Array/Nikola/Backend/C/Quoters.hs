@@ -9,6 +9,7 @@
 
 module Data.Array.Nikola.Backend.C.Quoters (
    cedeclCU,
+   cdeclCU,
    cexpCU,
    cstmCU
   ) where
@@ -17,5 +18,6 @@ module Data.Array.Nikola.Backend.C.Quoters (
 import qualified Language.C.Quote.CUDA as CU
 
 cedeclCU = CU.cedecl
+cdeclCU  = CU.cdecl
 cexpCU   = CU.cexp
 cstmCU   = CU.cstm
