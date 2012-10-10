@@ -114,10 +114,6 @@ int main(int argc, char** argv)
     measure_mp(mandelbrot_cuda);
     measure_mp(mandelbrot_cuda_2);
     measure_mp(mandelbrot_cuda_3);
-
-    unsigned int hBlockCounter = 0;
-    checkCuda(cudaMemcpyToSymbol("blockCounter", &hBlockCounter,
-                                 sizeof(unsigned int), 0, cudaMemcpyHostToDevice ));
     measure_mp(mandelbrot_cuda_4);
 
     return 0;

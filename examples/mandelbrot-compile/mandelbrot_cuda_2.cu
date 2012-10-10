@@ -29,7 +29,6 @@ extern "C" static __global__ void mkInit(double* cs_x, double* cs_y,
         for (int32_t j = blockIdx.y * blockDim.y + threadIdx.y; j <
              cs_dimy; j += blockDim.y * gridDim.y) {
             int32_t idx;
-            int32_t idx2;
 
             idx  = j * zs_dimx + i;
             zs_x[idx] = cs_x[idx];

@@ -38,14 +38,12 @@ extern "C" static __global__ void stepN(double lowx, double lowy, double highx, 
             i_temp = 0;
             if (depth > 0) {
                 for (int k = 0; k < depth; ++k) {
-                    int32_t idx3;
                     double x_new;
                     double y_new;
                     double xx = x_temp * x_temp;
                     double xy = x_temp * y_temp;
                     double yy = y_temp * y_temp;
 
-                    idx3 = j * cs_dimx + i;
                     x_new = cs_x + xx - yy;
                     y_new = cs_y + xy + xy;
 
