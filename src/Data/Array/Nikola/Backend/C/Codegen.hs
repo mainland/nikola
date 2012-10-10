@@ -156,12 +156,13 @@ compileExp (CallE f es) =
   where
     callKernel :: Dialect -> CudaKernel -> Maybe CExp -> [C.Exp] -> C ()
     callKernel CUDA kern _ cargs = inBlock $ do
-        (tdims, gdims) <- liftIO $ calcKernelDims kern es
-        addLocal [cdecl|typename dim3 gridDims;|]
-        addLocal [cdecl|typename dim3 threadBlockDims;|]
-        setGridDim "gridDims"        gdims
-        setGridDim "threadBlockDims" tdims
-        addStm [cstmCU|$id:(cukernName kern)<<<threadBlockDims,gridDims>>>($args:cargs);|]
+        (gdims, tdims) <- liftIO $ calcKernelDims kern es
+        addLocal [cdecl|typename dim3 gdims;|]
+        addLocal [cdecl|typename dim3 tdims;|]
+        setGridDim "gdims" gdims
+        setGridDim "tdims" tdims
+        wbInits kern
+        addStm [cstmCU|$id:(cukernName kern)<<<gdims,tdims>>>($args:cargs);|]
 
     callKernel _ kern Nothing cargs =
         addStm [cstm|$id:(cukernName kern)($args:cargs);|]
@@ -174,6 +175,20 @@ compileExp (CallE f es) =
         addStm [cstm|$id:dim.x = $int:x;|]
         addStm [cstm|$id:dim.y = $int:y;|]
         addStm [cstm|$id:dim.z = $int:z;|]
+
+    wbInits :: CudaKernel -> C ()
+    wbInits kern =
+        mapM_ wbInit (cukernWorkBlocks kern)
+      where
+        wbInit :: CudaWorkBlock -> C ()
+        wbInit wb = do
+            hbc <- gensym "hBlockCounter"
+            addLocal [cdecl|$ty:cIdxT $id:hbc = 0;|]
+            addStm [cstm|cudaMemcpyToSymbol($(cuworkBlockCounter wb),
+                                            &$id:hbc,
+                                            sizeof($ty:cIdxT),
+                                            0,
+                                            cudaMemcpyHostToDevice);|]
 
 compileExp (UnopE op e) = do
     tau <- inferExp e >>= checkScalarT
@@ -457,35 +472,166 @@ compileExp (ForE forloop vs es m) = do
     tau      <- extendVarTypes (vs `zip` repeat ixT) $
                 inferExp m
     cvresult <- newCVar "for_result" tau
-    go dialect (vs `zip` es) (allIdxs dialect) cvresult
+    let idxs =  allIdxs dialect forloop
+    compileLoop dialect forloop $
+        go dialect forloop (vs `zip` es) idxs cvresult
     return cvresult
   where
-    go :: Dialect -> [(Var, Exp)] -> [Idx] -> CExp -> C ()
-    go _ _ [] _ =
+    compileLoop :: Dialect -> ForLoop -> C () -> C ()
+    compileLoop CUDA IrregParFor mloop = do
+        loop         <- inNewBlock_ mloop
+        idxs         <- getIndices
+        blockCounter <- gensym "blockCounter"
+        addWorkBlock CudaWorkBlock{ cuworkBlockCounter = blockCounter }
+        addGlobal [cedeclCU|__device__ $ty:cIdxT $id:blockCounter;|]
+        inBlock $ do
+            addLocal [cdeclCU|__shared__ $ty:cIdxT $id:gridWidth;|]
+            addLocal [cdeclCU|__shared__ $ty:cIdxT $id:gridHeight;|]
+            addLocal [cdeclCU|__shared__ $ty:cIdxT $id:numBlocks;|]
+            addLocal [cdeclCU|__shared__ $ty:cIdxT $id:blockIdx;|]
+            mapM_ addBlockIdxLocal idxs
+            whileTrue $ do
+                body <- inNewBlock_ $ setupBlockIndex blockCounter idxs
+                addStm [cstm|if ($(isFirstThread idxs)) { $items:body }|]
+                addStm [cstm|__syncthreads();|]
+                addStm [cstm|if ($id:blockIdx >= $id:numBlocks) break;|]
+                addStm [cstm|{ $items:loop }|]
+      where
+        setupBlockIndex :: String -> [(Idx, Exp)] -> C ()
+        setupBlockIndex blockCounter [(IrregCudaThreadIdx CudaDimX, width)
+                                     ,(IrregCudaThreadIdx CudaDimY, height)] = do
+            cwidth               <- compileExp width
+            cheight              <- compileExp height
+            let threadGridWidth  =  [cexp|blockDim.x|]
+            let threadGridHeight =  [cexp|blockDim.y|]
+            addStm [cstm|$id:gridWidth  = ($cwidth  + $threadGridWidth  - 1) / $threadGridWidth;|]
+            addStm [cstm|$id:gridHeight = ($cheight + $threadGridHeight - 1) / $threadGridHeight;|]
+            addStm [cstm|$id:numBlocks  = $id:gridWidth * $id:gridHeight;|]
+            addStm [cstm|$id:blockIdx   = atomicAdd(&$id:blockCounter, 1);|]
+            addStm [cstm|$id:(irregCudaDimVar CudaDimX) = $id:blockIdx % $id:gridWidth;|]
+            addStm [cstm|$id:(irregCudaDimVar CudaDimY) = $id:blockIdx / $id:gridWidth;|]
+
+        setupBlockIndex _ idxs =
+            faildoc $ text "setupBlockIndex cannot compile:" <+> (text . show) idxs
+
+        isFirstThread :: [(Idx, Exp)] -> C.Exp
+        isFirstThread idxs =
+            foldr1 cband (map go idxs)
+          where
+            go :: (Idx, Exp) -> C.Exp
+            go (IrregCudaThreadIdx dim, _) =
+                [cexp|threadIdx.$id:(cudaDimVar dim) == 0|]
+
+            go _ =
+                error "isFirstThread: bad index"
+
+        addBlockIdxLocal :: (Idx, Exp) -> C ()
+        addBlockIdxLocal (IrregCudaThreadIdx dim, _) =
+            addLocal [cdeclCU|__shared__ $ty:cIdxT $id:(irregCudaDimVar dim);|]
+
+        addBlockIdxLocal _ =
+            error "isFirstThread: bad index"
+
+        cband :: C.Exp -> C.Exp -> C.Exp
+        cband e1 e2 = [cexp|$e1 && $e2|]
+
+        whileTrue :: C () -> C ()
+        whileTrue act = do
+            body <- inNewBlock_ act
+            addStm [cstm|while (1) { $items:body }|]
+
+    compileLoop _ _ mloop =
+        mloop
+
+    go :: Dialect -> ForLoop -> [(Var, Exp)] -> [Idx] -> CExp -> C ()
+    go _ _ _ [] _ =
         fail "compileFor: the impossible happened!"
 
-    go _ [] _ cvresult = do
+    go _ _ [] _ cvresult = do
         cresult <- compileExp m
         assignC cvresult cresult
 
-    go dialect ((v@(Var i),bound):is) (idx:idxs) cresult = do
+    go CUDA IrregParFor ((v@(Var i),bound):is) (idx:idxs) cresult = do
+        useIndex (idx,bound)
+        let cv =  ScalarCE [cexp|$id:i|]
+        cbound  <- gensym "bound"
+        cebound <- compileExp bound
+        extendVarTypes [(v, ixT)] $ do
+        extendVarTrans [(v, cv)] $ do
+        addLocal [cdecl|const $ty:cIdxT $id:cbound = $cebound;|]
+        addLocal [cdecl|const $ty:cIdxT $id:i = $(idxInit idx);|]
+        body <- inNewBlock_ $ go CUDA IrregParFor is idxs cresult
+        addStm [cstm|if ($id:i < $id:cbound) { $items:body } |]
+
+    go dialect forloop ((v@(Var i),bound):is) (idx:idxs) cresult = do
         useIndex (idx,bound)
         let cv =  ScalarCE [cexp|$id:i|]
         cbound <- bindExp (Just "bound") bound
         extendVarTypes [(v, ixT)] $ do
         extendVarTrans [(v, cv)] $ do
-        body <- inNewBlock_ $ go dialect is idxs cresult
+        body <- inNewBlock_ $ go dialect forloop is idxs cresult
         when (isParFor forloop && dialect == OpenMP) $
             addStm [cstm|$pragma:("omp parallel for")|]
-        addStm [cstm|for ($ty:(toCType ixT) $id:i = $(idxInit idx);
+        addStm [cstm|for ($ty:cIdxT $id:i = $(idxInit idx);
                           $id:i < $cbound;
                           $(idxStride idx i))
                      { $items:body }
                     |]
 
-    allIdxs :: Dialect -> [Idx]
-    allIdxs CUDA = map CudaThreadIdx [CudaDimX, CudaDimY, CudaDimZ] ++ repeat CIdx
-    allIdxs _    = repeat CIdx
+    allIdxs :: Dialect -> ForLoop -> [Idx]
+    allIdxs CUDA ParFor =
+        map CudaThreadIdx [CudaDimX, CudaDimY, CudaDimZ] ++ repeat CIdx
+
+    allIdxs CUDA IrregParFor =
+        map IrregCudaThreadIdx [CudaDimX, CudaDimY, CudaDimZ] ++ repeat CIdx
+
+    allIdxs _ _ =
+        repeat CIdx
+
+    idxInit :: Idx -> C.Exp
+    idxInit CIdx =
+        [cexp|0|]
+
+    idxInit (CudaThreadIdx dim) =
+        [cexp|blockIdx.$id:x*blockDim.$id:x + threadIdx.$id:x|]
+      where
+        x = cudaDimVar dim
+
+    idxInit (IrregCudaThreadIdx dim) =
+        [cexp|$id:(irregCudaDimVar dim)*blockDim.$id:x + threadIdx.$id:x|]
+      where
+        x = cudaDimVar dim
+
+    idxStride :: Idx -> String -> C.Exp
+    idxStride CIdx v =
+        [cexp|++$id:v|]
+
+    idxStride (CudaThreadIdx dim) v =
+        [cexp|$id:v += blockDim.$id:x*gridDim.$id:x|]
+      where
+        x = cudaDimVar dim
+
+    idxStride (IrregCudaThreadIdx dim) v =
+        [cexp|$id:v += blockDim.$id:x*gridDim.$id:x|]
+      where
+        x = cudaDimVar dim
+
+    irregCudaDimVar :: CudaDim -> String
+    irregCudaDimVar CudaDimX = "__blockX"
+    irregCudaDimVar CudaDimY = "__blockY"
+    irregCudaDimVar CudaDimZ = "__blockZ"
+
+    numBlocks :: String
+    numBlocks = "__numBlocks"
+
+    blockIdx :: String
+    blockIdx = "__blockIdx"
+
+    gridWidth :: String
+    gridWidth = "__gridWidth"
+
+    gridHeight :: String
+    gridHeight = "__gridHeight"
 
 compileExp SyncE = do
     dialect <- fromLJust fDialect <$> getFlags
@@ -502,21 +648,22 @@ compileExp e@(DelayedE {}) =
 -- arguments to an expression.
 compileKernelFun :: Dialect -> String -> Exp -> C CudaKernel
 compileKernelFun dialect fname f = do
-    ((_, idxs), cdefs) <-
+    (((_, idxs), wbs), cdefs) <-
         collectDefinitions $ do
+        collectWorkBlocks $ do
         addIncludes dialect
         collectIndices $ do
         inContext Kernel $ do
         tau_kern <- inferExp f
         tau_ret  <- snd <$> checkFunT tau_kern
-        compileFun dialect Host Kernel
-                   fname vtaus tau_ret (compileExp body)
+        compileFun dialect Host Kernel fname vtaus tau_ret (compileExp body)
         return ()
     return CudaKernel
-        { cukernDefs    = cdefs
-        , cukernName    = fname
-        , cukernIdxs    = idxs
-        , cukernRewrite = rewrite
+        { cukernDefs       = cdefs
+        , cukernName       = fname
+        , cukernIdxs       = idxs
+        , cukernWorkBlocks = wbs
+        , cukernRewrite    = rewrite
         }
   where
     (vtaus, body) = splitLamE f
@@ -539,31 +686,40 @@ compileKernelFun dialect fname f = do
 
         go w a = traverseFam go w a
 
-calcKernelDims :: CudaKernel -> [Exp] -> IO (CudaThreadBlockDim, CudaGridDim)
+calcKernelDims :: CudaKernel -> [Exp] -> IO (CudaGridDim, CudaThreadBlockDim)
 calcKernelDims kern args = do
     let rewrite  = cukernRewrite kern
-    let idxs     = [(idx, rewrite e args) | (idx, e) <- cukernIdxs kern]
-    let cudaIdxs = [(dim, bs) | dim <- [CudaDimX, CudaDimY, CudaDimZ]
-                              , let bs = boundsOf dim idxs
-                              , not (null bs)]
+    let bs       = [(idx, rewrite e args) | (idx, e) <- cukernIdxs kern]
+    let cudaIdxs = [(idx, bs') | dim <- [CudaDimX, CudaDimY, CudaDimZ]
+                               , idx <- [CudaThreadIdx dim, IrregCudaThreadIdx dim]
+                               , let bs' = idxBounds idx bs
+                               , not (null bs')]
     cudaGridDims cudaIdxs
   where
     -- Given a list of CUDA dimensions (x, y, z) and their bounds (each
     -- dimension may be used in more than one loop, leading to more than one
     -- bound), return an action in the 'Ex' monad that yields a pair consisting
     -- of the thread block dimensions and the grid dimensions.
-    cudaGridDims :: [(CudaDim, [Exp])] -> IO (CudaThreadBlockDim, CudaGridDim)
-    cudaGridDims []              = return ((  1, 1, 1), (  1,   1, 1))
-    cudaGridDims [(CudaDimX, _)] = return ((480, 1, 1), (128,   1, 1))
-    cudaGridDims [(CudaDimX, _)
-                 ,(CudaDimY, _)
-                 ]               = return (( 16, 8, 1), ( 32,  32, 1))
-    cudaGridDims _               = error "cudaGridDims: failed to compute grid dimensions"
+    cudaGridDims :: [(Idx, [Exp])] -> IO (CudaGridDim, CudaThreadBlockDim)
+    cudaGridDims [] =
+        return ((1, 1, 1), (1, 1, 1))
+
+    cudaGridDims [(CudaThreadIdx CudaDimX, _)] =
+        return ((128, 1, 1), (480, 1, 1))
+
+    cudaGridDims [(CudaThreadIdx CudaDimX, _), (CudaThreadIdx CudaDimY, _)] =
+        return ((32, 32, 1), (16, 8, 1))
+
+    cudaGridDims [(IrregCudaThreadIdx CudaDimX, _), (IrregCudaThreadIdx CudaDimY, _)] =
+        return ((16, 1, 1), (32, 32, 1))
+
+    cudaGridDims _ =
+        error "cudaGridDims: failed to compute grid dimensions"
 
     -- Given a CUDA dimension (x, y, or z) and a list of indices and their
     -- bounds, return the list of bounds for the given CUDA dimension.
-    boundsOf :: CudaDim -> [(Idx, Exp)] -> [Exp]
-    boundsOf dim idxs = [val | (CudaThreadIdx dim', val) <- idxs, dim' == dim]
+    idxBounds :: Idx -> [(Idx, Exp)] -> [Exp]
+    idxBounds idx bs = [e | (idx', e) <- bs, idx' == idx]
 
 returnResultsByReference :: Dialect -> Context -> Context -> Type -> Bool
 returnResultsByReference _ callerCtx calleeCtx tau
@@ -775,6 +931,9 @@ instance IsCType Type where
 
     toCType (MT tau) =
         toCType tau
+
+cIdxT :: C.Type
+cIdxT = toCType ixT
 
 -- | C variable allocation
 class NewCVar a where

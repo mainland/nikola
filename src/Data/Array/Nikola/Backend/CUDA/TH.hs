@@ -436,7 +436,9 @@ finalizeExpQ isMonadic env = do
         -- liftIO $ putStrLn $ pretty 200 $ ppr defs
         bs      <- liftIO $ Nvcc.compile defs
         modName <- TH.qNewName "module"
-        return $ modDecQ modName bs : map (kernDecQ modName) kerns
+        return $ modDecQ modName bs :
+                 map (workBlockCounterDecQ modName) (concatMap cukernWorkBlocks kerns) ++
+                 map (kernDecQ modName) kerns
       where
         -- Generate the binding for the 'CU.Module' containing the CUDA kernels.
         modDecQ :: TH.Name -> B.ByteString -> DecQ
@@ -444,6 +446,13 @@ finalizeExpQ isMonadic env = do
             let qbs    = TH.litE (TH.stringL (B.unpack bs))
             let qbody  = [|unsafePerformIO $ CU.loadData $ B.pack $qbs|]
             TH.valD (TH.varP modName) (TH.normalB qbody) []
+
+        -- Generate bindings for a work block counter
+        workBlockCounterDecQ :: TH.Name -> CudaWorkBlock -> DecQ
+        workBlockCounterDecQ modName wb = do
+            let blockCounterName = TH.mkName (cuworkBlockCounter wb)
+            let qbody            = [|unsafePerformIO $ CU.getPtr $(TH.varE modName) $(TH.stringE (cuworkBlockCounter wb))|]
+            TH.valD (TH.tupP [TH.varP blockCounterName, TH.wildP]) (TH.normalB qbody) []
 
         -- Generate the binding for the CUDA kernel @kern@.
         kernDecQ :: TH.Name -> CudaKernel -> DecQ

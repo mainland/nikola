@@ -19,8 +19,6 @@ module Data.Array.Nikola.Backend.C.Monad (
     CExp(..),
 
     Idx(..),
-    idxInit,
-    idxStride,
 
     CudaDim(..),
     cudaDimVar,
@@ -28,6 +26,8 @@ module Data.Array.Nikola.Backend.C.Monad (
     CudaKernel(..),
     CudaThreadBlockDim,
     CudaGridDim,
+
+    CudaWorkBlock(..),
 
     C(..),
     CEnv(..),
@@ -39,6 +39,11 @@ module Data.Array.Nikola.Backend.C.Monad (
 
     useIndex,
     collectIndices,
+    getIndices,
+
+    addWorkBlock,
+    collectWorkBlocks,
+    getWorkBlocks,
 
     lookupVarTrans,
     extendVarTrans,
@@ -122,21 +127,8 @@ instance ToExp CExp where
 -- ^ Loop index variable
 data Idx = CIdx
          | CudaThreadIdx CudaDim
+         | IrregCudaThreadIdx CudaDim
   deriving (Eq, Ord, Show)
-
-idxInit :: Idx -> C.Exp
-idxInit CIdx = [cexp|0|]
-idxInit (CudaThreadIdx dim) =
-    [cexp|blockIdx.$id:x*blockDim.$id:x + threadIdx.$id:x|]
-  where
-    x = cudaDimVar dim
-
-idxStride :: Idx -> String -> C.Exp
-idxStride CIdx v = [cexp|++$id:v|]
-idxStride (CudaThreadIdx dim) v =
-    [cexp|$id:v += blockDim.$id:x*gridDim.$id:x|]
-  where
-    x = cudaDimVar dim
 
 -- ^ CUDA dimension
 data CudaDim = CudaDimX
@@ -157,6 +149,8 @@ data CudaKernel = CudaKernel
                                      -- their bounds. The bounds are written in
                                      -- terms of the kernel's parameters.
 
+    , cukernWorkBlocks :: [CudaWorkBlock] -- ^ The kernel's work blocks.
+
     , cukernRewrite :: Exp -> [Exp] -> Exp -- ^ Rewrite an expression written in
                                            -- terms of the kernel's parameters
                                            -- to an expression written in terms
@@ -166,6 +160,11 @@ data CudaKernel = CudaKernel
 type CudaThreadBlockDim = (Int, Int, Int)
 
 type CudaGridDim = (Int, Int, Int)
+
+data CudaWorkBlock = CudaWorkBlock
+    { cuworkBlockCounter :: String -- ^ The name of the CUDA global that holds
+                                   -- the number of processed blocks.
+    }
 
 -- The state used by the C code generation monad
 data CEnv = CEnv
@@ -179,6 +178,8 @@ data CEnv = CEnv
   ,  cContext :: Context
 
   ,  cIndices :: [(Idx, Exp)]
+
+  ,  cWorkBlocks :: [CudaWorkBlock]
 
   ,  cIncludes   :: Set.Set String
   ,  cTypedefs   :: [C.Definition]
@@ -203,6 +204,8 @@ defaultCEnv flags = CEnv
   ,  cContext = Host
 
   ,  cIndices = []
+
+  ,  cWorkBlocks = []
 
   ,  cIncludes   = Set.empty
   ,  cTypedefs   = []
@@ -279,7 +282,28 @@ collectIndices act = do
     a    <- act
     idxs <- gets cIndices
     modify $ \s -> s { cIndices = old_idxs }
-    return (a, idxs)
+    return (a, reverse idxs)
+
+getIndices :: C [(Idx, Exp)]
+getIndices =
+    reverse <$> gets cIndices
+
+addWorkBlock :: CudaWorkBlock -> C ()
+addWorkBlock wb =
+    modify $ \s -> s { cWorkBlocks = wb : cWorkBlocks s }
+
+collectWorkBlocks :: C a -> C (a, [CudaWorkBlock])
+collectWorkBlocks act = do
+    old_wbs <- gets cWorkBlocks
+    modify $ \s -> s { cWorkBlocks = [] }
+    a   <- act
+    wbs <- gets cWorkBlocks
+    modify $ \s -> s { cWorkBlocks = old_wbs }
+    return (a, wbs)
+
+getWorkBlocks :: C [CudaWorkBlock]
+getWorkBlocks =
+    gets cWorkBlocks
 
 lookupVarTrans :: Var -> C CExp
 lookupVarTrans v = do

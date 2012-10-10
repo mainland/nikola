@@ -220,7 +220,7 @@ compileExp (AppE f es) = do
 
 compileExp (CallE f es) = do
     kern           <- addKernel f
-    (tdims, gdims) <- liftIO $ calcKernelDims kern es
+    (gdims, tdims) <- liftIO $ calcKernelDims kern es
     margs          <- mapM compileExp es
     return $ do  mod   <- getCUDAModule
                  f     <- liftIO $ CU.getFun mod (cukernName kern)

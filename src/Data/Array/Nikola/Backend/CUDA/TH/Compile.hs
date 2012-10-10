@@ -25,6 +25,7 @@ import Data.Int
 import Data.List (foldl')
 import qualified Data.Map as Map
 import Data.Word
+import Foreign (Ptr, alloca, poke)
 import qualified Foreign.CUDA.Driver as CU
 import qualified Foreign.CUDA.ForeignPtr as CU
 import qualified Language.C.Syntax as C
@@ -185,10 +186,11 @@ compileExp e0@(CallE f es) = do
             ppr tau_ret <> text "." <+>
             text "I can't handle that yet."
     kern           <- addKernel f
-    (tdims, gdims) <- liftIO $ calcKernelDims kern es
+    (gdims, tdims) <- liftIO $ calcKernelDims kern es
     qargs          <- mapM compileExp es
     taus           <- mapM inferExp es
-    return [|do { $(allFunParams (qargs `zip` taus)) $ \fparams ->
+    return [|do { $(initWorkBlockCounters (cukernWorkBlocks kern))
+                ; $(allFunParams (qargs `zip` taus)) $ \fparams ->
                   CU.launchKernel $(TH.varE (TH.mkName (cukernName kern)))
                                   $(TH.lift gdims)
                                   $(TH.lift tdims)
@@ -196,6 +198,17 @@ compileExp e0@(CallE f es) = do
                 }
             |]
   where
+    initWorkBlockCounters :: [CudaWorkBlock] -> ExpQ
+    initWorkBlockCounters [] =
+        [|return ()|]
+
+    initWorkBlockCounters (wb:wbs) =
+        [|alloca (\ptr -> poke ptr 0 >> CU.pokeArray 1 (ptr :: Ptr Int32) $(TH.varE blockCounterName))
+          >> $(initWorkBlockCounters wbs)|]
+      where
+        blockCounterName :: TH.Name
+        blockCounterName = TH.mkName (cuworkBlockCounter wb)
+
     allFunParams :: [(ExpQ, Type)] -> ExpQ
     allFunParams []           = [|\kont -> kont []|]
     allFunParams ((qe,_):qes) = [|\kont -> toFunParams $qe     $ \fparams1 ->
