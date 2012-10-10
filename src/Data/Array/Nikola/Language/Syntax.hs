@@ -323,6 +323,20 @@ instance Num Exp where
     abs e    = UnopE AbsN e
     signum e = UnopE SignumN e
 
+instance Enum Exp where
+    toEnum _   = error "embedded values are not enumerable"
+    fromEnum _ = error "embedded values are not enumerable"
+
+instance Real Exp where
+    toRational _ = error "an embedded value cannot be converted to a Rational"
+
+instance Integral Exp where
+    quot        = BinopE QuotI
+    rem         = BinopE RemI
+    quotRem n d = (quot n d, rem n d)
+    divMod _ _  = error "not div or mod for plain old Exps"
+    toInteger _ = error "cannot convert embedded value to Integer"
+
 instance Eq (R Exp Exp) where
     _ == _ = error "R Exp Exp: incomparable"
 
