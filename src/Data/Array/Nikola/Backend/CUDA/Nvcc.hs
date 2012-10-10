@@ -56,6 +56,7 @@ data NvccOpt = Ptx
              | Cubin
              | Fatbin
              | Gencode10
+             | Gencode11
              | Gencode20
              | Gencode30
              | Debug
@@ -67,6 +68,7 @@ opts2args Ptx            = ["--ptx"]
 opts2args Fatbin         = ["--fatbin"]
 opts2args Cubin          = ["--cubin"]
 opts2args Gencode10      = ["-gencode", "arch=compute_10,code=sm_10"]
+opts2args Gencode11      = ["-gencode", "arch=compute_11,code=sm_11"]
 opts2args Gencode20      = ["-gencode", "arch=compute_20,code=sm_20"]
 opts2args Gencode30      = ["-gencode", "arch=compute_30,code=sm_30"]
 opts2args Debug          = ["-G"]
@@ -101,9 +103,9 @@ compile = compileEx
 #if NVCC_VERSION < 40
 #error "nvcc < 4 not supported"
 #elif NVCC_VERSION < 42
-    [Fatbin, Gencode10, Gencode20]
+    [Fatbin, Gencode11, Gencode20]
 #else /* NVCC_VERSION >= 42 */
-    [Fatbin, Gencode10, Gencode20, Gencode30]
+    [Fatbin, Gencode11, Gencode20, Gencode30]
 #endif /* NVCC_VERSION >= 42 */
 
 #if !MIN_VERSION_process(1,1,0)
