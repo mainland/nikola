@@ -4,26 +4,25 @@
 
 module Mandelbrot.NikolaV1 (mandelbrotImage) where
 
-import Data.Int
-import Data.Word
-
-import Data.Array.Nikola.Backend.CUDA.TH
+import Data.Array.Nikola.Backend.CUDA.TH (compile)
 import Data.Array.Repa
 import Data.Array.Repa.Repr.ForeignPtr
 import Data.Array.Repa.Repr.UnboxedForeign
 import Data.Array.Repa.Repr.CUDA.UnboxedForeign
 import qualified Data.Vector.UnboxedForeign as VUF
 import qualified Data.Vector.Storable as V
+import Data.Int
+import Data.Word
 
 import qualified Mandelbrot.NikolaV1.Implementation as I
 
 type R = Double
 
+type Complex = (R, R)
+
 type RGBA = Word32
 
 type Bitmap r = Array r DIM2 RGBA
-
-type Complex = (R, R)
 
 type ComplexPlane r = Array r DIM2 Complex
 

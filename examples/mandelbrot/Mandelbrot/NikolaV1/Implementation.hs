@@ -15,11 +15,11 @@ import Data.Word
 
 type R = Double
 
+type Complex = (Exp R, Exp R)
+
 type RGBA = Word32
 
 type Bitmap r = Array r DIM2 (Exp RGBA)
-
-type Complex = (Exp R, Exp R)
 
 type ComplexPlane r = Array r DIM2 Complex
 
@@ -63,7 +63,8 @@ genPlane :: Exp R
 genPlane lowx lowy highx highy viewx viewy =
     computeP $
     fromFunction (Z:.viewy:.viewx) $ \(Z:.y:.x) ->
-        (lowx + (fromInt x*xsize)/fromInt viewx, lowy + (fromInt y*ysize)/fromInt viewy)
+        (lowx + (fromInt x*xsize)/fromInt viewx,
+         lowy + (fromInt y*ysize)/fromInt viewy)
    where
       xsize, ysize :: Exp R
       xsize = highx - lowx
