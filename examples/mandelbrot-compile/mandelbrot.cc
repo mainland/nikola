@@ -111,8 +111,8 @@ void measure_mp(mp f);
 
 int main(int argc, char** argv)
 {
-    measure_mp(mandelbrot_cuda);
-    measure_mp(mandelbrot_cuda_2);
+    //measure_mp(mandelbrot_cuda);
+    //measure_mp(mandelbrot_cuda_2);
     measure_mp(mandelbrot_cuda_3);
     measure_mp(mandelbrot_cuda_4);
 

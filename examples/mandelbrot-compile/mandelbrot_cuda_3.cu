@@ -62,8 +62,8 @@ extern "C" static __global__ void stepN(double lowx, double lowy, double highx, 
     }
 }
 
-#define DIM_X   32
-#define DIM_Y   32
+#define DIM_X   64
+#define DIM_Y   64
 #define BLOCK_X 16
 #define BLOCK_Y 16
 
