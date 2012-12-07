@@ -362,7 +362,9 @@ bind wa wb v kont = do
                                               , theta = Map.insert v (binderOcc v') old_theta
                                               }
                   kont v'
-         else do  modifyTheta wa wb $ \s -> s { phi = Set.insert v (phi s) }
+         else do  modifyTheta wa wb $ \s -> s { phi   = Set.insert v (phi s)
+                                              , theta = Map.delete v old_theta
+                                              }
                   kont v
     modifyTheta wa wb $ \s -> s { phi   = old_phi
                                 , theta = old_theta
