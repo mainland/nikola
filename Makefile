@@ -40,7 +40,6 @@ GHC_FLAGS += \
 	-package cuda \
 	-package deepseq \
 	-package exception-transformers \
-	-package gloss \
 	-package language-c-quote \
 	-package mainland-pretty \
 	-package mersenne-random-pure64 \
