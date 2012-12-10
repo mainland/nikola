@@ -425,10 +425,10 @@ isNum(Word64, Word64C)
 isNum(Float,  FloatC)
 isNum(Double, DoubleC)
 
-#define isEnum(ty)                                        \
-instance Enum (Exp t ty) where                            \
-{ toEnum _   = error "embedded values are not enumerable" \
-; fromEnum _ = error "embedded values are not enumerable" \
+#define isEnum(ty)                                               \
+instance Enum (Exp t ty) where                                   \
+{ toEnum _   = error "Cannot call toEnum on an embedded value"   \
+; fromEnum _ = error "Cannot call fromEnum on an embedded value" \
 }
 
 isEnum(Int8)
@@ -440,9 +440,9 @@ isEnum(Word16)
 isEnum(Word32)
 isEnum(Word64)
 
-#define isReal(ty)                                                           \
-instance Real (Exp t ty) where                                               \
-{ toRational _ = error "an embedded value cannot be converted to a Rational" \
+#define isReal(ty)                                                   \
+instance Real (Exp t ty) where                                       \
+{ toRational _ = error "Cannot call toRational on an embedded value" \
 }
 
 isReal(Int8)
@@ -456,15 +456,15 @@ isReal(Word64)
 isReal(Float)
 isReal(Double)
 
-#define isIntegral(ty)                                           \
-instance Integral (Exp t ty) where                               \
-{ quot        = binop (BinopE QuotI)                             \
-; rem         = binop (BinopE RemI)                              \
-; quotRem n d = (quot n d, rem n d)                              \
-; divMod  n d = if signum r ==* negate (signum d)                \
-                then (q-1, r+d)                                  \
-                else qr where { qr@(q,r) = quotRem n d }         \
-; toInteger _ = error "cannot convert embedded value to Integer" \
+#define isIntegral(ty)                                             \
+instance Integral (Exp t ty) where                                 \
+{ quot        = binop (BinopE QuotI)                               \
+; rem         = binop (BinopE RemI)                                \
+; quotRem n d = (quot n d, rem n d)                                \
+; divMod  n d = if signum r ==* negate (signum d)                  \
+                then (q-1, r+d)                                    \
+                else qr where { qr@(q,r) = quotRem n d }           \
+; toInteger _ = error "Cannot call toInteger on an embedded value" \
 }
 
 isIntegral(Int8)
