@@ -70,3 +70,6 @@ load_squares marr =
   where
     arr :: Array D DIM1 (Exp Int32)
     arr = fromFunction (mextent marr) (\(Z:.i) -> i*i)
+
+const_array :: Vector D (Exp Float)
+const_array = fromFunction (Z :. 100) (const 1)

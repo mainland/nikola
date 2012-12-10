@@ -83,6 +83,7 @@ tests = [ id_test
         , th_revmap_test3
         , th_append_push
         , th_append_delayed
+        , th_const_array
         , th_marray
         , th_mandelbrot_init
         -- , testProperty "mandelbrot_init" prop_mandelbrot_init
@@ -247,6 +248,13 @@ th_append_delayed = testCase "TH append delayed arrays" $
     f :: V.Vector Float -> V.Vector Float
     f = $(NTH.compileSig Funs.append_delayed
                          (undefined :: V.Vector Float -> V.Vector Float))
+
+th_const_array :: Test
+th_const_array = testCase "TH array of constants" $
+    assert (toHostList arr == replicate 100 1)
+  where
+    arr :: R.Array R.CUF R.DIM1 Float
+    arr = $(NTH.compile Funs.const_array)
 
 th_marray :: Test
 th_marray = testCase "TH mutable array" $ do
