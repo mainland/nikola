@@ -305,7 +305,9 @@ compileExp (DimE i _ e) = do
     return $ do  ArrayV _ sh <- me
                  toIx (sh !! i)
 
-compileExp e = faildoc $ text "Cannot compile:" <+> ppr e
+compileExp e =
+    faildoc $ nest 4 $
+    text "Cannot compile the following Nikola term to an interpreted term:" </> ppr e
 
 class ToFunParams a where
     toFunParams :: a -> ([CU.FunParam] -> IO b) -> IO b

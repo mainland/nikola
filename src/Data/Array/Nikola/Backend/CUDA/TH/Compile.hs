@@ -301,7 +301,9 @@ compileExp (DimE i _ e) = do
     qe       <- compileExp e
     return [|case $qe of { NArray _ sh -> fromIntegral (R.listOfShape sh !! i) }|]
 
-compileExp e = faildoc $ text "Cannot compile" <+> ppr e
+compileExp e =
+    faildoc $ nest 4 $
+    text "Cannot compile the following Nikola term to a Haskell term:" </> ppr e
 
 -- | Conversion to Haskell type
 class IsHType a where
