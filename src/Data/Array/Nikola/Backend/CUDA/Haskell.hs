@@ -49,7 +49,7 @@ import qualified Data.Array.Nikola.Backend.CUDA.Nvcc as Nvcc
 import Data.Array.Nikola.Backend.Flags
 
 import Data.Array.Nikola.Language.Generic
-import Data.Array.Nikola.Language.Monad (runR, REnv, emptyREnv)
+import Data.Array.Nikola.Language.Monad (runR, REnv, emptyREnv, reset)
 import Data.Array.Nikola.Language.Optimize (optimizeHostProgram)
 import Data.Array.Nikola.Language.Reify
 import Data.Array.Nikola.Language.Sharing
@@ -194,7 +194,7 @@ compile = precompile . unsafePerformIO . reifyAndCompileToEx
   where
     reifyAndCompileToEx :: Reifiable a Exp => a -> IO (PreEx a)
     reifyAndCompileToEx a = do
-        (_, p)    <- runR (reify a >>= detectSharing ExpA >>= optimizeHostProgram) env
+        (_, p)    <- runR (reset (reify a) >>= detectSharing ExpA >>= optimizeHostProgram) env
         -- putStrLn $ pretty 200 (ppr p)
         (defs, m) <- evalCEx (compileToEx p)
         -- putStrLn $ pretty 200 (ppr defs)

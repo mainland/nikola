@@ -59,7 +59,7 @@ import Data.Array.Nikola.Backend.CUDA.TH.Util
 
 import qualified Data.Array.Nikola.Exp as E
 import Data.Array.Nikola.Language.Generic
-import Data.Array.Nikola.Language.Monad (runR, REnv, emptyREnv)
+import Data.Array.Nikola.Language.Monad (runR, REnv, emptyREnv, reset)
 import Data.Array.Nikola.Language.Optimize (optimizeHostProgram)
 import Data.Array.Nikola.Language.Reify
 import Data.Array.Nikola.Language.Sharing
@@ -405,7 +405,7 @@ compileSig :: forall a b . (Compilable a b, Reifiable a Exp)
            -> ExpQ
 compileSig a _ = do
     (_, p)  <- liftIO $ flip runR env $
-               reify a >>= detectSharing ExpA >>= optimizeHostProgram
+               reset (reify a) >>= detectSharing ExpA >>= optimizeHostProgram
     (kernels, cdefs, (vtaus, qbody, isMonadic)) <- liftIO $ evalCEx (compileToExpQ p)
     let pexpq :: PreExpQ a
         pexpq = PreExpQ (return ())
