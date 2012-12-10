@@ -266,10 +266,6 @@ th_marray = testCase "TH mutable array" $ do
         f0 marr
         toHostList <$> R.unsafeFreezeMArray marr
 
-    toHostList :: VCUF.EverywhereUnboxForeign a
-               => R.Array R.CUF R.DIM1 a -> [a]
-    toHostList = R.toList . R.toHostArray
-
 th_mandelbrot_init :: Test
 th_mandelbrot_init = testCase "TH mandelbrot init" $
     f xs xs @=? g xs xs
@@ -290,10 +286,6 @@ th_mandelbrot_init = testCase "TH mandelbrot init" $
                  => [a] -> R.Array R.CUF R.DIM1 a
     fromHostList xs =
         R.fromHostArray $ R.fromListUnboxedForeign (R.ix1 (length xs)) xs
-
-    toHostList :: VCUF.EverywhereUnboxForeign a
-               => R.Array R.CUF R.DIM1 a -> [a]
-    toHostList = R.toList . R.toHostArray
 
     g :: [Complex] -> [Complex] -> [(Complex, Int32)]
     g = zipWith (\x y -> (x*y, 0))
@@ -360,6 +352,10 @@ prop_mandelbrot_init xs ys =
     fromHostList xs =
         R.fromHostArray $ R.fromListUnboxedForeign (R.ix1 (length xs)) xs
 
-    toHostList :: VCUF.EverywhereUnboxForeign a
-               => R.Array R.CUF R.DIM1 a -> [a]
-    toHostList = R.toList . R.toHostArray
+--
+-- Utilities
+--
+
+toHostList :: VCUF.EverywhereUnboxForeign a
+           => R.Array R.CUF R.DIM1 a -> [a]
+toHostList = R.toList . R.toHostArray
