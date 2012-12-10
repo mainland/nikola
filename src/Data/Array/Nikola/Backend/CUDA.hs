@@ -143,6 +143,15 @@ instance IsNum CUDA Word64 where
 instance IsNum CUDA Float where
 instance IsNum CUDA Double where
 
+instance IsIntegral CUDA Int8 where
+instance IsIntegral CUDA Int16 where
+instance IsIntegral CUDA Int32 where
+instance IsIntegral CUDA Int64 where
+instance IsIntegral CUDA Word8 where
+instance IsIntegral CUDA Word16 where
+instance IsIntegral CUDA Word32 where
+instance IsIntegral CUDA Word64 where
+
 type Vector r a = Array r DIM1 a
 
 type Exp a = E.Exp CUDA a

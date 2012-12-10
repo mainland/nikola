@@ -219,7 +219,7 @@ class IsElem (Exp t a) => IsNum t a where
         tau :: ScalarType
         tau = typeOf (undefined :: Exp t a)
 
-class (Integral a, IsNum t a) => IsIntegral t a where
+class (Integral (Exp t a), IsNum t a) => IsIntegral t a where
     toInt :: Exp t a -> Exp t Int32
     toInt e = unop (UnopE (Cast Int32T)) e
 
