@@ -25,7 +25,7 @@ I configure Nikola like this under Ubuntu 12.04 LTS x86_64 with the CUDA 4.2
 SDK:
 
 ```
-cabal configure --disable-library-profiling --enable-tests --flags="examples optimize"
+autoconf && cabal configure --disable-library-profiling --enable-tests --flags="examples optimize"
 ```
 
 Known Issues
