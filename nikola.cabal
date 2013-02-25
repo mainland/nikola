@@ -141,6 +141,7 @@ library
 
   default-language: Haskell98
 
+  c-sources:       cbits/stubs.c
   hs-source-dirs:  src
   include-dirs:	   include, internal
 
@@ -163,7 +164,7 @@ executable blackscholes
   else
     buildable: False
 
-  if flag(optimize)
+  if flag(optimize) && !os(windows)
     ghc-options: -O3
     ghc-options: -fllvm -optlo-O3
     ghc-options: -fno-liberate-case

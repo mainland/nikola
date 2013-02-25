@@ -11,6 +11,11 @@ AC_CONFIG_FILES([include/Nikola.h nikola.buildinfo])
 AC_CANONICAL_TARGET
 
 #
+# #define our target
+#
+CPPFLAGS += -D${target_os}_TARGET_OS=1
+
+#
 # Find nvcc and determine its version
 #
 
@@ -23,7 +28,15 @@ if test -z "$NVCC"; then
   AC_MSG_ERROR(could not find nvcc)
 fi
 
-NVCC_VERSION=`nvcc --version | grep release | sed -e 's/.*release //' -e 's/,.*//' -e 's/\.//'`
+case $target in
+    *mingw* )
+        # We need a Windows-style path, but mingw doesn't include cygpath, thus
+	# this hack.
+	NVCC=`cd $(dirname $NVCC) && pwd -W`/$(basename nvcc)
+	;;
+esac
+
+NVCC_VERSION=`$NVCC --version | grep release | sed -e 's/.*release //' -e 's/,.*//' -e 's/\.//'`
 
 #
 # Find the C compiler to use with nvcc
@@ -64,8 +77,10 @@ CUDA_PREFIX="$(dirname $(dirname $NVCC))"
 CPPFLAGS+=" -I${CUDA_PREFIX}/include "
 
 case $target in
-    x86_64*) LDFLAGS+=" -L${CUDA_PREFIX}/lib64 " ;;
-    *)       LDFLAGS+=" -L${CUDA_PREFIX}/lib "   ;;
+    *mingw32* ) LDFLAGS+=" -L${CUDA_PREFIX}/lib/Win32 " ;;
+    *mingw64* ) LDFLAGS+=" -L${CUDA_PREFIX}/lib/x64 " ;;
+    x86_64*)    LDFLAGS+=" -L${CUDA_PREFIX}/lib64 " ;;
+    *)          LDFLAGS+=" -L${CUDA_PREFIX}/lib "   ;;
 esac
 
 # If we are running on Mac OS add the CUDA library path to the search list. This
@@ -98,14 +113,28 @@ AC_CHECK_HEADERS([cudaGL.h],
 # Find the CUDA libraries
 #
 
-AC_SEARCH_LIBS(cuDriverGetVersion, cuda, [],
-               [AC_MSG_ERROR(could not find CUDA driver library)])
+case $target in
+    *mingw32* )
+    	# AC_SEARCH_LIBS doesn't work on Win32 with functions that use the
+    	# stdcall calling convention, so we use AC_CHECK_DELCS instead.
+	LIBS+="-lcuda -lcudart"
+	AC_CHECK_DECLS([cuDriverGetVersion],
+	    [],
+	    [AC_MSG_ERROR(could not find CUDA driver library${longerror})],
+	    [[#include <cuda.h>]])
+	AC_CHECK_DECLS([cudaRuntimeGetVersion],
+	    [],
+	    [AC_MSG_ERROR(could not find CUDA runtime library${longerror})],
+	    [[#include <cuda_runtime_api.h>]])
+	;;
+    *)
+	AC_SEARCH_LIBS(cuDriverGetVersion, cuda, [],
+	    [AC_MSG_ERROR(could not find CUDA driver library)])
 
-AC_SEARCH_LIBS(cudaRuntimeGetVersion, cudart, [],
-               [AC_MSG_ERROR(could not find CUDA runtime library)])
-
-CUDA_CPPFLAGS="$CPPFLAGS"
-CUDA_LDFLAGS="$LDFLAGS $LIBS"
+	AC_SEARCH_LIBS(cudaRuntimeGetVersion, cudart, [],
+	    [AC_MSG_ERROR(could not find CUDA runtime library)])
+	;;	
+esac
 
 #
 # Finish up

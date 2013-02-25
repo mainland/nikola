@@ -1,6 +1,10 @@
+UNAME := $(shell uname -o)
+
 GHC=ghc
 
 SOURCE = $(shell find src -type f)
+
+CSOURCE = cbits/stubs.c
 
 #include Makefile.language-c-quote
 include Makefile.cu
@@ -26,6 +30,12 @@ GHC_FLAGS+=-O
 #GHC_FLAGS+=-ddump-simpl
 #GHC_FLAGS+=-dsuppress-all -dppr-case-as-let -dppr-cols200
 #GHC_FLAGS+=-ddump-splices
+
+ifeq ($(UNAME), Msys)
+GHC_FLAGS += -Ic:/CUDA/v5.0/include
+else
+GHC_FLAGS += -I/usr/local/cuda/5.0/cuda/include 
+endif
 
 GHC_FLAGS += \
 	-hide-all-packages \
@@ -96,13 +106,13 @@ demo : $(SOURCE) tests/Main.hs
 
 american : $(SOURCE) examples/american/*.hs examples/american/American/*.hs
 	@echo "Compiling and linking" $@
-	$(_QUIET)$(GHC) --make examples/american/Main.hs \
+	$(_QUIET)$(GHC) --make examples/american/Main.hs $(CSOURCE) \
 		-odir obj -hidir obj \
 		-iexamples/american $(GHC_FLAGS) -o $@
 
 blackscholes : $(SOURCE) examples/blackscholes/*.hs examples/blackscholes/BlackScholes/*.hs
 	@echo "Compiling and linking" $@
-	$(_QUIET)$(GHC) --make examples/blackscholes/Main.hs \
+	$(_QUIET)$(GHC) --make examples/blackscholes/Main.hs $(CSOURCE) \
 		-odir obj -hidir obj \
 		-iexamples/blackscholes $(GHC_FLAGS) -o $@
 
@@ -132,14 +142,14 @@ test : $(SOURCE) test.hs
 
 mandelbrot : $(SOURCE) $(shell find examples/mandelbrot -type f)
 	@echo "Compiling and linking" $@
-	$(_QUIET)$(GHC) --make examples/mandelbrot/Main.hs \
+	$(_QUIET)$(GHC) --make examples/mandelbrot/Main.hs $(CSOURCE) \
 		-iexamples/mandelbrot \
 		-odir obj/mandelbrot -hidir obj/mandelbrot \
 		$(GHC_FLAGS) -threaded -o $@
 
 unit : $(SOURCE) tests/unit/Main.hs
 	@echo "Compiling and linking" $@
-	$(_QUIET)$(GHC) --make -itests/unit tests/unit/Main.hs \
+	$(_QUIET)$(GHC) --make -itests/unit tests/unit/Main.hs $(CSOURCE) \
 		-odir obj -hidir obj \
 		$(GHC_FLAGS) -o $@
 

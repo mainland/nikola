@@ -81,11 +81,11 @@ addIncludes :: Dialect -> C ()
 addIncludes CUDA = do
     addInclude "\"cuda.h\""
     addInclude "\"cuda_runtime_api.h\""
-    addInclude "<inttypes.h>"
+    addInclude "<stdint.h>"
 
 addIncludes OpenMP = do
     addInclude "<stdlib.h>"
-    addInclude "<inttypes.h>"
+    addInclude "<stdint.h>"
     addInclude "<math.h>"
     addInclude "<omp.h>"
 
