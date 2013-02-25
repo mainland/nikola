@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -15,15 +16,18 @@ module Main where
 
 import Prelude hiding (map, zipWith, zipWith3)
 
-import Control.DeepSeq
 import qualified Control.Exception as E
 import Control.Monad (forM_)
 import qualified Criterion as C
 import qualified Criterion.Main as C
 import qualified Data.Vector.Storable as V
-import Foreign (Storable)
 import System.Environment
 import Text.Printf
+
+#if !MIN_VERSION_vector(0,10,0)
+import Control.DeepSeq
+import Foreign (Storable)
+#endif /* !MIN_VERSION_vector(0,10,0) */
 
 import qualified Data.Array.Nikola.Backend.CUDA as N
 import qualified Data.Array.Nikola.Backend.CUDA.Haskell as NH
@@ -106,9 +110,6 @@ blackscholesVector :: (V.Vector F, V.Vector F, V.Vector F)
 blackscholesVector (ss, xs, ts) =
     V.zipWith3 (\s x t -> BSV.blackscholes True s x t rISKFREE vOLATILITY) ss xs ts
 
-instance Storable a => NFData (V.Vector a) where
-    rnf v = V.length v `seq` ()
-
 validate :: IO ()
 validate =
     forM_ [0,2..16] $ \(logn :: Double) -> do
@@ -120,3 +121,8 @@ validate =
   where
     ePSILON :: F
     ePSILON = 1e-10
+
+#if !MIN_VERSION_vector(0,10,0)
+instance Storable a => NFData (V.Vector a) where
+    rnf v = V.length v `seq` ()
+#endif /* !MIN_VERSION_vector(0,10,0) */
