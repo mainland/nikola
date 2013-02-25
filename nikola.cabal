@@ -116,7 +116,7 @@ library
     base                   >= 4    && < 5,
     bytestring             >= 0.9  && < 0.10,
     containers             >= 0.4  && < 0.5,
-    cuda                   >= 0.4  && < 0.6,
+    cuda                   >= 0.5  && < 0.6,
     exception-mtl          >= 0.3  && < 0.4,
     exception-transformers >= 0.3  && < 0.4,
     language-c-quote       >= 0.4  && < 0.5,
