@@ -75,11 +75,13 @@ occ ExpA (IfThenElseE e1 e2 e3) = do
     unionOcc $ occ1 `occsJoin` (occ2 `occsMeet` occ3)
     return $ IfThenElseE e1' e2' e3'
 
-occ ExpA (ForE isPar vs es p) = do
+occ ExpA (ForE isPar loopvs p) = do
     (es', occ_es) <- withOcc $ traverse (occ ExpA) es
     (p',  occ_p)  <- withOcc $ occ ExpA p
     unionOcc $ occ_es `occsJoin` occsDelete vs occ_p
-    return $ ForE isPar vs es' p'
+    return $ ForE isPar (vs `zip` es') p'
+  where
+    (vs, es) = unzip loopvs
 
 occ ExpA (BindE v tau p1 p2) = do
     (p1', occ1) <- withOcc $ occ ExpA p1

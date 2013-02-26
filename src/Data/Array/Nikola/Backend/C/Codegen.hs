@@ -467,7 +467,7 @@ compileExp (IterateWhileE n (LamE [(x, tau)] e) x0) = do
 compileExp e@(IterateWhileE {}) =
     faildoc $ nest 2 $ text "Cannot compile:" </> ppr e
 
-compileExp (ForE forloop vs es m) = do
+compileExp (ForE forloop loopvs m) = do
     dialect  <- fromLJust fDialect <$> getFlags
     tau      <- extendVarTypes (vs `zip` repeat ixT) $
                 inferExp m
@@ -477,6 +477,8 @@ compileExp (ForE forloop vs es m) = do
         go dialect forloop (vs `zip` es) idxs cvresult
     return cvresult
   where
+    (vs, es) = unzip loopvs
+
     compileLoop :: Dialect -> ForLoop -> C () -> C ()
     compileLoop CUDA IrregParFor mloop = do
         loop         <- inNewBlock_ mloop

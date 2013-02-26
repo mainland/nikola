@@ -160,7 +160,7 @@ constructKernels :: AST a -> a -> R r a
 constructKernels = go
   where
     go :: AST a -> a -> R r a
-    go ExpA e@(ForE forloop _ _ _) | isParFor forloop = do
+    go ExpA e@(ForE forloop _ _) | isParFor forloop = do
         return (CallE (LamE [] e) [])
 
     go w a = checkTraverseFam go w a
@@ -203,11 +203,11 @@ mergeParfor ExpA (LamE vtaus p) = do
     go [] =
         return []
 
-    go ((seq1, ForE ParFor [v1] [e1] p1) : (seq2, ForE ParFor [v2] [e2] p2) : ms) = do
+    go ((seq1, ForE ParFor [(v1, e1)] p1) : (seq2, ForE ParFor [(v2, e2)] p2) : ms) = do
         insertSubst VarA v2 VarA v1
         let p1' = whenE ((E . VarE) v1 <* (E e1 :: E.Exp t Int32)) p1
         let p2' = whenE ((E . VarE) v1 <* (E e2 :: E.Exp t Int32)) p2
-        go ((seq1, ForE ParFor [v1] [BinopE MaxO e1 e2] (sync p1' p2')) : ms)
+        go ((seq1, ForE ParFor [(v1, BinopE MaxO e1 e2)] (sync p1' p2')) : ms)
       where
         sync = case seq2 of
                  SeqM -> syncE
@@ -330,8 +330,10 @@ vars = go
     go ExpA (LamE vtaus e)      = bindVars (map fst vtaus) (go ExpA e)
     go ExpA (BindE v _ p1 p2)   = go ExpA p1 `mappend`
                                   bindVar v (go ExpA p2)
-    go ExpA (ForE _ vs es p)    = foldMap (go ExpA) es `mappend`
+    go ExpA (ForE _ loopvs p) = foldMap (go ExpA) es `mappend`
                                   bindVars vs (go ExpA p)
+      where
+        (vs, es) = unzip loopvs
     go w    a                   = foldFam go w a
 
     useVar :: Var -> (Set Var -> (Set Var, Set Var))
@@ -405,9 +407,11 @@ subst = go
                                                 bind VarA w v $ \v' -> do
                                                 BindE v' tau p1' <$> go VarA w ExpA p2
 
-    go VarA w ExpA (ForE floop vs es p)   = do  es' <- traverse (go VarA w ExpA) es
+    go VarA w ExpA (ForE floop loopvs p)  = do  es' <- traverse (go VarA w ExpA) es
                                                 binds VarA w vs $ \vs' -> do
-                                                ForE floop vs' es' <$> go VarA w ExpA p
+                                                ForE floop (vs' `zip` es') <$> go VarA w ExpA p
+      where
+        (vs, es) = unzip loopvs
 
     go w1 w2 w a = traverseFam (go w1 w2) w a
 
@@ -525,11 +529,13 @@ class (Applicative m, Monad m, MonadIO m) => MonadInterp m a where
     extendVars :: [(Var, a)] -> m b -> m b
 
 mergeBounds :: forall m . (MonadInterp m Range) => Traversal AST m
-mergeBounds ExpA (ForE ParFor vs es p) = do
-    (ds, es')  <- unzip <$> mapM simplBound (vs `zip` es)
+mergeBounds ExpA (ForE ParFor loopvs p) = do
+    (ds, es')  <- unzip <$> mapM simplBound loopvs
     extendVars (vs `zip` ds) $ do
-    ForE ParFor vs es' <$> (fromMnf <$> go (toMnf p))
+    ForE ParFor (vs `zip` es') <$> (fromMnf <$> go (toMnf p))
   where
+    vs = map fst loopvs
+
     simplBound :: (Var, Exp) -> m (Range, Exp)
     simplBound (_, e) = do
         e' <- mergeBounds ExpA e

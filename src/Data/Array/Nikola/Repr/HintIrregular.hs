@@ -83,9 +83,11 @@ instance Load r sh e => Load (I r) sh e where
 -- Traverse an expression and rewrite all parallel loops into irregular parallel
 -- loops.
 markLoopsAsIrregular :: MonadCheck m => AST a -> a -> m a
-markLoopsAsIrregular ExpA (ForE ParFor is es p) =
-    ForE IrregParFor is <$> traverse (markLoopsAsIrregular ExpA) es
-                        <*> markLoopsAsIrregular ExpA p
+markLoopsAsIrregular ExpA (ForE ParFor loopvs p) =
+    ForE IrregParFor <$> (zip is <$> traverse (markLoopsAsIrregular ExpA) es)
+                     <*> markLoopsAsIrregular ExpA p
+  where
+    (is, es) = unzip loopvs
 
 -- The default traversal barfs if it sees a DelayedE, but we don't care.
 markLoopsAsIrregular ExpA e@(DelayedE {}) =

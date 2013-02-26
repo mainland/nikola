@@ -298,7 +298,7 @@ data Exp = VarE Var
            -- | The second arguments to 'IterateWhileE' must be a lambda.
          | IterateWhileE Exp Exp Exp
 
-         | ForE ForLoop [Var] [Exp] Exp
+         | ForE ForLoop [(Var, Exp)] Exp
 
          | SyncE
 
@@ -796,13 +796,15 @@ pprMonadic _ e =
         [text "write" <+> pprPrec appPrec1 v <>
          brackets (ppr idx) <+> pprPrec appPrec1 x]
 
-    go (ForE forloop vs es prog) =
+    go (ForE forloop loopvs prog) =
         [align $ nest 4 $
          ppr forloop <>
-         parens (tuple (replicate (length vs) (text "0")) <+> text "<=" <+>
+         parens (tuple (replicate (length loopvs) (text "0")) <+> text "<=" <+>
                  tuple (map ppr vs) <+> text "<" <+>
                  tuple (map ppr es)) </>
          pprMonadic 0 prog]
+      where
+        (vs, es) = unzip loopvs
 
     go SyncE =
         [text "sync"]

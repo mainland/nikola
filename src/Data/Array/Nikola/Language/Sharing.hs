@@ -69,13 +69,15 @@ detectSharing ExpA e =
                detectE ExpA m2
         return $ BindE v tau m1' m2'
 
-    detectE ExpA (ForE isPar vs es body) = do
+    detectE ExpA (ForE isPar loopvs body) = do
         es'   <- mapM detectLocal es
         body' <- extendVarTypes (vs `zip` repeat ixT) $
                  inNewScope False $
                  detectE ExpA body
-        return $ ForE isPar vs es' body'
+        return $ ForE isPar (vs `zip` es') body'
       where
+        (vs, es) = unzip loopvs
+
         detectLocal :: Exp -> R Exp Exp
         detectLocal e = inNewScope False $ detectE ExpA e
 

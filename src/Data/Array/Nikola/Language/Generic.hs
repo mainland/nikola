@@ -107,8 +107,10 @@ instance TraversableFamily AST where
                                                         <*> trav ExpA n
                                                         <*> trav ExpA x
 
-        go ExpA (ForE isPar vs es p)    = ForE isPar vs <$> traverse (trav ExpA) es
-                                                        <*> trav ExpA p
+        go ExpA (ForE isPar loopvs p)   = ForE isPar <$> (zip vs <$> traverse (trav ExpA) es)
+                                                     <*> trav ExpA p
+          where
+            (vs, es) = unzip loopvs
 
         go ExpA SyncE                   = pure SyncE
 
