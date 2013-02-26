@@ -1,4 +1,2 @@
-ghc-options: -optc@CUDA_CPPFLAGS@
-cc-options: @CUDA_CPPFLAGS@
-x-extra-c2hs-options: @CUDA_C2HSFLAGS@
-
+cc-options: @CPPFLAGS@
+ld-options: @LDFLAGS@
