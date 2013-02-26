@@ -9,9 +9,9 @@
 -- Maintainer  : Geoffrey Mainland <mainland@apeiron.net>
 -- Stability   : experimental
 -- Portability : non-portable
-
--- | This module provides an interface for mutable arrays. It is like the
--- 'Target' type class, but maintains shape information.
+--
+-- This module provides an interface for mutable arrays. It is like the 'Target'
+-- type class, but maintains shape information.
 
 module Data.Array.Repa.Mutable (Mutable(..)) where
 
