@@ -292,7 +292,10 @@ data Exp = VarE Var
          | IndexE Exp Exp
          | WriteE Exp Exp Exp
 
+           -- | The second arguments to 'IterateE' must be a lambda.
          | IterateE Exp Exp Exp
+
+           -- | The second arguments to 'IterateWhileE' must be a lambda.
          | IterateWhileE Exp Exp Exp
 
          | ForE ForLoop [Var] [Exp] Exp
