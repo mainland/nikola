@@ -5,4 +5,4 @@ module Data.Array.Nikola.Language.Monad (
 
 data REnv
 
-newtype R r a = R { unR :: REnv -> (REnv -> a -> IO r) -> IO r }
+newtype R r a = R { unR :: REnv -> (REnv -> a -> IO (REnv, r)) -> IO (REnv, r) }
