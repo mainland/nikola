@@ -119,7 +119,7 @@ instance ToFunParams sh => ToFunParams (sh R.:. Int) where
     toFunParams (sh R.:. i) kont =
         toFunParams sh $ \fparams_sh -> do
         toFunParams i  $ \fparams_i  -> do
-        kont (fparams_sh ++ fparams_i)
+        kont (fparams_i ++ fparams_sh)
 
 instance (ToFunParams ptrs, ToFunParams sh) => ToFunParams (NikolaArray ptrs sh) where
     {-# INLINE toFunParams #-}
