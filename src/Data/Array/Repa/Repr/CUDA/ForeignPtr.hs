@@ -18,17 +18,21 @@
 module Data.Array.Repa.Repr.CUDA.ForeignPtr (
     CF,
     Array(..),
-    fromForeignDevPtr,
-    toForeignDevPtr
+    MArray(..),
+
+    fromForeignDevPtr, toForeignDevPtr,
+    fromMForeignDevPtr, toMForeignDevPtr
   ) where
 
+import Control.Monad
 import Data.Array.Repa
 import Data.Array.Repa.Eval
+import Data.Array.Repa.Mutable
 import Foreign (Storable,
                 peek,
                 poke,
                 alloca)
-import qualified Foreign.CUDA.Driver as CU
+import qualified Foreign.CUDA.Driver     as CU
 import qualified Foreign.CUDA.ForeignPtr as CU
 import System.IO.Unsafe
 
@@ -91,6 +95,27 @@ instance Storable e => Target CF e where
     touchMVec (FDPVec _ fdptr) =
         CU.touchForeignDevPtr fdptr
 
+-- | Mutable unboxed vector arrays.
+instance (Storable e, Shape sh) => Mutable CF sh e where
+    data MArray CF sh e = AMFDP !sh !Int !(CU.ForeignDevicePtr e)
+
+    {-# INLINE mextent #-}
+    mextent (AMFDP sh _ _) = sh
+
+    {-# INLINE newMArray #-}
+    newMArray sh = liftM (AMFDP sh (size sh)) (CU.mallocForeignDevPtrArray (size sh))
+
+    {-# INLINE unsafeWriteMArray #-}
+    unsafeWriteMArray (AMFDP sh _ fdptr) ix x =
+        alloca $ \ptr -> do
+        poke ptr x
+        CU.withForeignDevPtr fdptr $ \dptr -> do
+        CU.pokeArray (toIndex sh ix) ptr dptr
+
+    {-# INLINE unsafeFreezeMArray #-}
+    unsafeFreezeMArray (AMFDP sh sz fdptr) =
+        return $ AFDP sh sz fdptr
+
 -- | O(1). Wrap a 'ForeignDevicePtr' as an array.
 fromForeignDevPtr :: Shape sh
                   => sh -> CU.ForeignDevicePtr e -> Array CF sh e
@@ -101,3 +126,14 @@ fromForeignDevPtr !sh !fdptr = AFDP sh (size sh) fdptr
 toForeignDevPtr :: Array CF sh e -> CU.ForeignDevicePtr e
 {-# INLINE toForeignDevPtr #-}
 toForeignDevPtr (AFDP _ _ fdptr) = fdptr
+
+-- | O(1). Wrap a 'ForeignDevicePtr' as an array.
+fromMForeignDevPtr :: Shape sh
+                   => sh -> CU.ForeignDevicePtr e -> MArray CF sh e
+{-# INLINE fromMForeignDevPtr #-}
+fromMForeignDevPtr !sh !fdptr = AMFDP sh (size sh) fdptr
+
+-- | O(1). Unpack a 'ForeignDevicePtr' from an array.
+toMForeignDevPtr :: MArray CF sh e -> CU.ForeignDevicePtr e
+{-# INLINE toMForeignDevPtr #-}
+toMForeignDevPtr (AMFDP _ _ fdptr) = fdptr
