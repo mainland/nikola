@@ -47,6 +47,7 @@ import qualified Data.Vector.CUDA.UnboxedForeign as VCUF
 import qualified Data.Vector.CUDA.UnboxedForeign.Mutable as MVCUF
 
 import qualified Data.Array.Repa as R
+import qualified Data.Array.Repa.Repr.CUDA.ForeignPtr as R
 import qualified Data.Array.Repa.Repr.CUDA.UnboxedForeign as R
 
 import Data.Array.Nikola.Backend.C.Monad
@@ -286,6 +287,18 @@ instance (arep ~ N.Rep a,
           ToRsh sh,
           N.Shape sh,
           N.IsElem a,
+          IsVal (R.Array R.CF rsh arep))
+      => Compilable (N.Array r    sh  a)
+                    (R.Array R.CF rsh arep) where
+    precompile =
+        setMorallyPure True .
+        addResultCoercion (coerceResult (undefined :: R.Array R.CF rsh arep))
+
+instance (arep ~ N.Rep a,
+          rsh ~ Rsh sh,
+          ToRsh sh,
+          N.Shape sh,
+          N.IsElem a,
           IsVal (R.Array R.CUF rsh arep))
       => Compilable (N.Array r     sh  a)
                     (R.Array R.CUF rsh arep) where
@@ -359,6 +372,22 @@ instance (arep ~ N.Rep a,
       where
         p' :: PreExpQ b
         p' = addArgBinder (bindArgs (undefined :: VCS.Vector arep)) pq
+
+instance (rsh ~ Rsh sh,
+          arep ~ N.Rep a,
+          ToRsh sh,
+          N.Shape sh,
+          R.Shape (Rsh sh),
+          N.IsElem a,
+          IsVal (R.Array R.CF rsh arep),
+          Compilable b c)
+    => Compilable (N.Array N.G  sh  a    -> b)
+                  (R.Array R.CF rsh arep -> c) where
+    precompile pq =
+        castPreExpQ (precompile p' :: PreExpQ c)
+      where
+        p' :: PreExpQ b
+        p' = addArgBinder (bindArgs (undefined :: R.Array R.CF rsh arep)) pq
 
 instance (rsh ~ Rsh sh,
           arep ~ N.Rep a,
@@ -509,6 +538,29 @@ baseTypeVal(Word32)
 baseTypeVal(Word64)
 baseTypeVal(Float)
 baseTypeVal(Double)
+
+--
+-- Val instance for CUDA Foreign arrays
+--
+
+instance IsVal (R.Array R.CF rsh a) where
+    bindArgs _ = do
+        arr  <- fst <$> takeLamVar
+        rarr <- qNewName "repa_arr"
+        p    <- liftQ $ TH.varP rarr
+        appendLamPats [p]
+
+        modifyBody $ \qm ->
+            [|do { let fdptr = R.toForeignDevPtr $(TH.varE rarr)
+                 ; $(lamsE [arr] qm) (NArray fdptr (R.extent $(TH.varE rarr)))
+                 }
+             |]
+
+    coerceResult _ qm =
+        [|$qm >>= \(NArray fdptr sh) ->
+           do { return $ R.fromForeignDevPtr sh fdptr
+              }
+         |]
 
 --
 -- Val instance for CUDA UnboxedForeign arrays
