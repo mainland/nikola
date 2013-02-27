@@ -21,6 +21,8 @@ module Data.Array.Nikola.Exp (
     Ix,
     Var(..),
     Exp(..),
+    unop,
+    binop,
 
     IfThenElse(..),
     (?),
@@ -41,6 +43,10 @@ module Data.Array.Nikola.Exp (
     IsNum(..),
     IsIntegral(..),
     (^),
+    (^^),
+    fromIntegral,
+
+    IsRealFrac(..),
 
     -- * Helpers
     varE, voidE,
@@ -52,7 +58,7 @@ module Data.Array.Nikola.Exp (
     IsElem(..)
   ) where
 
-import Prelude hiding ((^), fromIntegral, max, min)
+import Prelude hiding ((^), (^^), fromIntegral, max, min)
 import qualified Prelude as P
 
 import Data.Bits (Bits)
@@ -219,15 +225,21 @@ class IsElem (Exp t a) => IsNum t a where
         tau :: ScalarType
         tau = typeOf (undefined :: Exp t a)
 
+-- | 'IsIntegral' type class
 class (Integral (Exp t a), IsNum t a) => IsIntegral t a where
     toInt :: Exp t a -> Exp t Int32
     toInt e = unop (UnopE (Cast Int32T)) e
 
-fromIntegral :: (IsIntegral t a, IsNum t b) => Exp t a -> Exp t b
-fromIntegral = fromInt . toInt
+-- | Raise a number to an integral power
+(^^) :: (Floating (Exp t a), IsNum t a, IsIntegral t b) => Exp t a -> Exp t b -> Exp t a
+x ^^ y = x ** fromIntegral y
 
+-- | Raise a number to a non-negative integral power
 (^) :: (Floating (Exp t a), IsNum t a, IsIntegral t b) => Exp t a -> Exp t b -> Exp t a
 x ^ y = x ** fromIntegral y
+
+fromIntegral :: (IsIntegral t a, IsNum t b) => Exp t a -> Exp t b
+fromIntegral = fromInt . toInt
 
 -- | Helpers
 varE :: Var t a -> Exp t a
@@ -235,6 +247,10 @@ varE = E . VarE . unV
 
 voidE :: Exp t ()
 voidE = E UnitE
+
+-- | 'IsRealFrac' type class
+class (Fractional (Exp t a), IsNum t a) => IsRealFrac t a where
+    truncate :: IsIntegral t b => Exp t a -> Exp t b
 
 --
 -- Lifting to embedded values

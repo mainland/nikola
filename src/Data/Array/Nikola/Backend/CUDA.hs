@@ -152,6 +152,20 @@ instance IsIntegral CUDA Word16 where
 instance IsIntegral CUDA Word32 where
 instance IsIntegral CUDA Word64 where
 
+instance IsRealFrac CUDA Float where
+    truncate = _truncate
+
+instance IsRealFrac CUDA Double where
+    truncate = _truncate
+
+-- Disgusting contorion to allow us to bring the type variable @b@ into scope,
+-- which we need for the call to 'typeOf'.
+_truncate :: forall a b . IsIntegral CUDA b => Exp a -> Exp b
+_truncate e = unop (UnopE (Cast tau)) e
+  where
+    tau :: ScalarType
+    tau = typeOf (undefined :: Exp b)
+
 type Vector r a = Array r DIM1 a
 
 type Exp a = E.Exp CUDA a

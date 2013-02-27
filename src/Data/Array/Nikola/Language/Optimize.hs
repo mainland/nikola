@@ -44,7 +44,7 @@ import Data.Traversable
 import Text.PrettyPrint.Mainland
 
 import Data.Array.Nikola.Backend.Flags
-import Data.Array.Nikola.Exp hiding (Var, Exp)
+import Data.Array.Nikola.Exp hiding (fromIntegral, Var, Exp)
 import qualified Data.Array.Nikola.Exp as E
 
 import Data.Array.Nikola.Language.Check
