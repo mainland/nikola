@@ -21,6 +21,9 @@ class Mutable r sh e where
     -- | Mutable representation of an array
     data MArray r sh e
 
+    -- | Get extent of the mutable array.
+    mextent :: MArray r sh e -> sh
+
     -- | Allocate a new mutable array of the given size.
     newMArray :: sh -> IO (MArray r sh e)
 

@@ -98,6 +98,9 @@ instance U.UnboxForeign e => Target CUF e where
 instance (U.UnboxForeign e, Shape sh) => Mutable CUF sh e where
     data MArray CUF sh e = MCFUnboxed !sh !(UM.IOVector e)
 
+    {-# INLINE mextent #-}
+    mextent (MCFUnboxed sh _) = sh
+
     {-# INLINE newMArray #-}
     newMArray sh = liftM (MCFUnboxed sh) (UM.new (size sh))
 
