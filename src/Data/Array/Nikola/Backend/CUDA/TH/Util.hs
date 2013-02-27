@@ -71,6 +71,8 @@ firstTup n qe = do
     let qp = TH.tupP (TH.varP x : replicate (n - 1) TH.wildP)
     TH.caseE qe [TH.match qp (TH.normalB (TH.varE x)) []]
 
+-- | @ptrs@ is a singleton or (potentially nested) tuple of 'ForeignDevicePtr's,
+-- and @sh@ is a shape.
 data NikolaArray ptrs sh = NArray !ptrs !sh
 
 class ToFunParams a where
