@@ -143,7 +143,7 @@ test : $(SOURCE) test.hs
 mandelbrot : $(SOURCE) $(shell find examples/mandelbrot -type f)
 	@echo "Compiling and linking" $@
 	$(_QUIET)$(GHC) --make examples/mandelbrot/Main.hs $(CSOURCE) \
-		-iexamples/mandelbrot \
+		-iexamples/mandelbrot -iexamples/common \
 		-odir obj/mandelbrot -hidir obj/mandelbrot \
 		$(GHC_FLAGS) -threaded -o $@
 

@@ -211,6 +211,7 @@ executable mandelbrot
 
   main-is: 	    Main.hs
   hs-source-dirs:   examples/mandelbrot
+                    examples/common
   default-language: Haskell98
 
   if flag(examples)
