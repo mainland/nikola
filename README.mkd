@@ -1,8 +1,8 @@
 Building
 ========
 
-Nikola currently supports GHC version 7.4 and version 4.2 or above of the CUDA
-SDK.
+Nikola currently supports GHC versions 7.4 and 7.6 and version 4.2 or above of
+the CUDA SDK.
 
 The configure script will pick up nvcc if it is in your path. Make sure it
 matches the `nvcc` used by the `cuda` Haskell package. You can manually specify
@@ -12,28 +12,20 @@ the path to `nvcc` during `cabal configure` using an argument like this:
 --configure-option="--with-nvcc=/usr/local/cuda/4.2/cuda/bin/nvcc"
 ```
 
-`nvcc` requires `gcc` 4.6 or lower. If your default system compiler is `gcc` 4.7
-or higher, you must manually specify the path to a compatible version of `gcc`
-for `nvcc` to use. You can do this using the `--with-nvcc-cc` configure option,
+Some versions of `nvcc` require specific C compilers. You can manually specify
+the path to a compatible C compiler using the `--with-nvcc-cc` configure option,
 e.g., give the following argument to `cabal configure`
 
 ```
 --configure-option="--with-nvcc-cc=/usr/bin/gcc-4.5"
 ```
 
-I configure Nikola like this under Ubuntu 12.04 LTS x86_64 with the CUDA 4.2
+I configure Nikola like this under Ubuntu 12.04 LTS x86_64 with the CUDA 5.0.35
 SDK:
 
 ```
 autoconf && cabal configure --disable-library-profiling --enable-tests --flags="examples optimize"
 ```
-
-Known Issues
-============
-
-Versions of the `cuda` package prior to version 5, which is not yet on hackage,
-can corrupt device memory pointers in some cases. If you experience CUDA errors,
-please install the `cuda` package directly from github.
 
 Examples
 ========
