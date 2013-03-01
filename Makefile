@@ -29,10 +29,10 @@ GHC_FLAGS+=-O
 
 GHC_FLAGS += \
 	-hide-all-packages \
-	-package GLUT-2.3.0.0 \
+	-package GLUT-2.3.1.0 \
 	-package HUnit \
-	-package OpenGL-2.5.0.0 \
-	-package QuickCheck \
+	-package OpenGL-2.6.0.1 \
+	-package QuickCheck-2.4.2 \
 	-package base \
 	-package bytestring \
 	-package containers \
