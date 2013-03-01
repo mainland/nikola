@@ -143,9 +143,10 @@ pboOfForeignPtr width height fptr = do
 
 display :: Display     -- ^ Display mode.
         -> View        -- ^ Default view
+        -> Bool        -- ^ Update frame while idling
         -> IO FrameGen -- ^ Frame generation function
         -> IO ()
-display disp view mf = do
+display disp view idleUpdate mf = do
     initializeGLUT False
     openWindowGLUT disp
     --N.initializeCUDACtx
@@ -154,6 +155,8 @@ display disp view mf = do
     state    <- defaultState disp view f
     stateRef <- newIORef state
     GLUT.displayCallback       $= callbackDisplay stateRef
+    when idleUpdate $
+        GLUT.idleCallback      $= Just (callbackIdle stateRef)
     GLUT.reshapeCallback       $= Just (callbackReshape stateRef)
     GLUT.keyboardMouseCallback $= Just (callbackKeyMouse stateRef)
     GLUT.motionCallback        $= Just (callbackMotion stateRef)
@@ -214,6 +217,10 @@ callbackDisplay state = do
     GLUT.swapBuffers
 
     return ()
+
+callbackIdle :: IORef State -> IO ()
+callbackIdle stateRef =
+    updatePicture stateRef
 
 callbackReshape :: IORef State -> GLUT.Size -> IO ()
 callbackReshape stateRef (GLUT.Size width height) = do

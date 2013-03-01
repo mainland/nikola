@@ -119,7 +119,7 @@ doMandelbrot = do
         limit   = fromIntegral $ fromLJust confLimit config
         backend = fromLJust confBackend config
         disp    = G.InWindow "Mandelbrot" (size, size) (10, 10)
-    G.display disp defaultView (frameGenerator backend limit)
+    G.display disp defaultView False (frameGenerator backend limit)
 
 frameGenerator :: Backend -> Int -> IO G.FrameGen
 frameGenerator RepaV1 limit = return f
