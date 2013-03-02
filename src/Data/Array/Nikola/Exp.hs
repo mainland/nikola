@@ -294,6 +294,20 @@ instance (Lift t a, Lift t b) => Lift t (a, b) where
         eb :: Exp t (Lifted t b)
         eb = lift b
 
+instance (Lift t a, Lift t b, Lift t c) => Lift t (a, b, c) where
+    type Lifted t (a, b, c) = (Lifted t a, Lifted t b, Lifted t c)
+
+    lift (a, b, c) = E $ TupleE [unE ea, unE eb, unE ec]
+      where
+        ea :: Exp t (Lifted t a)
+        ea = lift a
+
+        eb :: Exp t (Lifted t b)
+        eb = lift b
+
+        ec :: Exp t (Lifted t c)
+        ec = lift c
+
 --
 -- Unlifting from embedded values
 --
@@ -326,6 +340,18 @@ instance (Unlift t a, Unlift t b) => Unlift t (a, b) where
 
         eb :: Exp t (Lifted t b)
         eb = E (ProjE 1 2 e)
+
+instance (Unlift t a, Unlift t b, Unlift t c) => Unlift t (a, b, c) where
+    unlift (E e) = (unlift ea, unlift eb, unlift ec)
+      where
+        ea :: Exp t (Lifted t a)
+        ea = E (ProjE 0 3 e)
+
+        eb :: Exp t (Lifted t b)
+        eb = E (ProjE 1 3 e)
+
+        ec :: Exp t (Lifted t c)
+        ec = E (ProjE 2 3 e)
 
 data Ptr a
 
