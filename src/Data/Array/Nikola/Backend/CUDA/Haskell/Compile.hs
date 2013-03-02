@@ -259,8 +259,12 @@ compileExp (BinopE op e1 e2) = do
     go RemI  m1 m2 = liftIntegral rem  m1 m2
 
     go DivF     m1 m2 = liftFloating (/) m1 m2
+    go ModF     m1 m2 = liftFloating fmod m1 m2
     go PowF     m1 m2 = liftFloating (**) m1 m2
     go LogBaseF m1 m2 = liftFloating logBase m1 m2
+
+    fmod :: RealFrac a => a -> a -> a
+    x `fmod` y = x - (fromIntegral (floor (x/y)))*y
 
 compileExp (IfThenElseE e_test e_then e_else) = do
     m_test <- compileExp e_test

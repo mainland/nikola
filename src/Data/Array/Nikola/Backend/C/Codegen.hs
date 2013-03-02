@@ -251,6 +251,13 @@ compileExp (UnopE op e) = do
     go AcoshF FloatT  ce = [cexp|acoshf($ce)|]
     go AcoshF DoubleT ce = [cexp|acosh($ce)|]
 
+    go RoundF FloatT  ce = [cexp|roundf($ce)|]
+    go RoundF DoubleT ce = [cexp|round($ce)|]
+    go CeilF  FloatT  ce = [cexp|ceilf($ce)|]
+    go CeilF  DoubleT ce = [cexp|ceil($ce)|]
+    go FloorF FloatT  ce = [cexp|floorf($ce)|]
+    go FloorF DoubleT ce = [cexp|floor($ce)|]
+
     go _ tau _ = errordoc $
                  text "Cannot compile" <+> ppr (UnopE op e) <+>
                  text "at type" <+> ppr tau
@@ -284,6 +291,8 @@ compileExp (BinopE op e1 e2) = do
     go RemI  _ ce1 ce2 = [cexp|$ce1 % $ce2|]
 
     go DivF     _       ce1 ce2 = [cexp|$ce1 / $ce2|]
+    go ModF     FloatT  ce1 ce2 = [cexp|fmodf($ce1,$ce2)|]
+    go ModF     DoubleT ce1 ce2 = [cexp|fmod($ce1,$ce2)|]
     go PowF     FloatT  ce1 ce2 = [cexp|powf($ce1,$ce2)|]
     go PowF     DoubleT ce1 ce2 = [cexp|pow($ce1,$ce2)|]
     go LogBaseF FloatT  ce1 ce2 = [cexp|logf($ce2)/logf($ce1)|]

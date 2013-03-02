@@ -245,6 +245,8 @@ compileExp (BinopE op e1 e2) = do
     go RemI  qe1 qe2 = [|$qe1 `rem` $qe2|]
 
     go DivF     qe1 qe2 = [|$qe1 / $qe2|]
+    go ModF     qe1 qe2 = [|let { x = $qe1 ; y = $qe2 }
+                            in x - (fromIntegral (floor (x/y)))*y|]
     go PowF     qe1 qe2 = [|$qe1 ** $qe2|]
     go LogBaseF qe1 qe2 = [|logBase $qe1 $qe2|]
 

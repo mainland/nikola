@@ -222,6 +222,10 @@ inferUnop = go
     go AtanhF  tau | isFloatT tau = return tau
     go AcoshF  tau | isFloatT tau = return tau
 
+    go RoundF  tau | isFloatT tau = return (ScalarT Int32T)
+    go CeilF   tau | isFloatT tau = return (ScalarT Int32T)
+    go FloorF  tau | isFloatT tau = return (ScalarT Int32T)
+
     go op tau =
         faildoc $
         text "Operator" <+> ppr op <+>
@@ -256,6 +260,7 @@ inferBinop =
     go RemI  tau1 tau2    = joinIntT tau1 tau2
 
     go DivF     tau1 tau2 = joinFloatT tau1 tau2
+    go ModF     tau1 tau2 = joinFloatT tau1 tau2
     go PowF     tau1 tau2 = joinFloatT tau1 tau2
     go LogBaseF tau1 tau2 = joinFloatT tau1 tau2
 

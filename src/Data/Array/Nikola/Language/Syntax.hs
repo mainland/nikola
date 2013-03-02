@@ -111,6 +111,10 @@ data Unop = -- Casting
           | AsinhF
           | AtanhF
           | AcoshF
+
+          | RoundF
+          | CeilF
+          | FloorF
   deriving (Eq, Ord, Data, Typeable)
 
 -- | Binary operators
@@ -144,6 +148,7 @@ data Binop = -- Order operators
 
             -- Floating point operators
            | DivF
+           | ModF
            | PowF
            | LogBaseF
   deriving (Eq, Ord, Data, Typeable)
@@ -459,6 +464,9 @@ instance Pretty Unop where
     ppr AsinhF = text "asinsh"
     ppr AtanhF = text "atanh"
     ppr AcoshF = text "acosh"
+    ppr RoundF = text "round"
+    ppr FloorF = text "floor"
+    ppr CeilF  = text "ceil"
 
 instance Show Unop where
     showsPrec p = shows . pprPrec p
@@ -488,6 +496,7 @@ instance Pretty Binop where
     ppr RemI  = text "`rem`"
 
     ppr DivF     = text "/"
+    ppr ModF     = text "fmod"
     ppr PowF     = text "**"
     ppr LogBaseF = text "`logBase`"
 
@@ -519,6 +528,9 @@ instance HasFixity Unop where
     fixity AsinhF = infix_ appPrec
     fixity AtanhF = infix_ appPrec
     fixity AcoshF = infix_ appPrec
+    fixity RoundF = infix_ appPrec
+    fixity FloorF = infix_ appPrec
+    fixity CeilF  = infix_ appPrec
 
 instance HasFixity Binop where
     fixity EqO = infix_ eqPrec
@@ -545,6 +557,7 @@ instance HasFixity Binop where
     fixity RemI  = infixl_ mulPrec
 
     fixity DivF     = infixl_ mulPrec
+    fixity ModF     = infixl_ mulPrec
     fixity PowF     = infixr_ powPrec
     fixity LogBaseF = infixl_ mulPrec
 

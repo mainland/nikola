@@ -234,7 +234,7 @@ liftFractional op m1 m2 = do
                                    text "liftFractional:" <+> ppr v1 <+> ppr v2
 
 liftFloating :: forall m . Monad m
-             => (forall a . Floating a => a -> a -> a)
+             => (forall a . (RealFrac a, Floating a) => a -> a -> a)
              -> m Val -> m Val -> m Val
 liftFloating op m1 m2 = do
     v1 <- m1

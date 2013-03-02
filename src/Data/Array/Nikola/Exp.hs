@@ -250,7 +250,28 @@ voidE = E UnitE
 
 -- | 'IsRealFrac' type class
 class (Fractional (Exp t a), IsNum t a) => IsRealFrac t a where
+    fmod :: Exp t a -> Exp t a -> Exp t a
+    fmod e1 e2 = binop (BinopE ModF) e1 e2
+
     truncate :: IsIntegral t b => Exp t a -> Exp t b
+    truncate = _truncate
+
+    round :: IsIntegral t b => Exp t a -> Exp t b
+    round e = unop (UnopE RoundF) e
+
+    ceiling :: IsIntegral t b => Exp t a -> Exp t b
+    ceiling e = unop (UnopE CeilF) e
+
+    floor :: IsIntegral t b => Exp t a -> Exp t b
+    floor e = unop (UnopE FloorF) e
+
+-- Disgusting contorion to allow us to bring the type variable @b@ into scope,
+-- which we need for the call to 'typeOf'.
+_truncate :: forall t a b . IsIntegral t b => Exp t a -> Exp t b
+_truncate e = unop (UnopE (Cast tau)) e
+  where
+    tau :: ScalarType
+    tau = typeOf (undefined :: Exp t b)
 
 --
 -- Lifting to embedded values
